@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MVE Dashboard</title>
+    <style>
+      /* Initial loading state */
+      .app-loading {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #f9fafb;
+        font-family: system-ui, sans-serif;
+      }
+      .app-loading .spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid #e5e7eb;
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      .app-loading p {
+        margin-top: 16px;
+        color: #6b7280;
+        font-size: 14px;
+      }
+      .app-loading small {
+        margin-top: 8px;
+        color: #9ca3af;
+        font-size: 12px;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      @media (prefers-color-scheme: dark) {
+        .app-loading { background: #111827; }
+        .app-loading .spinner { border-color: #374151; border-top-color: #60a5fa; }
+        .app-loading p { color: #9ca3af; }
+        .app-loading small { color: #6b7280; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <!-- This loading UI will be replaced when Vue mounts -->
+      <div class="app-loading">
+        <div class="spinner"></div>
+        <p>Loading MVE Dashboard...</p>
+        <small>If this takes too long, check browser console (F12)</small>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+    <script>
+      // Debug: Log when script loads
+      console.log('📦 index.html loaded, waiting for Vue...')
+      
+      // Timeout warning
+      setTimeout(() => {
+        const appEl = document.getElementById('app')
+        if (appEl && appEl.querySelector('.app-loading')) {
+          console.warn('⚠️ Vue app not mounted after 5 seconds. Check for errors above.')
+        }
+      }, 5000)
+    </script>
+  </body>
+</html>

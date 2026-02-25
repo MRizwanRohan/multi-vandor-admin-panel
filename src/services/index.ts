@@ -1,0 +1,19 @@
+// ═══════════════════════════════════════════════════════════════════
+// Services Index — Re-exports all services
+// ═══════════════════════════════════════════════════════════════════
+
+export { default as api } from './api'
+export { authService } from './auth.service'
+export { productService, type ProductFilters, type ProductFormData, type ProductVariantFormData } from './product.service'
+export { categoryService, type CategoryFilters, type CategoryFormData } from './category.service'
+export { orderService, type OrderFilters, type OrderStatusUpdate, type RefundData } from './order.service'
+export { vendorService, type VendorFilters, type VendorFormData } from './vendor.service'
+export { settingsService } from './settings.service'
+export { attributeTemplateService } from './attribute-template.service'
+export { reviewService, type ReviewFilters, type ReviewStats } from './review.service'
+export { couponService, type CouponFilters, type CouponStats, type ValidateCouponRequest, type ValidateCouponResponse } from './coupon.service'
+export { analyticsService, type DateRange, type SalesReport, type VendorReport, type ProductReport } from './analytics.service'
+export { payoutService, type PayoutFilters, type PayoutStats, type BankAccount, type CreateBankAccountRequest } from './payout.service'
+export { uploadService, type UploadedFile, type UploadProgress, type UploadOptions, type ChunkedUploadSession } from './upload.service'
+export { notificationService, type NotificationFilters, type NotificationStats } from './notification.service'
+export { shippingService, type ShippingZone, type ShippingMethod, type ShippingRegion, type ShippingClass, type ShippingRate, type ShippingCalculation } from './shipping.service'

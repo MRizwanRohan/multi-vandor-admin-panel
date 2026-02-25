@@ -9,31 +9,34 @@ export interface Category {
   name: string
   slug: string
   description: string | null
+  image_field: string | null
   parent_id: number | null
+  depth: number
+  children: Category[]
   status: CategoryStatus
+  status_label: string
+  status_color: string
   is_active: boolean
   display_order: number
+  created_by: number | null
+  creator: { id: number; name: string; email: string } | null
+  approved_by: number | null
+  approved_at: string | null
+  rejection_reason: string | null
   product_count: number
-  depth: number
+  vendor_count: number
+  metadata: Record<string, unknown> | null
+  seo_title: string | null
+  seo_description: string | null
+  keywords: string[]
+  can_have_children: boolean
+  can_be_deleted: boolean
   created_at: string
   updated_at: string
 }
 
-export interface CategoryDetail extends Category {
-  parent: Category | null
-  seo_title: string | null
-  seo_description: string | null
-  keywords: string[]
-  image_url: string | null
-  icon: string | null
-  template_assignments: CategoryTemplateAssignment[]
-  children?: CategoryTreeNode[]
-  breadcrumb: CategoryBreadcrumb[]
-}
-
-export interface CategoryTreeNode extends Category {
-  children: CategoryTreeNode[]
-}
+/** Alias for backward compatibility */
+export type CategoryTreeNode = Category
 
 export interface CategoryBreadcrumb {
   id: number
@@ -42,11 +45,10 @@ export interface CategoryBreadcrumb {
 }
 
 export interface CategoryTemplateAssignment {
-  template_id: number
-  template_name: string
-  is_required: boolean
+  attribute_template_id: number
+  is_required_override: boolean | null
   display_order: number
-  inheritance_behavior: 'inherit' | 'replace' | 'merge'
+  inheritance_mode: 'inherit' | 'replace' | null
 }
 
 // ── Create/Update DTOs ──

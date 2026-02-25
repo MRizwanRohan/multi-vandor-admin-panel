@@ -4,8 +4,10 @@
 
 import api from './api'
 import { getRolePrefix } from './api'
-import type { Category, PaginatedResponse } from '@/types'
+import type { Category, CategoryTemplateAssignment } from '@/types'
 
+const adminPrefix = () => `/admin/categories`
+const vendorPrefix = () => `/vendor/categories`
 const prefix = () => `${getRolePrefix()}/categories`
 
 export interface CategoryFilters {
@@ -23,7 +25,6 @@ export interface CategoryFormData {
   description?: string
   parent_id?: number | null
   image?: string | File
-  icon?: string
   status: 'active' | 'inactive'
   is_featured?: boolean
   sort_order?: number
@@ -32,167 +33,237 @@ export interface CategoryFormData {
   attribute_template_id?: number | null
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Response types matching real API
+// ─────────────────────────────────────────────────────────────────
+interface ApiListResponse {
+  data: Category[]
+  success: boolean
+  message: string
+}
+
+interface ApiItemResponse {
+  data: Category
+  success: boolean
+  message: string
+}
+
 export const categoryService = {
+  // ═════════════════════════════════════════════════════════════════
+  // Admin Category Endpoints
+  // ═════════════════════════════════════════════════════════════════
+
   /**
-   * Get paginated categories
+   * GET /v1/admin/categories
+   * List all categories (tree structure)
    */
-  async getAll(filters?: CategoryFilters): Promise<PaginatedResponse<Category>> {
-    const response = await api.get<PaginatedResponse<Category>>(prefix(), { params: filters })
-    return response.data
+  async getAll(filters?: CategoryFilters): Promise<{ data: Category[] }> {
+    const response = await api.get<ApiListResponse>(adminPrefix(), { params: filters })
+    return { data: response.data.data }
   },
 
   /**
-   * Get categories tree (nested structure)
-   */
-  async getTree(): Promise<Category[]> {
-    const response = await api.get<{ data: Category[] }>(`${prefix()}/tree`)
-    return response.data.data
-  },
-
-  /**
-   * Get single category
-   */
-  async getById(id: number): Promise<Category> {
-    const response = await api.get<{ data: Category }>(`${prefix()}/${id}`)
-    return response.data.data
-  },
-
-  /**
-   * Create category
+   * POST /v1/admin/categories
+   * Create a new category
    */
   async create(data: CategoryFormData): Promise<Category> {
     const formData = buildFormData(data)
-    const response = await api.post<{ data: Category }>(prefix(), formData, {
+    const response = await api.post<ApiItemResponse>(adminPrefix(), formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     return response.data.data
   },
 
   /**
-   * Update category
+   * GET /v1/admin/categories/{category}
+   * Show category details
+   */
+  async getById(id: number): Promise<Category> {
+    const response = await api.get<ApiItemResponse>(`${adminPrefix()}/${id}`)
+    return response.data.data
+  },
+
+  /**
+   * PUT /v1/admin/categories/{category}
+   * Update a category
    */
   async update(id: number, data: Partial<CategoryFormData>): Promise<Category> {
     const formData = buildFormData(data)
     formData.append('_method', 'PUT')
-    const response = await api.post<{ data: Category }>(`${prefix()}/${id}`, formData, {
+    const response = await api.post<ApiItemResponse>(`${adminPrefix()}/${id}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     return response.data.data
   },
 
   /**
-   * Delete category
+   * DELETE /v1/admin/categories/{category}
+   * Delete a category
    */
   async delete(id: number): Promise<void> {
-    await api.delete(`${prefix()}/${id}`)
+    await api.delete(`${adminPrefix()}/${id}`)
   },
 
   /**
+   * GET /v1/admin/categories/pending
+   * List pending categories
+   */
+  async getPending(): Promise<{ data: Category[] }> {
+    const response = await api.get<ApiListResponse>(`${adminPrefix()}/pending`)
+    return { data: response.data.data }
+  },
+
+  /**
+   * PUT /v1/admin/categories/reorder
    * Reorder categories
    */
   async reorder(items: { id: number; sort_order: number; parent_id?: number | null }[]): Promise<void> {
-    await api.post(`${prefix()}/reorder`, { items })
+    await api.put(`${adminPrefix()}/reorder`, { items })
   },
 
   /**
-   * Get category attributes
+   * PUT /v1/admin/categories/{category}/approve
+   * Approve a pending category
    */
-  async getAttributes(id: number): Promise<{ id: number; name: string; values: string[] }[]> {
-    const response = await api.get(`${prefix()}/${id}/attributes`)
+  async approve(id: number): Promise<Category> {
+    const response = await api.put<ApiItemResponse>(`${adminPrefix()}/${id}/approve`)
     return response.data.data
   },
 
-  // ─────────────────────────────────────────────────────────────────
-  // Toggle & Status Operations
-  // ─────────────────────────────────────────────────────────────────
+  /**
+   * PUT /v1/admin/categories/{category}/reject
+   * Reject a pending category
+   */
+  async reject(id: number, reason: string): Promise<Category> {
+    const response = await api.put<ApiItemResponse>(`${adminPrefix()}/${id}/reject`, { reason })
+    return response.data.data
+  },
 
   /**
+   * PUT /v1/admin/categories/{category}/toggle-active
    * Toggle category active status
    */
   async toggleActive(id: number): Promise<Category> {
-    const response = await api.patch<{ data: Category }>(`${prefix()}/${id}/toggle-active`)
+    const response = await api.put<ApiItemResponse>(`${adminPrefix()}/${id}/toggle-active`)
     return response.data.data
   },
 
   /**
-   * Bulk toggle active status
+   * GET /v1/admin/categories/{category}/children
+   * Get children of a category
    */
-  async bulkToggleActive(ids: number[], isActive: boolean): Promise<{ success: number; failed: number }> {
-    const response = await api.patch<{ data: { success: number; failed: number } }>(
-      `${prefix()}/bulk-toggle-active`,
-      { ids, is_active: isActive }
-    )
-    return response.data.data
-  },
-
-  // ─────────────────────────────────────────────────────────────────
-  // Category Suggestion (Vendor Feature)
-  // ─────────────────────────────────────────────────────────────────
-
-  /**
-   * Submit category suggestion (vendor)
-   */
-  async suggestCategory(data: CategorySuggestionData): Promise<CategorySuggestion> {
-    const response = await api.post<{ data: CategorySuggestion }>(`${prefix()}/suggestions`, data)
+  async getChildren(id: number, status?: string): Promise<Category[]> {
+    const response = await api.get<ApiListResponse>(`${adminPrefix()}/${id}/children`, {
+      params: status ? { status } : undefined,
+    })
     return response.data.data
   },
 
   /**
-   * Get pending category suggestions (admin)
+   * GET /v1/admin/categories/{category}/templates
+   * Get attribute templates for a category
    */
-  async getPendingSuggestions(
-    filters?: { page?: number; per_page?: number; status?: string }
-  ): Promise<PaginatedResponse<CategorySuggestion>> {
-    const response = await api.get<PaginatedResponse<CategorySuggestion>>(
-      `${prefix()}/suggestions`,
-      { params: filters }
-    )
-    return response.data
-  },
-
-  /**
-   * Approve category suggestion (admin)
-   */
-  async approveSuggestion(id: number, categoryData?: Partial<CategoryFormData>): Promise<Category> {
-    const response = await api.post<{ data: Category }>(
-      `${prefix()}/suggestions/${id}/approve`,
-      categoryData || {}
-    )
+  async getTemplates(id: number, includeInherited?: boolean): Promise<CategoryTemplateAssignment[]> {
+    const response = await api.get(`${adminPrefix()}/${id}/templates`, {
+      params: includeInherited !== undefined ? { include_inherited: includeInherited } : undefined,
+    })
     return response.data.data
   },
 
   /**
-   * Reject category suggestion (admin)
+   * PUT /v1/admin/categories/{category}/templates
+   * Sync attribute templates for a category
    */
-  async rejectSuggestion(id: number, reason: string): Promise<void> {
-    await api.post(`${prefix()}/suggestions/${id}/reject`, { reason })
+  async syncTemplates(
+    id: number,
+    templates: {
+      attribute_template_id: number
+      is_required_override?: boolean | null
+      display_order?: number
+      inheritance_mode?: 'inherit' | 'replace' | null
+    }[]
+  ): Promise<void> {
+    await api.put(`${adminPrefix()}/${id}/templates`, { templates })
   },
-}
 
-// ─────────────────────────────────────────────────────────────────
-// Category Suggestion Types
-// ─────────────────────────────────────────────────────────────────
+  /**
+   * GET /v1/admin/categories/{category}/requests
+   * Get category request history (approval/rejection)
+   */
+  async getRequestHistory(id: number): Promise<unknown[]> {
+    const response = await api.get(`${adminPrefix()}/${id}/requests`)
+    return response.data.data
+  },
 
-export interface CategorySuggestionData {
-  name: string
-  parent_id?: number | null
-  description?: string
-  reason?: string
-}
+  // ═════════════════════════════════════════════════════════════════
+  // Vendor Category Endpoints
+  // ═════════════════════════════════════════════════════════════════
 
-export interface CategorySuggestion {
-  id: number
-  name: string
-  parent_id: number | null
-  parent_name: string | null
-  description: string | null
-  reason: string | null
-  status: 'pending' | 'approved' | 'rejected'
-  vendor_id: number
-  vendor_name: string
-  rejection_reason: string | null
-  created_at: string
-  updated_at: string
+  /**
+   * GET /v1/vendor/categories
+   * List visible categories (all active + vendor's own pending)
+   */
+  async getVisibleCategories(): Promise<{ data: Category[] }> {
+    const response = await api.get<ApiListResponse>(vendorPrefix())
+    return { data: response.data.data }
+  },
+
+  /**
+   * POST /v1/vendor/categories
+   * Suggest a new category (pending admin approval)
+   */
+  async suggestCategory(data: {
+    name: string
+    description?: string
+    parent_id?: number | null
+    display_order?: number
+    metadata?: {
+      seo_title?: string
+      seo_description?: string
+      keywords?: string[]
+    }
+  }): Promise<Category> {
+    const response = await api.post<ApiItemResponse>(vendorPrefix(), data)
+    return response.data.data
+  },
+
+  /**
+   * GET /v1/vendor/categories/my
+   * List vendor's own categories
+   */
+  async getMyCategories(perPage?: number): Promise<{ data: Category[] }> {
+    const response = await api.get<ApiListResponse>(`${vendorPrefix()}/my`, {
+      params: perPage ? { per_page: perPage } : undefined,
+    })
+    return { data: response.data.data }
+  },
+
+  /**
+   * GET /v1/vendor/categories/{category}
+   * Show category details (vendor)
+   */
+  async getVendorCategoryDetail(id: number): Promise<Category> {
+    const response = await api.get<ApiItemResponse>(`${vendorPrefix()}/${id}`)
+    return response.data.data
+  },
+
+  /**
+   * PUT /v1/vendor/categories/{category}
+   * Update own pending category
+   */
+  async updatePendingCategory(id: number, data: Partial<CategoryFormData>): Promise<Category> {
+    const response = await api.put<ApiItemResponse>(`${vendorPrefix()}/${id}`, data)
+    return response.data.data
+  },
+
+  /**
+   * GET /v1/vendor/categories/{category}/templates
+   * Get attribute templates for a category (vendor)
+   */
+  async getVendorCategoryTemplates(id: number): Promise<CategoryTemplateAssignment[]> {
+    const response = await api.get(`${vendorPrefix()}/${id}/templates`)
+    return response.data.data
+  },
 }
 
 // Helper to build FormData

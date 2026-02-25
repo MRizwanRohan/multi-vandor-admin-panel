@@ -116,11 +116,22 @@ const statusOptions = [
   { value: 'inactive', label: 'Inactive' },
 ]
 
+// Flatten tree for parent dropdown
+function flattenCategories(cats: Category[], prefix = ''): { value: number; label: string }[] {
+  const result: { value: number; label: string }[] = []
+  for (const c of cats) {
+    result.push({ value: c.id, label: prefix ? `${prefix} → ${c.name}` : c.name })
+    if (c.children && c.children.length > 0) {
+      result.push(...flattenCategories(c.children, prefix ? `${prefix} → ${c.name}` : c.name))
+    }
+  }
+  return result
+}
+
 const parentOptions = computed(() => [
   { value: '', label: 'None (Top Level)' },
-  ...parentCategories.value
-    .filter(c => c.id !== categoryId.value)
-    .map(c => ({ value: c.id, label: c.name })),
+  ...flattenCategories(parentCategories.value)
+    .filter(c => c.value !== categoryId.value),
 ])
 
 const templateOptions = computed(() => [
@@ -143,10 +154,14 @@ async function fetchCategory() {
       status: category.status === 'active' ? 'active' : 'inactive',
       is_featured: false,
       sort_order: category.display_order || 0,
-      meta_title: '',
-      meta_description: '',
+      meta_title: category.seo_title || '',
+      meta_description: category.seo_description || '',
       attribute_template_id: null,
     })
+    // Show existing image
+    if (category.image_field) {
+      imagePreview.value = category.image_field
+    }
   } catch (error) {
     toast.error('Failed to fetch category')
     router.push('/admin/categories')
@@ -211,11 +226,10 @@ const onSubmit = handleSubmit(async (values) => {
       description: values.description,
       parent_id: values.parent_id || null,
       status: values.status,
-      is_featured: values.is_featured,
-      sort_order: values.sort_order,
-      meta_title: values.meta_title,
-      meta_description: values.meta_description,
-      attribute_template_id: values.attribute_template_id || null,
+      is_active: values.status === 'active',
+      display_order: values.sort_order,
+      seo_title: values.meta_title,
+      seo_description: values.meta_description,
     }
     
     if (selectedImage.value) {

@@ -1,5 +1,5 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<!-- Admin Category List — Category management list page -->
+<!-- Admin Category List — Tree-based category management -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
@@ -10,22 +10,16 @@ import { categoryService } from '@/services'
 import { useConfirm, useToast } from '@/composables'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
-import BaseBadge from '@/components/ui/BaseBadge.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
+import CategoryTreeRow from './CategoryTreeRow.vue'
 import type { Category } from '@/types'
-import {
-  PlusIcon,
-  PencilIcon,
-  TrashIcon,
-  FolderIcon,
-} from '@heroicons/vue/24/outline'
+import { PlusIcon } from '@heroicons/vue/24/outline'
 
 const router = useRouter()
 const breadcrumbStore = useBreadcrumbStore()
 const confirm = useConfirm()
 const toast = useToast()
 
-// Set page info
 onMounted(() => {
   breadcrumbStore.setPageInfo('Categories', [
     { label: 'Categories' },
@@ -36,6 +30,7 @@ onMounted(() => {
 // Data
 const categories = ref<Category[]>([])
 const isLoading = ref(true)
+const expandedIds = ref<Set<number>>(new Set())
 
 // Fetch categories
 async function fetchCategories() {
@@ -46,28 +41,69 @@ async function fetchCategories() {
   } catch (err: any) {
     const message = err.response?.data?.message || 'Failed to load categories'
     toast.error(message)
-    console.error('Category API Error:', err)
     categories.value = []
   } finally {
     isLoading.value = false
   }
 }
 
-// Navigate to create page
-function openCreateModal() {
+// Total count (flat)
+const totalCount = computed(() => {
+  function count(cats: Category[]): number {
+    return cats.reduce((sum, c) => sum + 1 + count(c.children || []), 0)
+  }
+  return count(categories.value)
+})
+
+// Toggle expand
+function toggleExpand(id: number) {
+  const next = new Set(expandedIds.value)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
+  expandedIds.value = next
+}
+
+// Expand all / collapse all
+function expandAll() {
+  const ids = new Set<number>()
+  function collect(cats: Category[]) {
+    for (const c of cats) {
+      if (c.children && c.children.length > 0) {
+        ids.add(c.id)
+        collect(c.children)
+      }
+    }
+  }
+  collect(categories.value)
+  expandedIds.value = ids
+}
+
+function collapseAll() {
+  expandedIds.value = new Set()
+}
+
+// Navigate
+function openCreate() {
   router.push('/admin/categories/create')
 }
 
-// Navigate to edit page
-function openEditModal(category: Category) {
+function openEdit(category: Category) {
   router.push(`/admin/categories/${category.id}/edit`)
 }
 
-// Delete category
+// Delete
 async function deleteCategory(category: Category) {
+  if (!category.can_be_deleted) {
+    toast.error('This category has children and cannot be deleted.')
+    return
+  }
+
   const confirmed = await confirm.confirm({
     title: 'Delete Category',
-    message: `Are you sure you want to delete "${category.name}"? Products in this category will be unassigned.`,
+    message: `Are you sure you want to delete "${category.name}"?`,
     confirmText: 'Delete',
     cancelText: 'Cancel',
     variant: 'danger',
@@ -83,25 +119,41 @@ async function deleteCategory(category: Category) {
     }
   }
 }
-
-// Status badge variant
-function getStatusVariant(status: string): 'success' | 'warning' {
-  return status === 'active' ? 'success' : 'warning'
-}
 </script>
 
 <template>
   <div class="space-y-6">
     <!-- Header -->
     <div class="flex items-center justify-between">
-      <div></div>
-      <BaseButton variant="primary" @click="openCreateModal">
+      <div class="flex items-center gap-3">
+        <span class="text-sm text-gray-500 dark:text-gray-400">
+          {{ totalCount }} categories
+        </span>
+        <template v-if="categories.length > 0">
+          <button
+            type="button"
+            class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400"
+            @click="expandAll"
+          >
+            Expand All
+          </button>
+          <span class="text-gray-300 dark:text-gray-600">|</span>
+          <button
+            type="button"
+            class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400"
+            @click="collapseAll"
+          >
+            Collapse All
+          </button>
+        </template>
+      </div>
+      <BaseButton variant="primary" @click="openCreate">
         <PlusIcon class="mr-2 h-4 w-4" />
         Add Category
       </BaseButton>
     </div>
 
-    <!-- Categories list -->
+    <!-- Categories tree -->
     <BaseCard padding="none">
       <div v-if="isLoading" class="flex items-center justify-center py-12">
         <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600"></div>
@@ -112,60 +164,21 @@ function getStatusVariant(status: string): 'success' | 'warning' {
           title="No categories yet"
           description="Create your first category to organize products."
           action-text="Add Category"
-          @action="openCreateModal"
+          @action="openCreate"
         />
       </div>
 
       <div v-else class="divide-y divide-gray-200 dark:divide-gray-700">
-        <div
+        <CategoryTreeRow
           v-for="category in categories"
           :key="category.id"
-          class="flex items-center justify-between px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/50"
-        >
-          <div class="flex items-center gap-4">
-            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-100 dark:bg-primary-900/50">
-              <FolderIcon class="h-5 w-5 text-primary-600 dark:text-primary-400" />
-            </div>
-            <div>
-              <p class="font-medium text-gray-900 dark:text-white">
-                {{ category.name }}
-              </p>
-              <p class="text-sm text-gray-500 dark:text-gray-400">
-                {{ category.description || 'No description' }}
-              </p>
-            </div>
-          </div>
-
-          <div class="flex items-center gap-6">
-            <div class="text-right">
-              <p class="font-medium text-gray-900 dark:text-white">
-                {{ category.product_count || 0 }}
-              </p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Products</p>
-            </div>
-
-            <BaseBadge :variant="getStatusVariant(category.status)" class="capitalize">
-              {{ category.status }}
-            </BaseBadge>
-
-            <div class="flex items-center gap-1">
-              <button
-                type="button"
-                class="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
-                @click="openEditModal(category)"
-              >
-                <PencilIcon class="h-5 w-5" />
-              </button>
-              <button
-                type="button"
-                class="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-danger-600 dark:hover:bg-gray-700 dark:hover:text-danger-400"
-                @click="deleteCategory(category)"
-              >
-                <TrashIcon class="h-5 w-5" />
-              </button>
-            </div>
-          </div>
-        </div>
+          :category="category"
+          :depth="0"
+          :expanded-ids="expandedIds"
+          @toggle="toggleExpand"
+          @edit="openEdit"
+          @delete="deleteCategory"
+        />
       </div>
     </BaseCard>
   </div>

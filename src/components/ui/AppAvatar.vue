@@ -91,7 +91,7 @@ const bgColor = computed(() => {
     'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300',
     'bg-pink-100 text-pink-700 dark:bg-pink-900/50 dark:text-pink-300',
   ]
-  const hash = props.name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
+  const hash = props.name?.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) ?? 0
   return colors[hash % colors.length]
 })
 

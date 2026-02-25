@@ -8,17 +8,20 @@ import { useField } from 'vee-validate'
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline'
 
 interface Props {
-  name: string
+  name?: string
   label?: string
   type?: string
   placeholder?: string
   hint?: string
+  error?: string
   disabled?: boolean
   readonly?: boolean
   required?: boolean
   prefix?: string
   suffix?: string
   modelValue?: string | number
+  min?: number | string
+  max?: number | string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -32,19 +35,29 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: string | number): void
 }>()
 
-// Use vee-validate field
-const { value, errorMessage, handleBlur, meta } = useField<string | number>(
-  () => props.name,
-  undefined,
-  {
-    syncVModel: true,
-  }
-)
+// Use vee-validate field only when name is provided
+const field = props.name
+  ? useField<string | number>(() => props.name!, undefined, { syncVModel: true })
+  : null
+
+const value = field
+  ? field.value
+  : computed({
+      get: () => props.modelValue ?? '',
+      set: (v: string | number) => emit('update:modelValue', v),
+    })
+
+const errorMessage = computed(() => field ? field.errorMessage.value : props.error)
+const showError = computed(() => {
+  if (!errorMessage.value) return false
+  return field ? field.meta.touched : true
+})
+const handleBlur = field ? field.handleBlur : () => {}
 
 // Input classes based on state
 const inputClasses = computed(() => {
   const base = 'form-input w-full'
-  if (errorMessage.value && meta.touched) {
+  if (showError.value) {
     return `${base} border-danger-500 focus:border-danger-500 focus:ring-danger-500`
   }
   return base
@@ -92,11 +105,11 @@ const inputClasses = computed(() => {
 
       <!-- Suffix or error icon -->
       <div
-        v-if="suffix || (errorMessage && meta.touched)"
+        v-if="suffix || showError"
         class="absolute inset-y-0 right-0 flex items-center pr-3"
       >
         <ExclamationCircleIcon
-          v-if="errorMessage && meta.touched"
+          v-if="showError"
           class="h-5 w-5 text-danger-500"
         />
         <span
@@ -110,7 +123,7 @@ const inputClasses = computed(() => {
 
     <!-- Hint or error message -->
     <p
-      v-if="errorMessage && meta.touched"
+      v-if="showError"
       class="text-sm text-danger-500"
     >
       {{ errorMessage }}

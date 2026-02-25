@@ -37,18 +37,6 @@ onMounted(() => {
 const categories = ref<Category[]>([])
 const isLoading = ref(true)
 
-// Status options
-const statusOptions = [
-  { value: 'active', label: 'Active' },
-  { value: 'inactive', label: 'Inactive' },
-]
-
-// Parent category options
-const parentOptions = computed(() => [
-  { value: '', label: 'None (Top Level)' },
-  ...categories.value.map(c => ({ value: c.id, label: c.name })),
-])
-
 // Fetch categories
 async function fetchCategories() {
   isLoading.value = true

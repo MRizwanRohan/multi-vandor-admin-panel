@@ -168,8 +168,10 @@ async function fetchParentCategories() {
 // Fetch attribute templates
 async function fetchAttributeTemplates() {
   try {
-    attributeTemplates.value = await attributeTemplateService.getAllForSelect()
+    const response = await attributeTemplateService.getAll({ per_page: 100 })
+    attributeTemplates.value = response.data
   } catch (error) {
+    console.error('Failed to fetch templates:', error)
     attributeTemplates.value = []
   }
 }
@@ -267,6 +269,7 @@ function goBack() {
             <FormInput
               v-model="name"
               v-bind="nameAttrs"
+              name="name"
               label="Category Name"
               placeholder="Enter category name"
               :error="errors.name"
@@ -276,6 +279,7 @@ function goBack() {
             <FormInput
               v-model="slug"
               v-bind="slugAttrs"
+              name="slug"
               label="Slug"
               placeholder="category-slug"
               :error="errors.slug"
@@ -285,6 +289,7 @@ function goBack() {
             <FormTextarea
               v-model="description"
               v-bind="descriptionAttrs"
+              name="description"
               label="Description"
               placeholder="Enter category description"
               :rows="4"
@@ -335,6 +340,7 @@ function goBack() {
             <FormInput
               v-model="metaTitle"
               v-bind="metaTitleAttrs"
+              name="meta_title"
               label="Meta Title"
               placeholder="SEO title for search engines"
               :error="errors.meta_title"
@@ -343,6 +349,7 @@ function goBack() {
             <FormTextarea
               v-model="metaDescription"
               v-bind="metaDescriptionAttrs"
+              name="meta_description"
               label="Meta Description"
               placeholder="SEO description for search engines"
               :rows="3"
@@ -360,6 +367,7 @@ function goBack() {
             <FormSelect
               v-model="status"
               v-bind="statusAttrs"
+              name="status"
               label="Status"
               :options="statusOptions"
               :error="errors.status"
@@ -368,6 +376,7 @@ function goBack() {
             <FormSelect
               v-model="parentId"
               v-bind="parentIdAttrs"
+              name="parent_id"
               label="Parent Category"
               :options="parentOptions"
               :error="errors.parent_id"
@@ -376,6 +385,7 @@ function goBack() {
             <FormInput
               v-model="sortOrder"
               v-bind="sortOrderAttrs"
+              name="sort_order"
               label="Display Order"
               type="number"
               :min="0"
@@ -385,6 +395,7 @@ function goBack() {
             <FormSwitch
               v-model="isFeatured"
               v-bind="isFeaturedAttrs"
+              name="is_featured"
               label="Featured Category"
             />
           </div>
@@ -396,6 +407,7 @@ function goBack() {
             <FormSelect
               v-model="attributeTemplateId"
               v-bind="attributeTemplateIdAttrs"
+              name="attribute_template_id"
               label="Assign Template"
               :options="templateOptions"
               :error="errors.attribute_template_id"

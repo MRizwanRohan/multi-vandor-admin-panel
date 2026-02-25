@@ -220,12 +220,14 @@ onMounted(() => {
           <MagnifyingGlassIcon class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
           <FormInput
             v-model="searchQuery"
+            name="search"
             placeholder="Search suggestions..."
             class="pl-10"
           />
         </div>
         <FormSelect
           v-model="statusFilter"
+          name="status_filter"
           :options="[
             { label: 'All Status', value: 'all' },
             { label: 'Pending', value: 'pending' },
@@ -364,6 +366,7 @@ onMounted(() => {
         </p>
         <FormTextarea
           v-model="rejectionReason"
+          name="rejection_reason"
           label="Rejection Reason"
           placeholder="Enter the reason for rejection..."
           :rows="4"

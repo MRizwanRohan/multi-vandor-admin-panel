@@ -3,11 +3,14 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useField } from 'vee-validate'
 import { Switch } from '@headlessui/vue'
 
+defineOptions({ inheritAttrs: false })
+
 interface Props {
-  name: string
+  name?: string
   label?: string
   description?: string
   disabled?: boolean
@@ -22,20 +25,35 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
 }>()
 
-// Use vee-validate field
-const { value, setValue, meta, errorMessage } = useField<boolean>(
-  () => props.name,
-  undefined,
-  {
-    type: 'checkbox',
-    checkedValue: true,
-    uncheckedValue: false,
-    syncVModel: true,
-  }
-)
+// Use vee-validate field only when name is provided
+const field = props.name
+  ? useField<boolean>(() => props.name!, undefined, {
+      type: 'checkbox',
+      checkedValue: true,
+      uncheckedValue: false,
+      syncVModel: true,
+    })
+  : null
+
+const value = field
+  ? field.value
+  : computed({
+      get: () => props.modelValue ?? false,
+      set: (v: boolean) => emit('update:modelValue', v),
+    })
+
+const errorMessage = computed(() => field ? field.errorMessage.value : undefined)
+const showError = computed(() => {
+  if (!errorMessage.value) return false
+  return field ? field.meta.touched : true
+})
 
 function handleChange(val: boolean) {
-  setValue(val)
+  if (field) {
+    field.setValue(val)
+  } else {
+    emit('update:modelValue', val)
+  }
 }
 </script>
 
@@ -117,7 +135,7 @@ function handleChange(val: boolean) {
 
   <!-- Error message -->
   <p
-    v-if="errorMessage && meta.touched"
+    v-if="showError"
     class="mt-1 text-sm text-danger-500"
   >
     {{ errorMessage }}

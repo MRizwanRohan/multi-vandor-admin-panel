@@ -21,11 +21,12 @@ interface Option {
 }
 
 interface Props {
-  name: string
+  name?: string
   label?: string
   options: Option[]
   placeholder?: string
   hint?: string
+  error?: string
   disabled?: boolean
   required?: boolean
   modelValue?: string | number | null
@@ -41,14 +42,23 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: string | number | null): void
 }>()
 
-// Use vee-validate field
-const { value, errorMessage, meta, setValue } = useField<string | number | null>(
-  () => props.name,
-  undefined,
-  {
-    syncVModel: true,
-  }
-)
+// Use vee-validate field only when name is provided
+const field = props.name
+  ? useField<string | number | null>(() => props.name!, undefined, { syncVModel: true })
+  : null
+
+const value = field
+  ? field.value
+  : computed({
+      get: () => props.modelValue ?? null,
+      set: (v: string | number | null) => emit('update:modelValue', v),
+    })
+
+const errorMessage = computed(() => field ? field.errorMessage.value : props.error)
+const showError = computed(() => {
+  if (!errorMessage.value) return false
+  return field ? field.meta.touched : true
+})
 
 // Selected option
 const selectedOption = computed(() => {
@@ -57,7 +67,11 @@ const selectedOption = computed(() => {
 
 // Handle selection change
 function handleChange(val: string | number) {
-  setValue(val)
+  if (field) {
+    field.setValue(val)
+  } else {
+    emit('update:modelValue', val)
+  }
 }
 </script>
 
@@ -82,7 +96,7 @@ function handleChange(val: string | number) {
         <ListboxButton
           :class="[
             'form-input relative w-full cursor-pointer pr-10 text-left',
-            errorMessage && meta.touched
+            showError
               ? 'border-danger-500 focus:border-danger-500 focus:ring-danger-500'
               : '',
             disabled ? 'cursor-not-allowed opacity-50' : '',
@@ -150,7 +164,7 @@ function handleChange(val: string | number) {
 
     <!-- Hint or error message -->
     <p
-      v-if="errorMessage && meta.touched"
+      v-if="showError"
       class="text-sm text-danger-500"
     >
       {{ errorMessage }}

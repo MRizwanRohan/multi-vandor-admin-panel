@@ -8,10 +8,11 @@ import { useField } from 'vee-validate'
 import { ExclamationCircleIcon } from '@heroicons/vue/24/outline'
 
 interface Props {
-  name: string
+  name?: string
   label?: string
   placeholder?: string
   hint?: string
+  error?: string
   disabled?: boolean
   readonly?: boolean
   required?: boolean
@@ -31,14 +32,24 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
 }>()
 
-// Use vee-validate field
-const { value, errorMessage, handleBlur, meta } = useField<string>(
-  () => props.name,
-  undefined,
-  {
-    syncVModel: true,
-  }
-)
+// Use vee-validate field only when name is provided
+const field = props.name
+  ? useField<string>(() => props.name!, undefined, { syncVModel: true })
+  : null
+
+const value = field
+  ? field.value
+  : computed({
+      get: () => props.modelValue ?? '',
+      set: (v: string) => emit('update:modelValue', v),
+    })
+
+const errorMessage = computed(() => field ? field.errorMessage.value : props.error)
+const showError = computed(() => {
+  if (!errorMessage.value) return false
+  return field ? field.meta.touched : true
+})
+const handleBlur = field ? field.handleBlur : () => {}
 
 // Character count
 const charCount = computed(() => {
@@ -50,7 +61,7 @@ const charCount = computed(() => {
 // Input classes based on state
 const textareaClasses = computed(() => {
   const base = 'form-input w-full resize-none'
-  if (errorMessage.value && meta.touched) {
+  if (showError.value) {
     return `${base} border-danger-500 focus:border-danger-500 focus:ring-danger-500`
   }
   return base
@@ -86,7 +97,7 @@ const textareaClasses = computed(() => {
 
       <!-- Error icon -->
       <div
-        v-if="errorMessage && meta.touched"
+        v-if="showError"
         class="pointer-events-none absolute right-3 top-3"
       >
         <ExclamationCircleIcon class="h-5 w-5 text-danger-500" />
@@ -96,7 +107,7 @@ const textareaClasses = computed(() => {
     <!-- Footer with hint/error and char count -->
     <div class="flex items-center justify-between">
       <p
-        v-if="errorMessage && meta.touched"
+        v-if="showError"
         class="text-sm text-danger-500"
       >
         {{ errorMessage }}

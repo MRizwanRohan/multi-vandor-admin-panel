@@ -49,8 +49,14 @@ export const useNotificationStore = defineStore('notification', () => {
       notifications.value = [...notifications.value, ...response.data.data]
       hasMore.value = response.data.meta.current_page < response.data.meta.last_page
       page.value++
-    } catch (error) {
-      console.error('Failed to fetch notifications:', error)
+    } catch (error: any) {
+      // In development, silently handle if endpoint not implemented yet
+      if (DEV_MODE && error?.response?.status === 404) {
+        console.warn('[DEV] Notifications endpoint not implemented yet')
+        hasMore.value = false
+      } else {
+        console.error('Failed to fetch notifications:', error)
+      }
     } finally {
       isLoading.value = false
     }

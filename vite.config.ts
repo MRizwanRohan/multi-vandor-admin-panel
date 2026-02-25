@@ -46,6 +46,11 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      '/storage': {
+        target: 'http://localhost:8001',  // PHP server handles symlinks correctly
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
   build: {

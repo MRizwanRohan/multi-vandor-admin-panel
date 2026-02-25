@@ -11,6 +11,7 @@ import { z } from 'zod'
 import { useBreadcrumbStore } from '@/stores'
 import { categoryService } from '@/services'
 import { useToast } from '@/composables'
+import { getImageUrl } from '@/utils/helpers'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import FormInput from '@/components/form/FormInput.vue'
@@ -26,13 +27,12 @@ const breadcrumbStore = useBreadcrumbStore()
 const toast = useToast()
 
 // Mode detection
-const categoryId = computed(() => {
-  const raw = route.params.id as string | undefined
+const categorySlug = computed(() => {
+  const raw = route.params.slug as string | undefined
   if (!raw || raw === 'new') return undefined
-  const id = Number(raw)
-  return isNaN(id) ? undefined : id
+  return raw
 })
-const isEditMode = computed(() => categoryId.value !== undefined)
+const isEditMode = computed(() => categorySlug.value !== undefined)
 const pageTitle = computed(() => isEditMode.value ? 'Edit Category' : 'Add Category')
 
 // Set page info
@@ -137,11 +137,11 @@ const parentOptions = computed(() => [
 
 // Fetch category for editing
 async function fetchCategory() {
-  if (!categoryId.value) return
+  if (!categorySlug.value) return
   
   isLoading.value = true
   try {
-    const category = await categoryService.getById(categoryId.value)
+    const category = await categoryService.get(categorySlug.value)
     setValues({
       name: category.name,
       slug: category.slug,
@@ -156,7 +156,7 @@ async function fetchCategory() {
     })
     // Show existing image
     if (category.image || category.image_field) {
-      imagePreview.value = category.image || category.image_field
+      imagePreview.value = getImageUrl(category.image || category.image_field)
     }
   } catch (error) {
     toast.error('Failed to fetch category')
@@ -202,6 +202,14 @@ function removeImage() {
   selectedImage.value = null
 }
 
+// Image error handler
+function handleImageError(event: Event) {
+  const target = event.target as HTMLImageElement
+  console.error('Failed to load image:', target.src)
+  toast.error('Failed to load image')
+  imagePreview.value = null
+}
+
 // Submit form
 const onSubmit = handleSubmit(async (values) => {
   try {
@@ -225,12 +233,13 @@ const onSubmit = handleSubmit(async (values) => {
       },
     }
     
+    // Add selected image file if present
     if (selectedImage.value) {
       formData.image = selectedImage.value
     }
     
-    if (isEditMode.value && categoryId.value) {
-      await categoryService.update(categoryId.value, formData as Parameters<typeof categoryService.update>[1])
+    if (isEditMode.value && categorySlug.value) {
+      await categoryService.update(categorySlug.value, formData as Parameters<typeof categoryService.update>[1])
       toast.success('Category updated successfully')
     } else {
       await categoryService.create(formData as Parameters<typeof categoryService.create>[0])
@@ -323,6 +332,7 @@ function goBack() {
                 :src="imagePreview"
                 alt="Category image"
                 class="w-48 h-48 object-cover rounded-lg"
+                @error="handleImageError"
               />
               <button
                 type="button"

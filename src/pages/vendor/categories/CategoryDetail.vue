@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
 import { categoryService } from '@/services'
 import { useToast, useDate } from '@/composables'
+import { getImageUrl } from '@/utils/helpers'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
@@ -35,7 +36,7 @@ const breadcrumbStore = useBreadcrumbStore()
 const toast = useToast()
 const { formatDate, timeAgo } = useDate()
 
-const categoryId = computed(() => Number(route.params.id))
+const categorySlug = computed(() => route.params.slug as string)
 const category = ref<Category | null>(null)
 const templates = ref<CategoryTemplateAssignment[]>([])
 const isLoading = ref(true)
@@ -47,7 +48,7 @@ async function fetchData() {
   isLoading.value = true
   loadError.value = null
   try {
-    const cat = await categoryService.getVendorCategoryDetail(categoryId.value)
+    const cat = await categoryService.getVendorCategory(categorySlug.value)
     category.value = cat
 
     breadcrumbStore.setPageInfo(cat.name, [
@@ -57,7 +58,7 @@ async function fetchData() {
 
     // Fetch attribute templates for this category
     try {
-      templates.value = await categoryService.getVendorCategoryTemplates(categoryId.value)
+      templates.value = await categoryService.getVendorCategoryTemplates(categorySlug.value)
     } catch {
       templates.value = []
     }
@@ -78,6 +79,17 @@ function statusVariant(s: string): 'success' | 'warning' | 'danger' | 'info' {
     rejected: 'danger' as const,
     inactive: 'info' as const,
   }[s] ?? 'info'
+}
+
+// Image error handler
+function handleImageError(event: Event) {
+  const target = event.target as HTMLImageElement
+  console.error('Failed to load image:', target.src)
+  // Hide the image card on error
+  if (category.value) {
+    category.value.image = null
+    category.value.image_field = null
+  }
 }
 
 // Can edit: only own pending categories
@@ -133,7 +145,7 @@ const canEdit = computed(() => category.value?.status === 'pending')
           v-if="canEdit"
           variant="primary"
           size="sm"
-          @click="router.push(`/vendor/categories/${category.id}/edit`)"
+          @click="router.push(`/vendor/categories/${category.slug}/edit`)"
         >
           <PencilSquareIcon class="mr-1.5 h-4 w-4" />
           Edit
@@ -259,9 +271,10 @@ const canEdit = computed(() => category.value?.status === 'pending')
           <!-- Image -->
           <BaseCard v-if="category.image || category.image_field">
             <img
-              :src="category.image || category.image_field || ''"
+              :src="getImageUrl(category.image || category.image_field)"
               :alt="category.name"
               class="w-full rounded-lg object-cover aspect-video"
+              @error="handleImageError"
             />
           </BaseCard>
 

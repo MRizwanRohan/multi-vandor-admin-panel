@@ -94,13 +94,13 @@ const vendorRoutes: RouteRecordRaw[] = [
         meta: { title: 'My Categories' },
       },
       {
-        path: 'categories/:id',
+        path: 'categories/:slug',
         name: 'vendor-category-detail',
         component: () => import('@/pages/vendor/categories/CategoryDetail.vue'),
         meta: { title: 'Category Details' },
       },
       {
-        path: 'categories/:id/edit',
+        path: 'categories/:slug/edit',
         name: 'vendor-category-edit',
         component: () => import('@/pages/vendor/categories/EditCategory.vue'),
         meta: { title: 'Edit Category' },

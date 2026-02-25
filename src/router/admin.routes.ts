@@ -61,7 +61,7 @@ const adminRoutes: RouteRecordRaw[] = [
         meta: { title: 'Create Category' },
       },
       {
-        path: 'categories/:id/edit',
+        path: 'categories/:slug/edit',
         name: 'admin-category-edit',
         component: () => import('@/pages/admin/categories/CategoryForm.vue'),
         meta: { title: 'Edit Category' },
@@ -73,7 +73,7 @@ const adminRoutes: RouteRecordRaw[] = [
         meta: { title: 'Pending Categories' },
       },
       {
-        path: 'categories/:id',
+        path: 'categories/:slug',
         name: 'admin-category-detail',
         component: () => import('@/pages/admin/categories/CategoryDetail.vue'),
         meta: { title: 'Category Details' },

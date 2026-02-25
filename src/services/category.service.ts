@@ -85,21 +85,29 @@ export const categoryService = {
 
   /**
    * GET /v1/admin/categories/{category}
-   * Show category details
+   * Show category details (accepts both ID and slug)
    */
-  async getById(id: number): Promise<Category> {
-    const response = await api.get<ApiItemResponse>(`${adminPrefix()}/${id}`)
+  async get(idOrSlug: number | string): Promise<Category> {
+    const response = await api.get<ApiItemResponse>(`${adminPrefix()}/${idOrSlug}`)
     return response.data.data
   },
 
   /**
-   * PUT /v1/admin/categories/{category}
-   * Update a category
+   * GET /v1/admin/categories/{category}
+   * Show category details by ID (legacy method)
    */
-  async update(id: number, data: Partial<CategoryFormData>): Promise<Category> {
+  async getById(id: number): Promise<Category> {
+    return this.get(id)
+  },
+
+  /**
+   * PUT /v1/admin/categories/{category}
+   * Update a category (accepts both ID and slug)
+   */
+  async update(idOrSlug: number | string, data: Partial<CategoryFormData>): Promise<Category> {
     const formData = buildFormData(data)
     formData.append('_method', 'PUT')
-    const response = await api.post<ApiItemResponse>(`${adminPrefix()}/${id}`, formData, {
+    const response = await api.post<ApiItemResponse>(`${adminPrefix()}/${idOrSlug}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     return response.data.data
@@ -107,10 +115,10 @@ export const categoryService = {
 
   /**
    * DELETE /v1/admin/categories/{category}
-   * Delete a category
+   * Delete a category (accepts both ID and slug)
    */
-  async delete(id: number): Promise<void> {
-    await api.delete(`${adminPrefix()}/${id}`)
+  async delete(idOrSlug: number | string): Promise<void> {
+    await api.delete(`${adminPrefix()}/${idOrSlug}`)
   },
 
   /**
@@ -134,9 +142,9 @@ export const categoryService = {
    * PUT /v1/admin/categories/{category}/approve
    * Approve a pending category — optionally with modifications
    */
-  async approve(id: number, payload?: CategoryApprovePayload): Promise<Category> {
+  async approve(idOrSlug: number | string, payload?: CategoryApprovePayload): Promise<Category> {
     const response = await api.put<ApiItemResponse>(
-      `${adminPrefix()}/${id}/approve`,
+      `${adminPrefix()}/${idOrSlug}/approve`,
       payload ?? {},
     )
     return response.data.data
@@ -146,8 +154,8 @@ export const categoryService = {
    * PUT /v1/admin/categories/{category}/reject
    * Reject a pending category — with reason, optional suggested alternative & admin notes
    */
-  async reject(id: number, payload: CategoryRejectPayload): Promise<Category> {
-    const response = await api.put<ApiItemResponse>(`${adminPrefix()}/${id}/reject`, payload)
+  async reject(idOrSlug: number | string, payload: CategoryRejectPayload): Promise<Category> {
+    const response = await api.put<ApiItemResponse>(`${adminPrefix()}/${idOrSlug}/reject`, payload)
     return response.data.data
   },
 
@@ -155,8 +163,8 @@ export const categoryService = {
    * PUT /v1/admin/categories/{category}/toggle-active
    * Toggle category active status
    */
-  async toggleActive(id: number): Promise<Category> {
-    const response = await api.put<ApiItemResponse>(`${adminPrefix()}/${id}/toggle-active`)
+  async toggleActive(idOrSlug: number | string): Promise<Category> {
+    const response = await api.put<ApiItemResponse>(`${adminPrefix()}/${idOrSlug}/toggle-active`)
     return response.data.data
   },
 
@@ -164,8 +172,8 @@ export const categoryService = {
    * GET /v1/admin/categories/{category}/children
    * Get children of a category
    */
-  async getChildren(id: number, status?: string): Promise<Category[]> {
-    const response = await api.get<ApiListResponse>(`${adminPrefix()}/${id}/children`, {
+  async getChildren(idOrSlug: number | string, status?: string): Promise<Category[]> {
+    const response = await api.get<ApiListResponse>(`${adminPrefix()}/${idOrSlug}/children`, {
       params: status ? { status } : undefined,
     })
     return response.data.data
@@ -175,11 +183,18 @@ export const categoryService = {
    * GET /v1/admin/categories/{category}/templates
    * Get attribute templates for a category
    */
-  async getTemplates(id: number, includeInherited?: boolean): Promise<CategoryTemplateAssignment[]> {
-    const response = await api.get(`${adminPrefix()}/${id}/templates`, {
+  async getCategoryTemplates(idOrSlug: number | string, includeInherited?: boolean): Promise<CategoryTemplateAssignment[]> {
+    const response = await api.get(`${adminPrefix()}/${idOrSlug}/templates`, {
       params: includeInherited !== undefined ? { include_inherited: includeInherited } : undefined,
     })
     return response.data.data
+  },
+
+  /**
+   * GET /v1/admin/categories/{category}/templates (legacy alias)
+   */
+  async getTemplates(idOrSlug: number | string, includeInherited?: boolean): Promise<CategoryTemplateAssignment[]> {
+    return this.getCategoryTemplates(idOrSlug, includeInherited)
   },
 
   /**
@@ -187,7 +202,7 @@ export const categoryService = {
    * Sync attribute templates for a category
    */
   async syncTemplates(
-    id: number,
+    idOrSlug: number | string,
     templates: {
       attribute_template_id: number
       is_required_override?: boolean | null
@@ -195,15 +210,15 @@ export const categoryService = {
       inheritance_mode?: 'inherit' | 'replace' | null
     }[]
   ): Promise<void> {
-    await api.put(`${adminPrefix()}/${id}/templates`, { templates })
+    await api.put(`${adminPrefix()}/${idOrSlug}/templates`, { templates })
   },
 
   /**
    * GET /v1/admin/categories/{category}/requests
    * Get category request history (approval/rejection audit trail)
    */
-  async getRequestHistory(id: number): Promise<CategoryRequest[]> {
-    const response = await api.get(`${adminPrefix()}/${id}/requests`)
+  async getRequestHistory(idOrSlug: number | string): Promise<CategoryRequest[]> {
+    const response = await api.get(`${adminPrefix()}/${idOrSlug}/requests`)
     return response.data.data
   },
 
@@ -252,11 +267,19 @@ export const categoryService = {
 
   /**
    * GET /v1/vendor/categories/{category}
-   * Show category details (vendor)
+   * View category details (accepts both ID and slug)
    */
-  async getVendorCategoryDetail(id: number): Promise<Category> {
-    const response = await api.get<ApiItemResponse>(`${vendorPrefix()}/${id}`)
+  async getVendorCategory(idOrSlug: number | string): Promise<Category> {
+    const response = await api.get<ApiItemResponse>(`${vendorPrefix()}/${idOrSlug}`)
     return response.data.data
+  },
+
+  /**
+   * GET /v1/vendor/categories/{category}
+   * Show category details (vendor) - legacy alias
+   */
+  async getVendorCategoryDetail(idOrSlug: number | string): Promise<Category> {
+    return this.getVendorCategory(idOrSlug)
   },
 
   /**
@@ -264,7 +287,7 @@ export const categoryService = {
    * Update own pending category (limited fields: name, description, display_order, metadata)
    */
   async updatePendingCategory(
-    id: number,
+    idOrSlug: number | string,
     data: {
       name?: string
       description?: string
@@ -276,7 +299,7 @@ export const categoryService = {
       }
     },
   ): Promise<Category> {
-    const response = await api.put<ApiItemResponse>(`${vendorPrefix()}/${id}`, data)
+    const response = await api.put<ApiItemResponse>(`${vendorPrefix()}/${idOrSlug}`, data)
     return response.data.data
   },
 
@@ -284,8 +307,8 @@ export const categoryService = {
    * GET /v1/vendor/categories/{category}/templates
    * Get attribute templates for a category (vendor)
    */
-  async getVendorCategoryTemplates(id: number): Promise<CategoryTemplateAssignment[]> {
-    const response = await api.get(`${vendorPrefix()}/${id}/templates`)
+  async getVendorCategoryTemplates(idOrSlug: number | string): Promise<CategoryTemplateAssignment[]> {
+    const response = await api.get(`${vendorPrefix()}/${idOrSlug}/templates`)
     return response.data.data
   },
 }
@@ -307,7 +330,18 @@ function buildFormData(data: Record<string, unknown>): FormData {
         formData.append(`${key}[${index}]`, String(item))
       })
     } else if (typeof value === 'object') {
-      formData.append(key, JSON.stringify(value))
+      // For nested objects like metadata, use Laravel's array notation
+      Object.entries(value as Record<string, unknown>).forEach(([nestedKey, nestedValue]) => {
+        if (nestedValue !== null && nestedValue !== undefined) {
+          if (Array.isArray(nestedValue)) {
+            nestedValue.forEach((item, index) => {
+              formData.append(`${key}[${nestedKey}][${index}]`, String(item))
+            })
+          } else {
+            formData.append(`${key}[${nestedKey}]`, String(nestedValue))
+          }
+        }
+      })
     } else {
       formData.append(key, String(value))
     }

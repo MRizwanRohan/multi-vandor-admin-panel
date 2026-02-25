@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
 import { categoryService } from '@/services'
 import { useToast, useConfirm, useDate } from '@/composables'
+import { getImageUrl } from '@/utils/helpers'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
@@ -39,7 +40,7 @@ const toast = useToast()
 const confirm = useConfirm()
 const { formatDate, timeAgo } = useDate()
 
-const categoryId = computed(() => Number(route.params.id))
+const categorySlug = computed(() => route.params.slug as string)
 const category = ref<Category | null>(null)
 const templates = ref<CategoryTemplateAssignment[]>([])
 const requestHistory = ref<CategoryRequest[]>([])
@@ -53,7 +54,7 @@ async function fetchData() {
   isLoading.value = true
   loadError.value = null
   try {
-    const cat = await categoryService.getById(categoryId.value)
+    const cat = await categoryService.get(categorySlug.value)
     category.value = cat
 
     breadcrumbStore.setPageInfo(cat.name, [
@@ -63,14 +64,14 @@ async function fetchData() {
 
     // Fetch templates
     try {
-      templates.value = await categoryService.getTemplates(categoryId.value, true)
+      templates.value = await categoryService.getCategoryTemplates(categorySlug.value)
     } catch {
       templates.value = []
     }
 
     // Fetch request history
     try {
-      requestHistory.value = await categoryService.getRequestHistory(categoryId.value)
+      requestHistory.value = await categoryService.getRequestHistory(categorySlug.value)
     } catch {
       requestHistory.value = []
     }
@@ -124,6 +125,17 @@ async function handleDelete() {
 // Status badge
 function statusVariant(s: string): 'success' | 'warning' | 'danger' | 'info' {
   return { active: 'success' as const, pending: 'warning' as const, rejected: 'danger' as const, inactive: 'info' as const }[s] ?? 'info'
+}
+
+// Image error handler
+function handleImageError(event: Event) {
+  const target = event.target as HTMLImageElement
+  console.error('Failed to load image:', target.src)
+  // Hide the image card on error
+  if (category.value) {
+    category.value.image = null
+    category.value.image_field = null
+  }
 }
 </script>
 
@@ -192,7 +204,7 @@ function statusVariant(s: string): 'success' | 'warning' | 'danger' | 'info' {
           <BaseButton
             variant="primary"
             size="sm"
-            @click="router.push(`/admin/categories/${category.id}/edit`)"
+            @click="router.push(`/admin/categories/${category.slug}/edit`)"
           >
             <PencilSquareIcon class="mr-1.5 h-4 w-4" />
             Edit
@@ -416,9 +428,10 @@ function statusVariant(s: string): 'success' | 'warning' | 'danger' | 'info' {
           <!-- Image -->
           <BaseCard v-if="category.image || category.image_field">
             <img
-              :src="category.image || category.image_field || ''"
+              :src="getImageUrl(category.image || category.image_field)"
               :alt="category.name"
               class="w-full rounded-lg object-cover aspect-video"
+              @error="handleImageError"
             />
           </BaseCard>
 

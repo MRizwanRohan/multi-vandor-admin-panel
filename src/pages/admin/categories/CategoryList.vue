@@ -172,11 +172,11 @@ function openCreate() {
 }
 
 function openEdit(category: Category) {
-  router.push(`/admin/categories/${category.id}/edit`)
+  router.push(`/admin/categories/${category.slug}/edit`)
 }
 
 function openDetail(category: Category) {
-  router.push(`/admin/categories/${category.id}`)
+  router.push(`/admin/categories/${category.slug}`)
 }
 
 // Toggle active — use API response for accurate state

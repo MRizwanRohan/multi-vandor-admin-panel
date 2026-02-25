@@ -297,3 +297,19 @@ export function isTablet(): boolean {
 export function isDesktop(): boolean {
   return window.innerWidth >= 1024
 }
+
+/**
+ * Convert absolute image URL to relative URL for proxy support
+ * Strips http://localhost:8000 or https://localhost:8000 from URLs
+ */
+export function getImageUrl(url: string | null | undefined): string {
+  if (!url) return ''
+  
+  // If it's already a relative URL, return as-is
+  if (url.startsWith('/')) return url
+  
+  // Strip localhost:8000 prefix for development proxy to work
+  const converted = url.replace(/^https?:\/\/localhost:8000/, '')
+  console.log('[getImageUrl]', { original: url, converted })
+  return converted
+}

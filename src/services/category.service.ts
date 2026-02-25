@@ -299,6 +299,9 @@ function buildFormData(data: Record<string, unknown>): FormData {
     
     if (value instanceof File) {
       formData.append(key, value)
+    } else if (typeof value === 'boolean') {
+      // Laravel expects '1' or '0' for boolean fields in FormData
+      formData.append(key, value ? '1' : '0')
     } else if (Array.isArray(value)) {
       value.forEach((item, index) => {
         formData.append(`${key}[${index}]`, String(item))

@@ -13,7 +13,7 @@ import BaseButton from '@/components/ui/BaseButton.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import CategoryTreeRow from './CategoryTreeRow.vue'
 import type { Category } from '@/types'
-import { PlusIcon, FunnelIcon } from '@heroicons/vue/24/outline'
+import { PlusIcon, FunnelIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 
 const router = useRouter()
 const breadcrumbStore = useBreadcrumbStore()
@@ -31,7 +31,9 @@ onMounted(() => {
 const categories = ref<Category[]>([])
 const isLoading = ref(true)
 const expandedIds = ref<Set<number>>(new Set())
-const statusFilter = ref<'all' | 'active' | 'inactive' | 'pending'>('all')
+const statusFilter = ref<'all' | 'active' | 'inactive' | 'pending' | 'rejected'>('all')
+const searchQuery = ref('')
+const showSearch = ref(false)
 
 // Fetch categories
 async function fetchCategories() {
@@ -58,13 +60,14 @@ const totalCount = computed(() => {
 
 // Status counts
 const statusCounts = computed(() => {
-  const counts = { all: 0, active: 0, inactive: 0, pending: 0 }
+  const counts = { all: 0, active: 0, inactive: 0, pending: 0, rejected: 0 }
   function walk(cats: Category[]) {
     for (const c of cats) {
       counts.all++
-      if (c.is_active) counts.active++
-      else counts.inactive++
       if (c.status === 'pending') counts.pending++
+      else if (c.status === 'rejected') counts.rejected++
+      else if (c.is_active) counts.active++
+      else counts.inactive++
       if (c.children?.length) walk(c.children)
     }
   }
@@ -72,22 +75,58 @@ const statusCounts = computed(() => {
   return counts
 })
 
-// Filtered categories (recursive filter)
+// Filtered categories (recursive filter by status + search)
 const filteredCategories = computed(() => {
-  if (statusFilter.value === 'all') return categories.value
-  return filterTree(categories.value, statusFilter.value)
+  let tree = categories.value
+  if (statusFilter.value !== 'all') {
+    tree = filterTreeByStatus(tree, statusFilter.value)
+  }
+  const q = searchQuery.value.trim().toLowerCase()
+  if (q) {
+    tree = filterTreeBySearch(tree, q)
+  }
+  return tree
 })
 
-function filterTree(cats: Category[], filter: string): Category[] {
+function filterTreeByStatus(cats: Category[], filter: string): Category[] {
   const result: Category[] = []
   for (const c of cats) {
-    const match = filter === 'active' ? c.is_active : filter === 'inactive' ? !c.is_active : c.status === filter
-    const filteredChildren = c.children?.length ? filterTree(c.children, filter) : []
+    const match = filter === 'active'
+      ? (c.is_active && c.status !== 'pending' && c.status !== 'rejected')
+      : filter === 'inactive'
+        ? (!c.is_active && c.status !== 'pending' && c.status !== 'rejected')
+        : c.status === filter
+    const filteredChildren = c.children?.length ? filterTreeByStatus(c.children, filter) : []
     if (match || filteredChildren.length > 0) {
       result.push({ ...c, children: filteredChildren })
     }
   }
   return result
+}
+
+function filterTreeBySearch(cats: Category[], query: string): Category[] {
+  const result: Category[] = []
+  for (const c of cats) {
+    const nameMatch = c.name.toLowerCase().includes(query)
+    const slugMatch = c.slug?.toLowerCase().includes(query)
+    const descMatch = c.description?.toLowerCase().includes(query)
+    const filteredChildren = c.children?.length ? filterTreeBySearch(c.children, query) : []
+    if (nameMatch || slugMatch || descMatch || filteredChildren.length > 0) {
+      result.push({ ...c, children: filteredChildren })
+    }
+  }
+  return result
+}
+
+// Auto-expand tree when searching
+function onSearchInput() {
+  if (searchQuery.value.trim()) {
+    expandAll()
+  }
+}
+
+function clearSearch() {
+  searchQuery.value = ''
 }
 
 const filteredCount = computed(() => {
@@ -197,57 +236,95 @@ async function deleteCategory(category: Category) {
 <template>
   <div class="space-y-6">
     <!-- Header -->
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div class="flex flex-wrap items-center gap-3">
-        <span class="text-sm text-gray-500 dark:text-gray-400">
-          {{ statusFilter === 'all' ? totalCount : `${filteredCount} / ${totalCount}` }} categories
-        </span>
-        <template v-if="categories.length > 0">
-          <button
-            type="button"
-            class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400"
-            @click="expandAll"
-          >
-            Expand All
-          </button>
-          <span class="text-gray-300 dark:text-gray-600">|</span>
-          <button
-            type="button"
-            class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400"
-            @click="collapseAll"
-          >
-            Collapse All
-          </button>
-        </template>
-      </div>
-      <div class="flex items-center gap-3">
-        <!-- Status filter -->
-        <div class="flex items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs">
-          <button
-            v-for="f in (['all', 'active', 'inactive'] as const)"
-            :key="f"
-            type="button"
-            class="px-3 py-1.5 font-medium capitalize transition-colors first:rounded-l-lg last:rounded-r-lg"
-            :class="statusFilter === f
-              ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/50 dark:text-primary-300'
-              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
-            @click="statusFilter = f"
-          >
-            {{ f }}
-            <span
-              class="ml-1 inline-flex items-center justify-center rounded-full px-1.5 text-[10px] font-semibold"
-              :class="statusFilter === f
-                ? 'bg-primary-100 text-primary-700 dark:bg-primary-800 dark:text-primary-300'
-                : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'"
+    <div class="space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-3">
+          <span class="text-sm text-gray-500 dark:text-gray-400">
+            {{ (statusFilter === 'all' && !searchQuery) ? totalCount : `${filteredCount} / ${totalCount}` }} categories
+          </span>
+          <template v-if="categories.length > 0">
+            <button
+              type="button"
+              class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400"
+              @click="expandAll"
             >
-              {{ statusCounts[f] }}
-            </span>
-          </button>
+              Expand All
+            </button>
+            <span class="text-gray-300 dark:text-gray-600">|</span>
+            <button
+              type="button"
+              class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400"
+              @click="collapseAll"
+            >
+              Collapse All
+            </button>
+          </template>
         </div>
-        <BaseButton variant="primary" @click="openCreate">
-          <PlusIcon class="mr-2 h-4 w-4" />
+        <div class="flex items-center gap-3">
+          <!-- Search toggle -->
+          <button
+            type="button"
+            class="rounded-lg border border-gray-200 p-1.5 text-gray-400 hover:bg-gray-50 hover:text-gray-600 dark:border-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+            :class="showSearch ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/50 dark:text-primary-400' : ''"
+            title="Search categories"
+            @click="showSearch = !showSearch; if (!showSearch) clearSearch()"
+          >
+            <MagnifyingGlassIcon class="h-4 w-4" />
+          </button>
+          <BaseButton variant="primary" @click="openCreate">
+            <PlusIcon class="mr-2 h-4 w-4" />
           Add Category
         </BaseButton>
+      </div>
+    </div>
+
+      <!-- Search bar (collapsible) -->
+      <div v-if="showSearch" class="flex items-center gap-2">
+        <div class="relative flex-1">
+          <MagnifyingGlassIcon class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Search by name, slug, or description..."
+            class="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-8 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-500"
+            @input="onSearchInput"
+          />
+          <button
+            v-if="searchQuery"
+            type="button"
+            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            @click="clearSearch"
+          >
+            <XMarkIcon class="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <!-- Status filter tabs -->
+      <div class="flex items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs w-fit">
+        <button
+          v-for="f in (['all', 'active', 'inactive', 'pending', 'rejected'] as const)"
+          :key="f"
+          type="button"
+          class="px-3 py-1.5 font-medium capitalize transition-colors first:rounded-l-lg last:rounded-r-lg"
+          :class="statusFilter === f
+            ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/50 dark:text-primary-300'
+            : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+          @click="statusFilter = f"
+        >
+          {{ f }}
+          <span
+            v-if="statusCounts[f] > 0 || f === 'all'"
+            class="ml-1 inline-flex items-center justify-center rounded-full px-1.5 text-[10px] font-semibold"
+            :class="statusFilter === f
+              ? 'bg-primary-100 text-primary-700 dark:bg-primary-800 dark:text-primary-300'
+              : f === 'pending' && statusCounts.pending > 0
+                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
+                : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'"
+          >
+            {{ statusCounts[f] }}
+          </span>
+        </button>
       </div>
     </div>
 
@@ -268,8 +345,14 @@ async function deleteCategory(category: Category) {
 
       <div v-else-if="filteredCategories.length === 0" class="py-12 text-center">
         <FunnelIcon class="mx-auto h-8 w-8 text-gray-300 dark:text-gray-600" />
-        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">No {{ statusFilter }} categories found</p>
-        <button type="button" class="mt-1 text-xs text-primary-600 hover:text-primary-700" @click="statusFilter = 'all'">Show all</button>
+        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+          {{ searchQuery ? `No categories matching "${searchQuery}"` : `No ${statusFilter} categories found` }}
+        </p>
+        <div class="mt-2 flex items-center justify-center gap-2">
+          <button v-if="searchQuery" type="button" class="text-xs text-primary-600 hover:text-primary-700" @click="clearSearch">Clear search</button>
+          <span v-if="searchQuery && statusFilter !== 'all'" class="text-gray-300 dark:text-gray-600">|</span>
+          <button v-if="statusFilter !== 'all'" type="button" class="text-xs text-primary-600 hover:text-primary-700" @click="statusFilter = 'all'">Show all</button>
+        </div>
       </div>
 
       <div v-else class="divide-y divide-gray-200 dark:divide-gray-700">

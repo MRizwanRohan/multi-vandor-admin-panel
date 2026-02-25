@@ -12,7 +12,7 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
-import type { Category, CategoryTemplateAssignment } from '@/types'
+import type { Category, CategoryTemplateAssignment, CategoryRequest } from '@/types'
 import {
   ArrowLeftIcon,
   PencilSquareIcon,
@@ -29,6 +29,7 @@ import {
   DocumentTextIcon,
   GlobeAltIcon,
   BoltIcon,
+  ClockIcon,
 } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
@@ -41,6 +42,7 @@ const { formatDate, timeAgo } = useDate()
 const categoryId = computed(() => Number(route.params.id))
 const category = ref<Category | null>(null)
 const templates = ref<CategoryTemplateAssignment[]>([])
+const requestHistory = ref<CategoryRequest[]>([])
 const isLoading = ref(true)
 const isToggling = ref(false)
 const loadError = ref<string | null>(null)
@@ -64,6 +66,13 @@ async function fetchData() {
       templates.value = await categoryService.getTemplates(categoryId.value, true)
     } catch {
       templates.value = []
+    }
+
+    // Fetch request history
+    try {
+      requestHistory.value = await categoryService.getRequestHistory(categoryId.value)
+    } catch {
+      requestHistory.value = []
     }
   } catch (err: any) {
     const msg = err.response?.data?.message || 'Failed to load category'
@@ -161,6 +170,13 @@ function statusVariant(s: string): 'success' | 'warning' | 'danger' | 'info' {
               </BaseBadge>
             </div>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ category.slug }}</p>
+            <!-- Breadcrumb path -->
+            <div v-if="category.path?.length" class="mt-1.5 flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+              <template v-for="(segment, idx) in category.path" :key="idx">
+                <span v-if="idx > 0" class="text-gray-300 dark:text-gray-600">/</span>
+                <span>{{ segment }}</span>
+              </template>
+            </div>
           </div>
         </div>
         <div class="flex items-center gap-2">
@@ -321,14 +337,86 @@ function statusVariant(s: string): 'success' | 'warning' | 'danger' | 'info' {
               </div>
             </div>
           </BaseCard>
+
+          <!-- Request History (audit trail) -->
+          <BaseCard v-if="requestHistory.length" title="Request History">
+            <div class="relative">
+              <!-- Timeline line -->
+              <div class="absolute left-4 top-0 bottom-0 w-px bg-gray-200 dark:bg-gray-700" />
+
+              <div class="space-y-6">
+                <div
+                  v-for="req in requestHistory"
+                  :key="req.id"
+                  class="relative flex gap-4 pl-2"
+                >
+                  <!-- Timeline dot -->
+                  <div
+                    class="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                    :class="{
+                      'bg-blue-100 dark:bg-blue-900/30': req.action === 'submitted',
+                      'bg-green-100 dark:bg-green-900/30': req.action === 'approved',
+                      'bg-red-100 dark:bg-red-900/30': req.action === 'rejected',
+                    }"
+                  >
+                    <ClockIcon v-if="req.action === 'submitted'" class="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <CheckCircleIcon v-else-if="req.action === 'approved'" class="h-4 w-4 text-green-600 dark:text-green-400" />
+                    <XCircleIcon v-else class="h-4 w-4 text-red-600 dark:text-red-400" />
+                  </div>
+
+                  <!-- Content -->
+                  <div class="flex-1 min-w-0 pb-2">
+                    <div class="flex items-center justify-between gap-2">
+                      <p class="text-sm font-medium text-gray-900 dark:text-white capitalize">
+                        {{ req.action }}
+                      </p>
+                      <time class="text-xs text-gray-400 shrink-0">
+                        {{ timeAgo(req.created_at) }}
+                      </time>
+                    </div>
+
+                    <!-- Who performed the action -->
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      <template v-if="req.action === 'submitted' && req.vendor">
+                        By {{ req.vendor.name }}
+                      </template>
+                      <template v-else-if="req.acted_by">
+                        By {{ req.acted_by.name }}
+                      </template>
+                      <template v-else>
+                        {{ formatDate(req.created_at, 'MMM D, YYYY h:mm A') }}
+                      </template>
+                    </p>
+
+                    <!-- Rejection reason -->
+                    <div
+                      v-if="req.action === 'rejected' && req.rejection_reason"
+                      class="mt-2 rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 p-2.5"
+                    >
+                      <p class="text-xs font-medium text-red-700 dark:text-red-400">Reason:</p>
+                      <p class="text-xs text-red-600 dark:text-red-300 mt-0.5">{{ req.rejection_reason }}</p>
+                    </div>
+
+                    <!-- Admin notes -->
+                    <p
+                      v-if="req.admin_notes"
+                      class="mt-1.5 text-xs text-gray-500 dark:text-gray-400 italic"
+                    >
+                      Note: {{ req.admin_notes }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </BaseCard>
         </div>
 
         <!-- Right column: sidebar info -->
         <div class="space-y-6">
           <!-- Image -->
-          <BaseCard v-if="category.image_field">
+          <BaseCard v-if="category.image || category.image_field">
             <img
-              :src="category.image_field"
+              :src="category.image || category.image_field || ''"
               :alt="category.name"
               class="w-full rounded-lg object-cover aspect-video"
             />
@@ -361,9 +449,18 @@ function statusVariant(s: string): 'success' | 'warning' | 'danger' | 'info' {
                 <span class="text-sm text-gray-500">Display Order</span>
                 <span class="text-sm font-medium text-gray-900 dark:text-white">{{ category.display_order }}</span>
               </div>
-              <div v-if="category.parent_id" class="flex items-center justify-between">
+              <div v-if="category.parent" class="flex items-center justify-between">
                 <span class="text-sm text-gray-500">Parent</span>
-                <span class="text-sm text-primary-600 dark:text-primary-400">ID: {{ category.parent_id }}</span>
+                <router-link
+                  :to="`/admin/categories/${category.parent.id}`"
+                  class="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+                >
+                  {{ category.parent.name }}
+                </router-link>
+              </div>
+              <div v-else-if="category.parent_id" class="flex items-center justify-between">
+                <span class="text-sm text-gray-500">Parent</span>
+                <span class="text-sm text-gray-700 dark:text-gray-300">ID: {{ category.parent_id }}</span>
               </div>
             </div>
           </BaseCard>

@@ -32,6 +32,7 @@ const { formatDate, timeAgo } = useDate()
 
 const categories = ref<Category[]>([])
 const isLoading = ref(true)
+const loadError = ref<string | null>(null)
 const showDetailModal = ref(false)
 const selectedCategory = ref<Category | null>(null)
 
@@ -45,11 +46,13 @@ onMounted(() => {
 
 async function fetchMyCategories() {
   isLoading.value = true
+  loadError.value = null
   try {
     const response = await categoryService.getMyCategories()
     categories.value = response.data
   } catch (err: any) {
-    toast.error(err.response?.data?.message || 'Failed to load your categories')
+    loadError.value = err.response?.data?.message || 'Failed to load your categories'
+    toast.error(loadError.value!)
     categories.value = []
   } finally {
     isLoading.value = false
@@ -139,6 +142,20 @@ function viewDetail(cat: Category) {
     <div v-if="isLoading" class="flex items-center justify-center py-16">
       <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
     </div>
+
+    <!-- Error state -->
+    <BaseCard v-else-if="loadError" class="py-16">
+      <div class="flex flex-col items-center text-center">
+        <div class="flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30 mb-3">
+          <FolderIcon class="h-6 w-6 text-red-500" />
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Failed to Load</h3>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ loadError }}</p>
+        <BaseButton variant="secondary" class="mt-4" @click="fetchMyCategories">
+          Retry
+        </BaseButton>
+      </div>
+    </BaseCard>
 
     <!-- Empty -->
     <BaseCard v-else-if="categories.length === 0">

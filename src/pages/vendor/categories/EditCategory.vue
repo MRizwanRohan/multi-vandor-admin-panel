@@ -198,7 +198,7 @@ function goBack() {
               />
 
               <FormInput
-                v-model="form.display_order"
+                v-model.number="form.display_order"
                 label="Display Order"
                 type="number"
                 :min="0"

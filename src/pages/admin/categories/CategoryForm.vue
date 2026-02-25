@@ -74,6 +74,7 @@ const {
   defineField,
   isSubmitting,
   setValues,
+  setErrors,
 } = useForm({
   validationSchema: categorySchema,
   initialValues: {
@@ -237,8 +238,18 @@ const onSubmit = handleSubmit(async (values) => {
     }
     
     router.push('/admin/categories')
-  } catch (error) {
-    toast.error(isEditMode.value ? 'Failed to update category' : 'Failed to create category')
+  } catch (error: any) {
+    const apiErrors = error.response?.data?.errors
+    if (apiErrors) {
+      const mappedErrors: Record<string, string> = {}
+      for (const [field, msgs] of Object.entries(apiErrors)) {
+        mappedErrors[field] = (msgs as string[])[0]
+      }
+      setErrors(mappedErrors)
+      toast.error('Please fix the validation errors')
+    } else {
+      toast.error(error.response?.data?.message || (isEditMode.value ? 'Failed to update category' : 'Failed to create category'))
+    }
   }
 })
 

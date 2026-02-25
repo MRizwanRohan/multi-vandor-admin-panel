@@ -24,6 +24,39 @@ const emit = defineEmits<{
 const hasChildren = computed(() => props.category.children && props.category.children.length > 0)
 const isOpen = computed(() => props.expandedIds.has(props.category.id))
 const indent = computed(() => `${16 + props.depth * 28}px`)
+
+// Depth-based icon styling (3 levels)
+const depthIconBg = computed(() => {
+  if (props.depth === 0) return 'bg-primary-100 dark:bg-primary-900/50'
+  if (props.depth === 1) return 'bg-blue-50 dark:bg-blue-900/30'
+  return 'bg-gray-100 dark:bg-gray-700'
+})
+
+const depthIconColor = computed(() => {
+  if (props.depth === 0) return 'text-primary-600 dark:text-primary-400'
+  if (props.depth === 1) return 'text-blue-500 dark:text-blue-400'
+  return 'text-gray-400 dark:text-gray-500'
+})
+
+const depthRowBorder = computed(() => {
+  if (props.depth === 0) return 'border-l-2 border-l-transparent'
+  if (props.depth === 1) return 'border-l-2 border-l-blue-200 dark:border-l-blue-800'
+  return 'border-l-2 border-l-gray-200 dark:border-l-gray-700'
+})
+
+const depthNameClass = computed(() => {
+  if (props.depth === 0) return 'font-semibold text-gray-900 dark:text-white'
+  if (props.depth === 1) return 'font-medium text-gray-800 dark:text-gray-200'
+  return 'font-normal text-gray-600 dark:text-gray-400 text-sm'
+})
+
+// Status badge
+const statusInfo = computed(() => {
+  const s = props.category.status
+  if (s === 'pending') return { show: true, label: 'Pending', class: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' }
+  if (s === 'rejected') return { show: true, label: 'Rejected', class: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' }
+  return { show: false, label: '', class: '' }
+})
 </script>
 
 <template>
@@ -31,6 +64,7 @@ const indent = computed(() => `${16 + props.depth * 28}px`)
     <!-- Row -->
     <div
       class="flex items-center justify-between py-3 pr-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+      :class="depthRowBorder"
       :style="{ paddingLeft: indent }"
     >
       <div class="flex items-center gap-3 min-w-0 flex-1">
@@ -51,27 +85,50 @@ const indent = computed(() => `${16 + props.depth * 28}px`)
         </button>
         <div v-else class="w-6 shrink-0" />
 
-        <!-- Folder icon -->
+        <!-- Folder icon (depth-styled) -->
         <div
           class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-          :class="depth === 0 ? 'bg-primary-100 dark:bg-primary-900/50' : 'bg-gray-100 dark:bg-gray-700'"
+          :class="depthIconBg"
         >
           <svg
             class="h-4 w-4"
-            :class="depth === 0 ? 'text-primary-600 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400'"
+            :class="depthIconColor"
             fill="none" stroke="currentColor" viewBox="0 0 24 24"
           >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            <path v-if="depth === 0" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+            />
+            <path v-else-if="depth === 1" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+            />
+            <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
             />
           </svg>
         </div>
 
         <!-- Name + description -->
         <div class="min-w-0">
-          <p class="font-medium text-gray-900 dark:text-white truncate">
-            {{ category.name }}
-          </p>
+          <div class="flex items-center gap-2">
+            <p :class="depthNameClass" class="truncate">
+              {{ category.name }}
+            </p>
+            <!-- Pending/Rejected badge -->
+            <span
+              v-if="statusInfo.show"
+              class="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0"
+              :class="statusInfo.class"
+            >
+              {{ statusInfo.label }}
+            </span>
+            <!-- Depth indicator -->
+            <span
+              v-if="depth >= 2"
+              class="text-[10px] text-gray-300 dark:text-gray-600 shrink-0"
+            >
+              L{{ depth + 1 }}
+            </span>
+          </div>
           <p v-if="category.description" class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-xs">
             {{ category.description }}
           </p>
@@ -109,8 +166,9 @@ const indent = computed(() => `${16 + props.depth * 28}px`)
           />
         </button>
 
-        <!-- Status -->
+        <!-- Status pill (shows active/inactive only when NOT pending/rejected — pending/rejected shown inline in name) -->
         <span
+          v-if="!statusInfo.show"
           class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
           :class="category.is_active
             ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'

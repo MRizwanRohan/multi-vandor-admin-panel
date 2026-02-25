@@ -346,7 +346,10 @@ async function submitRejection() {
                 <span :title="formatDate(cat.created_at, 'MMMM D, YYYY h:mm A')">
                   {{ timeAgo(cat.created_at) }}
                 </span>
-                <span v-if="cat.parent_id" class="text-gray-400">
+                <span v-if="cat.parent" class="text-gray-400">
+                  Parent: {{ cat.parent.name }}
+                </span>
+                <span v-else-if="cat.parent_id" class="text-gray-400">
                   Parent ID: {{ cat.parent_id }}
                 </span>
               </div>

@@ -218,7 +218,7 @@ const getStatusClass = (status: string) => {
       class="py-8 text-center text-gray-500 dark:text-gray-400"
     >
       <FolderIcon class="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" />
-      <p class="mt-2">কোনো ক্যাটেগরি নেই</p>
+      <p class="mt-2">No categories available</p>
     </div>
   </div>
 </template>

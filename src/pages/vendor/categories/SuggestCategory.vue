@@ -26,6 +26,7 @@ const toast = useToast()
 
 const isSubmitting = ref(false)
 const isSubmitted = ref(false)
+const isLoadingParents = ref(false)
 const parentCategories = ref<{ value: string | number; label: string }[]>([])
 
 const form = ref({
@@ -47,6 +48,7 @@ onMounted(() => {
 
 // Load real parent categories for dropdown
 async function fetchParentCategories() {
+  isLoadingParents.value = true
   try {
     const response = await categoryService.getVisibleCategories()
     const options: { value: string | number; label: string }[] = [
@@ -65,6 +67,8 @@ async function fetchParentCategories() {
     parentCategories.value = options
   } catch {
     parentCategories.value = [{ value: '', label: 'None (Top-level)' }]
+  } finally {
+    isLoadingParents.value = false
   }
 }
 
@@ -188,7 +192,8 @@ function handleSubmitAnother() {
                 v-model="form.parent_id"
                 label="Parent Category"
                 :options="parentCategories"
-                hint="Select a parent if this is a sub-category"
+                :disabled="isLoadingParents"
+                :hint="isLoadingParents ? 'Loading categories...' : 'Select a parent if this is a sub-category'"
               />
 
               <FormTextarea

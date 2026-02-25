@@ -180,7 +180,7 @@ const statusInfo = computed(() => {
         <!-- Actions -->
         <div class="flex items-center gap-1">
           <router-link
-            :to="`/admin/categories/${category.id}`"
+            :to="`/admin/categories/${category.slug}`"
             class="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-gray-700 dark:hover:text-primary-400"
             title="View details"
           >

@@ -182,7 +182,7 @@ function openDetail(category: Category) {
 // Toggle active — use API response for accurate state
 async function toggleActive(category: Category) {
   try {
-    const updated = await categoryService.toggleActive(category.id)
+    const updated = await categoryService.toggleActive(category.slug)
     // Replace category in-place in the tree with server response
     replaceCategoryInTree(categories.value, category.id, updated)
     toast.success(`Category "${updated.name}" ${updated.is_active ? 'activated' : 'deactivated'}`)
@@ -223,7 +223,7 @@ async function deleteCategory(category: Category) {
 
   if (confirmed) {
     try {
-      await categoryService.delete(category.id)
+      await categoryService.delete(category.slug)
       toast.success('Category deleted successfully')
       fetchCategories()
     } catch (error) {

@@ -24,7 +24,7 @@ const router = useRouter()
 const breadcrumbStore = useBreadcrumbStore()
 const toast = useToast()
 
-const categoryId = computed(() => Number(route.params.id))
+const categorySlug = computed(() => route.params.slug as string)
 
 // State
 const category = ref<Category | null>(null)
@@ -53,7 +53,7 @@ async function fetchCategory() {
   isLoading.value = true
   loadError.value = null
   try {
-    const cat = await categoryService.getVendorCategoryDetail(categoryId.value)
+    const cat = await categoryService.getVendorCategoryDetail(categorySlug.value)
     category.value = cat
 
     // Only pending own categories can be edited
@@ -96,7 +96,7 @@ async function handleSubmit() {
       .map(k => k.trim())
       .filter(Boolean)
 
-    await categoryService.updatePendingCategory(categoryId.value, {
+    await categoryService.updatePendingCategory(categorySlug.value, {
       name: form.value.name,
       description: form.value.description || undefined,
       display_order: form.value.display_order,

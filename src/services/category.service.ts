@@ -243,6 +243,7 @@ export const categoryService = {
     name: string
     description?: string
     parent_id?: number | null
+    image?: File
     display_order?: number
     metadata?: {
       seo_title?: string
@@ -250,7 +251,10 @@ export const categoryService = {
       keywords?: string[]
     }
   }): Promise<Category> {
-    const response = await api.post<ApiItemResponse>(vendorPrefix(), data)
+    const formData = buildFormData(data)
+    const response = await api.post<ApiItemResponse>(vendorPrefix(), formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
     return response.data.data
   },
 

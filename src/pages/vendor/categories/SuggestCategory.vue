@@ -18,6 +18,8 @@ import {
   LightBulbIcon,
   CheckCircleIcon,
   ArrowLeftIcon,
+  PhotoIcon,
+  XMarkIcon,
 } from '@heroicons/vue/24/outline'
 
 const breadcrumbStore = useBreadcrumbStore()
@@ -28,6 +30,8 @@ const isSubmitting = ref(false)
 const isSubmitted = ref(false)
 const isLoadingParents = ref(false)
 const parentCategories = ref<{ value: string | number; label: string }[]>([])
+const imagePreview = ref<string | null>(null)
+const selectedImage = ref<File | null>(null)
 
 const form = ref({
   name: '',
@@ -72,6 +76,32 @@ async function fetchParentCategories() {
   }
 }
 
+// Image upload
+function handleImageUpload(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  
+  if (!file) return
+  
+  if (!file.type.startsWith('image/')) {
+    toast.error('Please upload an image file')
+    return
+  }
+  
+  selectedImage.value = file
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    imagePreview.value = e.target?.result as string
+  }
+  reader.readAsDataURL(file)
+  input.value = ''
+}
+
+function removeImage() {
+  imagePreview.value = null
+  selectedImage.value = null
+}
+
 // Submit via real API
 async function handleSubmit() {
   if (!form.value.name.trim() || !form.value.description.trim()) {
@@ -86,7 +116,7 @@ async function handleSubmit() {
       .map(k => k.trim())
       .filter(Boolean)
 
-    await categoryService.suggestCategory({
+    const payload: any = {
       name: form.value.name,
       description: form.value.description,
       parent_id: form.value.parent_id || null,
@@ -95,7 +125,14 @@ async function handleSubmit() {
         seo_description: form.value.seo_description || undefined,
         keywords: keywords.length ? keywords : undefined,
       },
-    })
+    }
+
+    // Add image if selected
+    if (selectedImage.value) {
+      payload.image = selectedImage.value
+    }
+
+    await categoryService.suggestCategory(payload)
     isSubmitted.value = true
     toast.success('Category suggestion submitted!')
   } catch (err: any) {
@@ -119,6 +156,8 @@ function handleSubmitAnother() {
     seo_description: '',
     keywords: '',
   }
+  imagePreview.value = null
+  selectedImage.value = null
 }
 </script>
 
@@ -203,6 +242,42 @@ function handleSubmitAnother() {
                 :rows="4"
                 required
               />
+            </div>
+          </BaseCard>
+
+          <!-- Category Image -->
+          <BaseCard title="Category Image (Optional)">
+            <div class="space-y-4">
+              <div v-if="imagePreview" class="relative inline-block">
+                <img
+                  :src="imagePreview"
+                  alt="Category image"
+                  class="w-48 h-48 object-cover rounded-lg"
+                />
+                <button
+                  type="button"
+                  @click="removeImage"
+                  class="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                >
+                  <XMarkIcon class="h-4 w-4" />
+                </button>
+              </div>
+              
+              <div v-else class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8">
+                <label class="flex flex-col items-center cursor-pointer">
+                  <PhotoIcon class="h-12 w-12 text-gray-400" />
+                  <span class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    Click to upload image
+                  </span>
+                  <span class="mt-1 text-xs text-gray-400">PNG, JPG up to 5MB</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    class="hidden"
+                    @change="handleImageUpload"
+                  />
+                </label>
+              </div>
             </div>
           </BaseCard>
 

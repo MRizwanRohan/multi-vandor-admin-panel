@@ -89,7 +89,7 @@ async function handleToggleActive() {
   if (!category.value) return
   isToggling.value = true
   try {
-    const updated = await categoryService.toggleActive(category.value.id)
+    const updated = await categoryService.toggleActive(category.value.slug)
     category.value = updated
     toast.success(`Category ${updated.is_active ? 'activated' : 'deactivated'}`)
   } catch {
@@ -113,7 +113,7 @@ async function handleDelete() {
 
   if (confirmed) {
     try {
-      await categoryService.delete(category.value.id)
+      await categoryService.delete(category.value.slug)
       toast.success('Category deleted')
       router.push('/admin/categories')
     } catch {

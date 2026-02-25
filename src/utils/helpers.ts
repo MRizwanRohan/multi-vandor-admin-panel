@@ -309,7 +309,5 @@ export function getImageUrl(url: string | null | undefined): string {
   if (url.startsWith('/')) return url
   
   // Strip localhost:8000 prefix for development proxy to work
-  const converted = url.replace(/^https?:\/\/localhost:8000/, '')
-  console.log('[getImageUrl]', { original: url, converted })
-  return converted
+  return url.replace(/^https?:\/\/localhost:8000/, '')
 }

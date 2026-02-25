@@ -53,6 +53,7 @@ const isLoading = ref(false)
 const parentCategories = ref<Category[]>([])
 const imagePreview = ref<string | null>(null)
 const selectedImage = ref<File | null>(null)
+const currentCategoryId = ref<number | null>(null)
 
 // Form validation
 const categorySchema = toTypedSchema(z.object({
@@ -132,7 +133,7 @@ function flattenCategories(cats: Category[], prefix = ''): { value: number; labe
 const parentOptions = computed(() => [
   { value: '', label: 'None (Top Level)' },
   ...flattenCategories(parentCategories.value)
-    .filter(c => c.value !== categoryId.value),
+    .filter(c => c.value !== currentCategoryId.value),
 ])
 
 // Fetch category for editing
@@ -142,6 +143,7 @@ async function fetchCategory() {
   isLoading.value = true
   try {
     const category = await categoryService.get(categorySlug.value)
+    currentCategoryId.value = category.id
     setValues({
       name: category.name,
       slug: category.slug,

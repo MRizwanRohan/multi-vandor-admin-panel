@@ -87,6 +87,24 @@ const vendorRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/vendor/categories/SuggestCategory.vue'),
         meta: { title: 'Suggest Category' },
       },
+      {
+        path: 'categories/my',
+        name: 'vendor-my-categories',
+        component: () => import('@/pages/vendor/categories/MyCategories.vue'),
+        meta: { title: 'My Categories' },
+      },
+      {
+        path: 'categories/:id',
+        name: 'vendor-category-detail',
+        component: () => import('@/pages/vendor/categories/CategoryDetail.vue'),
+        meta: { title: 'Category Details' },
+      },
+      {
+        path: 'categories/:id/edit',
+        name: 'vendor-category-edit',
+        component: () => import('@/pages/vendor/categories/EditCategory.vue'),
+        meta: { title: 'Edit Category' },
+      },
       // Shipping
       {
         path: 'shipping',

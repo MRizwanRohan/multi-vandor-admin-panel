@@ -181,6 +181,7 @@ const vendorNavItems: NavItem[] = [
     icon: FolderIcon,
     children: [
       { name: 'Browse Categories', to: '/vendor/categories' },
+      { name: 'My Categories', to: '/vendor/categories/my' },
       { name: 'Suggest Category', to: '/vendor/categories/suggest' },
     ],
   },

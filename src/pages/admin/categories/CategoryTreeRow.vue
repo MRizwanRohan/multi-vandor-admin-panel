@@ -18,6 +18,7 @@ const emit = defineEmits<{
   (e: 'toggle', id: number): void
   (e: 'edit', cat: Category): void
   (e: 'delete', cat: Category): void
+  (e: 'toggle-active', cat: Category): void
 }>()
 
 const hasChildren = computed(() => props.category.children && props.category.children.length > 0)
@@ -94,21 +95,44 @@ const indent = computed(() => `${16 + props.depth * 28}px`)
           <p class="text-[10px] text-gray-400">products</p>
         </div>
 
+        <!-- Active toggle -->
+        <button
+          type="button"
+          class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+          :class="category.is_active ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+          :title="category.is_active ? 'Deactivate' : 'Activate'"
+          @click="emit('toggle-active', category)"
+        >
+          <span
+            class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+            :class="category.is_active ? 'translate-x-4' : 'translate-x-0'"
+          />
+        </button>
+
         <!-- Status -->
         <span
-          class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize"
-          :class="{
-            'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400': category.status === 'active',
-            'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400': category.status === 'inactive',
-            'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400': category.status === 'pending',
-            'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400': category.status === 'rejected',
-          }"
+          class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+          :class="category.is_active
+            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+            : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'"
         >
-          {{ category.status }}
+          {{ category.is_active ? 'Active' : 'Inactive' }}
         </span>
 
         <!-- Actions -->
         <div class="flex items-center gap-1">
+          <router-link
+            :to="`/admin/categories/${category.id}`"
+            class="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-gray-700 dark:hover:text-primary-400"
+            title="View details"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+          </router-link>
           <button
             type="button"
             class="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
@@ -149,6 +173,7 @@ const indent = computed(() => `${16 + props.depth * 28}px`)
         @toggle="(id: number) => emit('toggle', id)"
         @edit="(cat: Category) => emit('edit', cat)"
         @delete="(cat: Category) => emit('delete', cat)"
+        @toggle-active="(cat: Category) => emit('toggle-active', cat)"
       />
     </template>
   </div>

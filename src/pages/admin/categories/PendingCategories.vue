@@ -1,380 +1,575 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<!-- Pending Categories — Vendor category suggestions: approve/reject -->
+<!-- Pending Categories — Review vendor category requests              -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useBreadcrumbStore } from '@/stores'
+import { categoryService } from '@/services'
 import { useToast } from '@/composables/useToast'
-import { useConfirm } from '@/composables/useConfirm'
 import { useDate } from '@/composables/useDate'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
-import StatCard from '@/components/ui/StatCard.vue'
-import DataTable from '@/components/data/DataTable.vue'
 import FormInput from '@/components/form/FormInput.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
 import FormTextarea from '@/components/form/FormTextarea.vue'
+import type { Category } from '@/types'
 import {
-  MagnifyingGlassIcon,
   FolderIcon,
   CheckCircleIcon,
   XCircleIcon,
   ClockIcon,
   EyeIcon,
+  ArrowPathIcon,
+  PencilSquareIcon,
 } from '@heroicons/vue/24/outline'
 
 const breadcrumbStore = useBreadcrumbStore()
 const toast = useToast()
-const confirm = useConfirm()
 const { formatDate, timeAgo } = useDate()
 
 // State
-const searchQuery = ref('')
-const statusFilter = ref('all')
-const isLoading = ref(false)
+const categories = ref<Category[]>([])
+const allCategories = ref<Category[]>([])
+const isLoading = ref(true)
 const showDetailModal = ref(false)
+const showApproveModal = ref(false)
 const showRejectModal = ref(false)
-const rejectionReason = ref('')
-const selectedSuggestion = ref<any>(null)
+const selectedCategory = ref<Category | null>(null)
+const actionLoading = ref<number | null>(null)
 
-// Mock data
-const suggestions = ref([
-  {
-    id: 1,
-    name: 'Smart Home Devices',
-    parent_category: 'Electronics',
-    vendor: { name: 'TechWorld BD', id: 5 },
-    description: 'IoT devices including smart speakers, lights, and security cameras for home automation.',
-    status: 'pending',
-    submitted_at: '2026-02-20T10:00:00Z',
-    products_estimate: 25,
-  },
-  {
-    id: 2,
-    name: 'Organic Baby Food',
-    parent_category: 'Baby & Kids',
-    vendor: { name: 'GreenMart', id: 8 },
-    description: 'Certified organic baby food products including purees, cereals, and snacks.',
-    status: 'pending',
-    submitted_at: '2026-02-19T14:30:00Z',
-    products_estimate: 15,
-  },
-  {
-    id: 3,
-    name: 'Electric Bikes',
-    parent_category: 'Sports & Outdoors',
-    vendor: { name: 'BikeZone BD', id: 12 },
-    description: 'Electric bicycles and e-scooters for urban commuting.',
-    status: 'approved',
-    submitted_at: '2026-02-15T09:00:00Z',
-    reviewed_at: '2026-02-16T11:00:00Z',
-    products_estimate: 10,
-  },
-  {
-    id: 4,
-    name: 'Handloom Sarees',
-    parent_category: 'Fashion',
-    vendor: { name: 'DesiCraft', id: 3 },
-    description: 'Traditional handloom sarees from various regions of Bangladesh.',
-    status: 'rejected',
-    submitted_at: '2026-02-14T08:00:00Z',
-    reviewed_at: '2026-02-15T10:00:00Z',
-    rejection_reason: 'Already covered under existing "Traditional Clothing" category.',
-    products_estimate: 40,
-  },
-])
-
-// Stats
-const stats = computed(() => [
-  {
-    title: 'Total Suggestions',
-    value: suggestions.value.length,
-    icon: FolderIcon,
-    color: 'primary' as const,
-  },
-  {
-    title: 'Pending Review',
-    value: suggestions.value.filter(s => s.status === 'pending').length,
-    icon: ClockIcon,
-    color: 'warning' as const,
-  },
-  {
-    title: 'Approved',
-    value: suggestions.value.filter(s => s.status === 'approved').length,
-    icon: CheckCircleIcon,
-    color: 'success' as const,
-  },
-  {
-    title: 'Rejected',
-    value: suggestions.value.filter(s => s.status === 'rejected').length,
-    icon: XCircleIcon,
-    color: 'danger' as const,
-  },
-])
-
-// Filtered data
-const filteredSuggestions = computed(() => {
-  let data = suggestions.value
-  if (statusFilter.value !== 'all') {
-    data = data.filter(s => s.status === statusFilter.value)
-  }
-  if (searchQuery.value) {
-    const q = searchQuery.value.toLowerCase()
-    data = data.filter(
-      s =>
-        s.name.toLowerCase().includes(q) ||
-        s.vendor.name.toLowerCase().includes(q) ||
-        s.parent_category.toLowerCase().includes(q)
-    )
-  }
-  return data
+// Approve form (modifications)
+const approveModifications = ref({
+  name: '',
+  description: '',
+  parent_id: null as number | null,
+  seo_title: '',
 })
+const hasModifications = ref(false)
 
-// Table columns
-const columns = [
-  { key: 'name', label: 'Category Name', sortable: true },
-  { key: 'parent_category', label: 'Parent Category' },
-  { key: 'vendor', label: 'Suggested By' },
-  { key: 'products_estimate', label: 'Est. Products', align: 'center' as const },
-  { key: 'submitted_at', label: 'Submitted', sortable: true },
-  { key: 'status', label: 'Status' },
-  { key: 'actions', label: 'Actions', align: 'right' as const },
-]
-
-function getStatusVariant(status: string) {
-  const map: Record<string, 'warning' | 'success' | 'danger'> = {
-    pending: 'warning',
-    approved: 'success',
-    rejected: 'danger',
-  }
-  return map[status] || 'warning'
-}
-
-function viewDetail(suggestion: any) {
-  selectedSuggestion.value = suggestion
-  showDetailModal.value = true
-}
-
-async function approveSuggestion(suggestion: any) {
-  await confirm.require({
-    title: 'Approve Category Suggestion',
-    message: `Approve "${suggestion.name}" as a new category under ${suggestion.parent_category}?`,
-    confirmText: 'Approve',
-    variant: 'primary',
-  })
-  suggestion.status = 'approved'
-  suggestion.reviewed_at = new Date().toISOString()
-  toast.success(`"${suggestion.name}" has been approved.`)
-}
-
-function openRejectModal(suggestion: any) {
-  selectedSuggestion.value = suggestion
-  rejectionReason.value = ''
-  showRejectModal.value = true
-}
-
-function submitRejection() {
-  if (!rejectionReason.value.trim()) {
-    toast.error('Please provide a rejection reason.')
-    return
-  }
-  if (selectedSuggestion.value) {
-    selectedSuggestion.value.status = 'rejected'
-    selectedSuggestion.value.reviewed_at = new Date().toISOString()
-    selectedSuggestion.value.rejection_reason = rejectionReason.value
-    toast.success(`"${selectedSuggestion.value.name}" has been rejected.`)
-  }
-  showRejectModal.value = false
-}
+// Reject form
+const rejectionReason = ref('')
+const suggestedCategoryId = ref<number | null>(null)
+const adminNotes = ref('')
 
 onMounted(() => {
   breadcrumbStore.setPageInfo('Pending Categories', [
-    { label: 'Categories' },
-    { label: 'Pending Suggestions' },
-  ], 'Review vendor category suggestions')
+    { label: 'Categories', to: '/admin/categories' },
+    { label: 'Pending' },
+  ], 'Review vendor category requests')
+  fetchPending()
+  fetchAllCategories()
 })
+
+// Fetch pending categories from real API
+async function fetchPending() {
+  isLoading.value = true
+  try {
+    const response = await categoryService.getPending()
+    categories.value = response.data
+  } catch (err: any) {
+    toast.error(err.response?.data?.message || 'Failed to load pending categories')
+    categories.value = []
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// Fetch all active categories (for suggested_category_id dropdown & parent dropdown)
+async function fetchAllCategories() {
+  try {
+    const response = await categoryService.getAll({ status: 'active' })
+    allCategories.value = response.data
+  } catch {
+    allCategories.value = []
+  }
+}
+
+// Flatten tree into options for dropdowns
+function flattenForDropdown(cats: Category[], prefix = ''): { value: number | string; label: string }[] {
+  const result: { value: number | string; label: string }[] = []
+  for (const c of cats) {
+    result.push({ value: c.id, label: prefix ? `${prefix} → ${c.name}` : c.name })
+    if (c.children?.length) {
+      result.push(...flattenForDropdown(c.children, prefix ? `${prefix} → ${c.name}` : c.name))
+    }
+  }
+  return result
+}
+
+const parentOptions = computed(() => [
+  { value: '', label: 'No change' },
+  ...flattenForDropdown(allCategories.value),
+])
+
+const suggestedCategoryOptions = computed(() => [
+  { value: '', label: 'None' },
+  ...flattenForDropdown(allCategories.value),
+])
+
+// Stats
+const stats = computed(() => ({
+  total: categories.value.length,
+  pending: categories.value.filter(c => c.status === 'pending').length,
+  approved: categories.value.filter(c => c.status === 'active').length,
+  rejected: categories.value.filter(c => c.status === 'rejected').length,
+}))
+
+// Status helpers
+function statusVariant(status: string): 'warning' | 'success' | 'danger' | 'info' {
+  return { pending: 'warning' as const, active: 'success' as const, rejected: 'danger' as const }[status] ?? 'info'
+}
+
+// View detail
+function viewDetail(cat: Category) {
+  selectedCategory.value = cat
+  showDetailModal.value = true
+}
+
+// Open approve modal
+function openApproveModal(cat: Category) {
+  selectedCategory.value = cat
+  hasModifications.value = false
+  approveModifications.value = {
+    name: cat.name,
+    description: cat.description || '',
+    parent_id: cat.parent_id,
+    seo_title: cat.seo_title || '',
+  }
+  showApproveModal.value = true
+}
+
+// Submit approval with optional modifications
+async function submitApproval() {
+  if (!selectedCategory.value) return
+
+  actionLoading.value = selectedCategory.value.id
+  try {
+    // Build modifications payload only if user opted in
+    const payload = hasModifications.value
+      ? {
+          modifications: {
+            ...(approveModifications.value.name !== selectedCategory.value.name
+              ? { name: approveModifications.value.name }
+              : {}),
+            ...(approveModifications.value.description !== (selectedCategory.value.description || '')
+              ? { description: approveModifications.value.description }
+              : {}),
+            ...(approveModifications.value.parent_id !== selectedCategory.value.parent_id
+              ? { parent_id: approveModifications.value.parent_id }
+              : {}),
+            ...(approveModifications.value.seo_title !== (selectedCategory.value.seo_title || '')
+              ? { metadata: { seo_title: approveModifications.value.seo_title } }
+              : {}),
+          },
+        }
+      : undefined
+
+    await categoryService.approve(selectedCategory.value.id, payload)
+    toast.success(`"${selectedCategory.value.name}" approved`)
+    showApproveModal.value = false
+    fetchPending()
+  } catch {
+    toast.error('Failed to approve')
+  } finally {
+    actionLoading.value = null
+  }
+}
+
+// Quick approve (no modal, no modifications)
+async function quickApprove(cat: Category) {
+  actionLoading.value = cat.id
+  try {
+    await categoryService.approve(cat.id)
+    toast.success(`"${cat.name}" approved`)
+    fetchPending()
+  } catch {
+    toast.error('Failed to approve')
+  } finally {
+    actionLoading.value = null
+  }
+}
+
+// Open reject modal
+function openRejectModal(cat: Category) {
+  selectedCategory.value = cat
+  rejectionReason.value = ''
+  suggestedCategoryId.value = null
+  adminNotes.value = ''
+  showRejectModal.value = true
+}
+
+// Submit rejection with full payload
+async function submitRejection() {
+  if (!rejectionReason.value.trim()) {
+    toast.error('Please provide a rejection reason')
+    return
+  }
+  if (rejectionReason.value.trim().length < 10) {
+    toast.error('Rejection reason must be at least 10 characters')
+    return
+  }
+  if (!selectedCategory.value) return
+
+  actionLoading.value = selectedCategory.value.id
+  try {
+    await categoryService.reject(selectedCategory.value.id, {
+      reason: rejectionReason.value.trim(),
+      suggested_category_id: suggestedCategoryId.value || undefined,
+      admin_notes: adminNotes.value.trim() || undefined,
+    })
+    toast.success(`"${selectedCategory.value.name}" rejected`)
+    showRejectModal.value = false
+    fetchPending()
+  } catch {
+    toast.error('Failed to reject')
+  } finally {
+    actionLoading.value = null
+  }
+}
 </script>
 
 <template>
   <div class="space-y-6">
-    <!-- Stats -->
+    <!-- Stats row -->
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <StatCard
-        v-for="stat in stats"
-        :key="stat.title"
-        :title="stat.title"
-        :value="stat.value"
-        :icon="stat.icon"
-        :color="stat.color"
-      />
+      <BaseCard class="flex items-center gap-4 !p-4">
+        <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-100 dark:bg-primary-900/40">
+          <FolderIcon class="h-5 w-5 text-primary-600 dark:text-primary-400" />
+        </div>
+        <div>
+          <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ stats.total }}</p>
+          <p class="text-xs text-gray-500">Total Requests</p>
+        </div>
+      </BaseCard>
+      <BaseCard class="flex items-center gap-4 !p-4">
+        <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-yellow-100 dark:bg-yellow-900/40">
+          <ClockIcon class="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+        </div>
+        <div>
+          <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ stats.pending }}</p>
+          <p class="text-xs text-gray-500">Pending</p>
+        </div>
+      </BaseCard>
+      <BaseCard class="flex items-center gap-4 !p-4">
+        <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/40">
+          <CheckCircleIcon class="h-5 w-5 text-green-600 dark:text-green-400" />
+        </div>
+        <div>
+          <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ stats.approved }}</p>
+          <p class="text-xs text-gray-500">Approved</p>
+        </div>
+      </BaseCard>
+      <BaseCard class="flex items-center gap-4 !p-4">
+        <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/40">
+          <XCircleIcon class="h-5 w-5 text-red-600 dark:text-red-400" />
+        </div>
+        <div>
+          <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ stats.rejected }}</p>
+          <p class="text-xs text-gray-500">Rejected</p>
+        </div>
+      </BaseCard>
     </div>
 
-    <!-- Filters -->
-    <BaseCard>
-      <div class="flex flex-wrap items-center gap-4">
-        <div class="relative flex-1">
-          <MagnifyingGlassIcon class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
-          <FormInput
-            v-model="searchQuery"
-            name="search"
-            placeholder="Search suggestions..."
-            class="pl-10"
-          />
-        </div>
-        <FormSelect
-          v-model="statusFilter"
-          name="status_filter"
-          :options="[
-            { label: 'All Status', value: 'all' },
-            { label: 'Pending', value: 'pending' },
-            { label: 'Approved', value: 'approved' },
-            { label: 'Rejected', value: 'rejected' },
-          ]"
-          class="w-40"
-        />
+    <!-- Actions header -->
+    <div class="flex items-center justify-between">
+      <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">Category Requests</h3>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400"
+        @click="fetchPending"
+      >
+        <ArrowPathIcon class="h-4 w-4" />
+        Refresh
+      </button>
+    </div>
+
+    <!-- Loading -->
+    <BaseCard v-if="isLoading" padding="none">
+      <div class="flex items-center justify-center py-16">
+        <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
       </div>
     </BaseCard>
 
-    <!-- Table -->
-    <BaseCard>
-      <DataTable
-        :columns="columns"
-        :data="filteredSuggestions"
-        :loading="isLoading"
-        :total="filteredSuggestions.length"
-        :current-page="1"
-        :per-page="20"
+    <!-- Empty state -->
+    <BaseCard v-else-if="categories.length === 0">
+      <EmptyState
+        title="No pending requests"
+        description="There are currently no category requests from vendors."
+      />
+    </BaseCard>
+
+    <!-- Category list -->
+    <div v-else class="space-y-3">
+      <BaseCard
+        v-for="cat in categories"
+        :key="cat.id"
+        class="transition-all hover:shadow-md"
       >
-        <template #cell-name="{ row }">
-          <div>
-            <p class="font-medium text-gray-900 dark:text-white">{{ row.name }}</p>
-            <p class="text-xs text-gray-500 dark:text-gray-400">{{ row.description?.slice(0, 60) }}...</p>
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <!-- Left: info -->
+          <div class="flex items-start gap-4 min-w-0 flex-1">
+            <div
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+              :class="{
+                'bg-yellow-100 dark:bg-yellow-900/30': cat.status === 'pending',
+                'bg-green-100 dark:bg-green-900/30': cat.status === 'active',
+                'bg-red-100 dark:bg-red-900/30': cat.status === 'rejected',
+              }"
+            >
+              <FolderIcon
+                class="h-5 w-5"
+                :class="{
+                  'text-yellow-600 dark:text-yellow-400': cat.status === 'pending',
+                  'text-green-600 dark:text-green-400': cat.status === 'active',
+                  'text-red-600 dark:text-red-400': cat.status === 'rejected',
+                }"
+              />
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <h4 class="font-semibold text-gray-900 dark:text-white">{{ cat.name }}</h4>
+                <BaseBadge :variant="statusVariant(cat.status)" dot rounded size="sm">
+                  {{ cat.status_label || cat.status }}
+                </BaseBadge>
+              </div>
+              <p v-if="cat.description" class="mt-0.5 text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
+                {{ cat.description }}
+              </p>
+              <div class="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
+                <span v-if="cat.creator">
+                  By <span class="text-gray-600 dark:text-gray-300">{{ cat.creator.name }}</span>
+                </span>
+                <span :title="formatDate(cat.created_at, 'MMMM D, YYYY h:mm A')">
+                  {{ timeAgo(cat.created_at) }}
+                </span>
+                <span v-if="cat.parent_id" class="text-gray-400">
+                  Parent ID: {{ cat.parent_id }}
+                </span>
+              </div>
+              <p v-if="cat.rejection_reason" class="mt-1.5 text-xs text-red-500 dark:text-red-400">
+                Rejection: {{ cat.rejection_reason }}
+              </p>
+            </div>
           </div>
-        </template>
 
-        <template #cell-vendor="{ row }">
-          <span class="text-sm text-gray-700 dark:text-gray-300">{{ row.vendor.name }}</span>
-        </template>
-
-        <template #cell-products_estimate="{ row }">
-          <span class="text-sm text-gray-600 dark:text-gray-400">~{{ row.products_estimate }}</span>
-        </template>
-
-        <template #cell-submitted_at="{ row }">
-          <span class="text-sm text-gray-600 dark:text-gray-400" :title="formatDate(row.submitted_at, 'MMMM D, YYYY h:mm A')">
-            {{ timeAgo(row.submitted_at) }}
-          </span>
-        </template>
-
-        <template #cell-status="{ row }">
-          <BaseBadge :variant="getStatusVariant(row.status)" dot rounded>
-            {{ row.status.charAt(0).toUpperCase() + row.status.slice(1) }}
-          </BaseBadge>
-        </template>
-
-        <template #cell-actions="{ row }">
-          <div class="flex items-center justify-end gap-1">
+          <!-- Right: actions -->
+          <div class="flex items-center gap-2 shrink-0 sm:ml-4">
             <button
               type="button"
-              class="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+              class="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
               title="View details"
-              @click="viewDetail(row)"
+              @click="viewDetail(cat)"
             >
               <EyeIcon class="h-4 w-4" />
             </button>
-            <template v-if="row.status === 'pending'">
-              <button
-                type="button"
-                class="rounded-lg p-1.5 text-success-600 transition-colors hover:bg-success-50 dark:text-success-400 dark:hover:bg-success-900/20"
-                title="Approve"
-                @click="approveSuggestion(row)"
+            <template v-if="cat.status === 'pending'">
+              <BaseButton
+                size="sm"
+                variant="secondary"
+                :loading="actionLoading === cat.id"
+                @click="openApproveModal(cat)"
+                title="Approve with modifications"
               >
-                <CheckCircleIcon class="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                class="rounded-lg p-1.5 text-danger-600 transition-colors hover:bg-danger-50 dark:text-danger-400 dark:hover:bg-danger-900/20"
-                title="Reject"
-                @click="openRejectModal(row)"
+                <PencilSquareIcon class="mr-1 h-4 w-4" />
+                Review
+              </BaseButton>
+              <BaseButton
+                size="sm"
+                variant="primary"
+                :loading="actionLoading === cat.id"
+                @click="quickApprove(cat)"
               >
-                <XCircleIcon class="h-4 w-4" />
-              </button>
+                <CheckCircleIcon class="mr-1 h-4 w-4" />
+                Approve
+              </BaseButton>
+              <BaseButton
+                size="sm"
+                variant="danger"
+                :loading="actionLoading === cat.id"
+                @click="openRejectModal(cat)"
+              >
+                <XCircleIcon class="mr-1 h-4 w-4" />
+                Reject
+              </BaseButton>
             </template>
           </div>
-        </template>
-
-        <template #empty>
-          <EmptyState
-            :icon="FolderIcon"
-            title="No category suggestions"
-            description="No vendor category suggestions match your filters."
-          />
-        </template>
-      </DataTable>
-    </BaseCard>
+        </div>
+      </BaseCard>
+    </div>
 
     <!-- Detail Modal -->
-    <BaseModal v-model="showDetailModal" title="Category Suggestion Details" size="md">
-      <div v-if="selectedSuggestion" class="space-y-4">
-        <div>
-          <label class="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Category Name</label>
-          <p class="mt-1 text-sm font-medium text-gray-900 dark:text-white">{{ selectedSuggestion.name }}</p>
-        </div>
-        <div>
-          <label class="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Parent Category</label>
-          <p class="mt-1 text-sm text-gray-700 dark:text-gray-300">{{ selectedSuggestion.parent_category }}</p>
-        </div>
-        <div>
-          <label class="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Description</label>
-          <p class="mt-1 text-sm text-gray-700 dark:text-gray-300">{{ selectedSuggestion.description }}</p>
-        </div>
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Suggested By</label>
-            <p class="mt-1 text-sm text-gray-700 dark:text-gray-300">{{ selectedSuggestion.vendor.name }}</p>
+    <BaseModal v-model="showDetailModal" title="Category Details" size="md">
+      <div v-if="selectedCategory" class="space-y-5">
+        <div class="flex items-center gap-3">
+          <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-100 dark:bg-primary-900/40">
+            <FolderIcon class="h-6 w-6 text-primary-600 dark:text-primary-400" />
           </div>
           <div>
-            <label class="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Est. Products</label>
-            <p class="mt-1 text-sm text-gray-700 dark:text-gray-300">~{{ selectedSuggestion.products_estimate }}</p>
-          </div>
-        </div>
-        <div>
-          <label class="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Status</label>
-          <div class="mt-1">
-            <BaseBadge :variant="getStatusVariant(selectedSuggestion.status)" dot rounded>
-              {{ selectedSuggestion.status.charAt(0).toUpperCase() + selectedSuggestion.status.slice(1) }}
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ selectedCategory.name }}</h3>
+            <BaseBadge :variant="statusVariant(selectedCategory.status)" dot rounded size="sm">
+              {{ selectedCategory.status_label || selectedCategory.status }}
             </BaseBadge>
           </div>
         </div>
-        <div v-if="selectedSuggestion.rejection_reason">
-          <label class="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Rejection Reason</label>
-          <p class="mt-1 text-sm text-danger-600 dark:text-danger-400">{{ selectedSuggestion.rejection_reason }}</p>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <p class="text-xs font-medium uppercase text-gray-400">Slug</p>
+            <p class="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{{ selectedCategory.slug }}</p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-gray-400">Depth</p>
+            <p class="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{{ selectedCategory.depth }}</p>
+          </div>
+          <div v-if="selectedCategory.creator">
+            <p class="text-xs font-medium uppercase text-gray-400">Created By</p>
+            <p class="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{{ selectedCategory.creator.name }}</p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-gray-400">Created</p>
+            <p class="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{{ formatDate(selectedCategory.created_at, 'MMMM D, YYYY') }}</p>
+          </div>
+        </div>
+
+        <div v-if="selectedCategory.description">
+          <p class="text-xs font-medium uppercase text-gray-400">Description</p>
+          <p class="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{{ selectedCategory.description }}</p>
+        </div>
+
+        <div v-if="selectedCategory.seo_title || selectedCategory.seo_description" class="rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
+          <p class="text-xs font-medium uppercase text-gray-400 mb-2">SEO</p>
+          <p v-if="selectedCategory.seo_title" class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ selectedCategory.seo_title }}</p>
+          <p v-if="selectedCategory.seo_description" class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ selectedCategory.seo_description }}</p>
+        </div>
+
+        <div v-if="selectedCategory.rejection_reason" class="rounded-lg bg-red-50 p-3 dark:bg-red-900/20">
+          <p class="text-xs font-medium uppercase text-red-500">Rejection Reason</p>
+          <p class="mt-0.5 text-sm text-red-600 dark:text-red-400">{{ selectedCategory.rejection_reason }}</p>
+        </div>
+
+        <!-- Actions in modal -->
+        <div v-if="selectedCategory.status === 'pending'" class="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+          <BaseButton variant="secondary" @click="showDetailModal = false; openApproveModal(selectedCategory!)">
+            <PencilSquareIcon class="mr-1 h-4 w-4" />
+            Review & Approve
+          </BaseButton>
+          <BaseButton variant="primary" @click="quickApprove(selectedCategory!); showDetailModal = false">
+            <CheckCircleIcon class="mr-1 h-4 w-4" />
+            Approve
+          </BaseButton>
+          <BaseButton variant="danger" @click="showDetailModal = false; openRejectModal(selectedCategory!)">
+            <XCircleIcon class="mr-1 h-4 w-4" />
+            Reject
+          </BaseButton>
         </div>
       </div>
     </BaseModal>
 
-    <!-- Reject Modal -->
-    <BaseModal v-model="showRejectModal" title="Reject Category Suggestion" size="sm">
+    <!-- Approve Modal (with optional modifications) -->
+    <BaseModal v-model="showApproveModal" title="Approve Category" size="md">
+      <div v-if="selectedCategory" class="space-y-5">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30">
+            <CheckCircleIcon class="h-5 w-5 text-green-600 dark:text-green-400" />
+          </div>
+          <div>
+            <h4 class="font-semibold text-gray-900 dark:text-white">{{ selectedCategory.name }}</h4>
+            <p v-if="selectedCategory.creator" class="text-xs text-gray-500">By {{ selectedCategory.creator.name }}</p>
+          </div>
+        </div>
+
+        <p class="text-sm text-gray-600 dark:text-gray-400">
+          You can modify the category before approving. Toggle modifications below if changes are needed.
+        </p>
+
+        <!-- Toggle modifications -->
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input v-model="hasModifications" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+          <span class="text-sm text-gray-700 dark:text-gray-300">Modify before approving</span>
+        </label>
+
+        <!-- Modifications form -->
+        <div v-if="hasModifications" class="space-y-4 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+          <FormInput
+            v-model="approveModifications.name"
+            label="Category Name"
+            placeholder="Category name"
+          />
+          <FormTextarea
+            v-model="approveModifications.description"
+            label="Description"
+            placeholder="Category description"
+            :rows="3"
+          />
+          <FormSelect
+            v-model="approveModifications.parent_id"
+            label="Parent Category"
+            :options="parentOptions"
+          />
+          <FormInput
+            v-model="approveModifications.seo_title"
+            label="SEO Title"
+            placeholder="SEO title"
+          />
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+          <BaseButton variant="ghost" @click="showApproveModal = false">Cancel</BaseButton>
+          <BaseButton variant="primary" :loading="actionLoading !== null" @click="submitApproval">
+            <CheckCircleIcon class="mr-1 h-4 w-4" />
+            Approve Category
+          </BaseButton>
+        </div>
+      </div>
+    </BaseModal>
+
+    <!-- Reject Modal (with suggested category + admin notes) -->
+    <BaseModal v-model="showRejectModal" title="Reject Category" size="md">
       <div class="space-y-4">
         <p class="text-sm text-gray-600 dark:text-gray-400">
-          Please provide a reason for rejecting
-          <span class="font-medium text-gray-900 dark:text-white">"{{ selectedSuggestion?.name }}"</span>.
+          Rejecting <span class="font-semibold text-gray-900 dark:text-white">"{{ selectedCategory?.name }}"</span>.
+          The vendor will be notified.
         </p>
+
         <FormTextarea
           v-model="rejectionReason"
-          name="rejection_reason"
           label="Rejection Reason"
-          placeholder="Enter the reason for rejection..."
+          placeholder="Why is this category being rejected? (min 10 characters)"
           :rows="4"
           required
+          hint="Required. Minimum 10 characters."
         />
+
+        <FormSelect
+          v-model="suggestedCategoryId"
+          label="Suggest Alternative Category"
+          :options="suggestedCategoryOptions"
+          hint="Optional. Suggest an existing category the vendor could use instead."
+        />
+
+        <FormTextarea
+          v-model="adminNotes"
+          label="Admin Notes (Internal)"
+          placeholder="Internal notes for other admins (not visible to vendor)"
+          :rows="2"
+          hint="Optional. Only visible to admins."
+        />
+
         <div class="flex justify-end gap-2">
           <BaseButton variant="ghost" @click="showRejectModal = false">Cancel</BaseButton>
-          <BaseButton variant="danger" @click="submitRejection">Reject</BaseButton>
+          <BaseButton
+            variant="danger"
+            :loading="actionLoading !== null"
+            :disabled="rejectionReason.trim().length < 10"
+            @click="submitRejection"
+          >
+            <XCircleIcon class="mr-1 h-4 w-4" />
+            Reject Category
+          </BaseButton>
         </div>
       </div>
     </BaseModal>

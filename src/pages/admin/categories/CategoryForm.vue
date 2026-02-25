@@ -9,7 +9,7 @@ import { useForm } from 'vee-validate'
 import { toTypedSchema } from '@vee-validate/zod'
 import { z } from 'zod'
 import { useBreadcrumbStore } from '@/stores'
-import { categoryService, attributeTemplateService } from '@/services'
+import { categoryService } from '@/services'
 import { useToast } from '@/composables'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
@@ -17,7 +17,7 @@ import FormInput from '@/components/form/FormInput.vue'
 import FormTextarea from '@/components/form/FormTextarea.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
 import FormSwitch from '@/components/form/FormSwitch.vue'
-import type { Category, AttributeTemplate } from '@/types'
+import type { Category } from '@/types'
 import { PhotoIcon, XMarkIcon, ArrowLeftIcon } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
@@ -46,13 +46,11 @@ onMounted(() => {
     fetchCategory()
   }
   fetchParentCategories()
-  fetchAttributeTemplates()
 })
 
 // Data
 const isLoading = ref(false)
 const parentCategories = ref<Category[]>([])
-const attributeTemplates = ref<AttributeTemplate[]>([])
 const imagePreview = ref<string | null>(null)
 const selectedImage = ref<File | null>(null)
 
@@ -62,12 +60,12 @@ const categorySchema = toTypedSchema(z.object({
   slug: z.string().optional(),
   description: z.string().optional(),
   parent_id: z.coerce.number().optional().nullable(),
-  status: z.enum(['active', 'inactive']),
-  is_featured: z.boolean().optional(),
-  sort_order: z.coerce.number().int().min(0).optional(),
-  meta_title: z.string().optional(),
-  meta_description: z.string().optional(),
-  attribute_template_id: z.coerce.number().optional().nullable(),
+  status: z.enum(['active', 'inactive', 'pending', 'rejected']),
+  is_active: z.boolean().optional(),
+  display_order: z.coerce.number().int().min(0).optional(),
+  seo_title: z.string().max(255).optional(),
+  seo_description: z.string().max(500).optional(),
+  keywords: z.string().optional(),
 }))
 
 const {
@@ -84,11 +82,11 @@ const {
     description: '',
     parent_id: null as number | null,
     status: 'active' as const,
-    is_featured: false,
-    sort_order: 0,
-    meta_title: '',
-    meta_description: '',
-    attribute_template_id: null as number | null,
+    is_active: true,
+    display_order: 0,
+    seo_title: '',
+    seo_description: '',
+    keywords: '',
   },
 })
 
@@ -97,11 +95,11 @@ const [slug, slugAttrs] = defineField('slug')
 const [description, descriptionAttrs] = defineField('description')
 const [parentId, parentIdAttrs] = defineField('parent_id')
 const [status, statusAttrs] = defineField('status')
-const [isFeatured, isFeaturedAttrs] = defineField('is_featured')
-const [sortOrder, sortOrderAttrs] = defineField('sort_order')
-const [metaTitle, metaTitleAttrs] = defineField('meta_title')
-const [metaDescription, metaDescriptionAttrs] = defineField('meta_description')
-const [attributeTemplateId, attributeTemplateIdAttrs] = defineField('attribute_template_id')
+const [isActive, isActiveAttrs] = defineField('is_active')
+const [displayOrder, displayOrderAttrs] = defineField('display_order')
+const [seoTitle, seoTitleAttrs] = defineField('seo_title')
+const [seoDescription, seoDescriptionAttrs] = defineField('seo_description')
+const [keywords, keywordsAttrs] = defineField('keywords')
 
 // Auto-generate slug from name
 watch(name, (newName) => {
@@ -114,6 +112,8 @@ watch(name, (newName) => {
 const statusOptions = [
   { value: 'active', label: 'Active' },
   { value: 'inactive', label: 'Inactive' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'rejected', label: 'Rejected' },
 ]
 
 // Flatten tree for parent dropdown
@@ -134,11 +134,6 @@ const parentOptions = computed(() => [
     .filter(c => c.value !== categoryId.value),
 ])
 
-const templateOptions = computed(() => [
-  { value: '', label: 'No Template' },
-  ...attributeTemplates.value.map(t => ({ value: t.id, label: t.name })),
-])
-
 // Fetch category for editing
 async function fetchCategory() {
   if (!categoryId.value) return
@@ -151,16 +146,16 @@ async function fetchCategory() {
       slug: category.slug,
       description: category.description || '',
       parent_id: category.parent_id,
-      status: category.status === 'active' ? 'active' : 'inactive',
-      is_featured: false,
-      sort_order: category.display_order || 0,
-      meta_title: category.seo_title || '',
-      meta_description: category.seo_description || '',
-      attribute_template_id: null,
+      status: category.status || 'active',
+      is_active: category.is_active ?? true,
+      display_order: category.display_order || 0,
+      seo_title: category.seo_title || '',
+      seo_description: category.seo_description || '',
+      keywords: (category.keywords || []).join(', '),
     })
     // Show existing image
-    if (category.image_field) {
-      imagePreview.value = category.image_field
+    if (category.image || category.image_field) {
+      imagePreview.value = category.image || category.image_field
     }
   } catch (error) {
     toast.error('Failed to fetch category')
@@ -177,17 +172,6 @@ async function fetchParentCategories() {
     parentCategories.value = response.data
   } catch (error) {
     parentCategories.value = []
-  }
-}
-
-// Fetch attribute templates
-async function fetchAttributeTemplates() {
-  try {
-    const response = await attributeTemplateService.getAll({ per_page: 100 })
-    attributeTemplates.value = response.data
-  } catch (error) {
-    console.error('Failed to fetch templates:', error)
-    attributeTemplates.value = []
   }
 }
 
@@ -220,16 +204,24 @@ function removeImage() {
 // Submit form
 const onSubmit = handleSubmit(async (values) => {
   try {
+    const keywordsArray = (values.keywords || '')
+      .split(',')
+      .map((k: string) => k.trim())
+      .filter(Boolean)
+
     const formData: Record<string, unknown> = {
       name: values.name,
       slug: values.slug,
       description: values.description,
       parent_id: values.parent_id || null,
       status: values.status,
-      is_active: values.status === 'active',
-      display_order: values.sort_order,
-      seo_title: values.meta_title,
-      seo_description: values.meta_description,
+      is_active: values.is_active ?? (values.status === 'active'),
+      display_order: values.display_order,
+      metadata: {
+        seo_title: values.seo_title || undefined,
+        seo_description: values.seo_description || undefined,
+        keywords: keywordsArray.length ? keywordsArray : undefined,
+      },
     }
     
     if (selectedImage.value) {
@@ -352,22 +344,32 @@ function goBack() {
         <BaseCard title="SEO Settings">
           <div class="space-y-4">
             <FormInput
-              v-model="metaTitle"
-              v-bind="metaTitleAttrs"
-              name="meta_title"
-              label="Meta Title"
+              v-model="seoTitle"
+              v-bind="seoTitleAttrs"
+              name="seo_title"
+              label="SEO Title"
               placeholder="SEO title for search engines"
-              :error="errors.meta_title"
+              :error="errors.seo_title"
             />
             
             <FormTextarea
-              v-model="metaDescription"
-              v-bind="metaDescriptionAttrs"
-              name="meta_description"
-              label="Meta Description"
+              v-model="seoDescription"
+              v-bind="seoDescriptionAttrs"
+              name="seo_description"
+              label="SEO Description"
               placeholder="SEO description for search engines"
               :rows="3"
-              :error="errors.meta_description"
+              :error="errors.seo_description"
+            />
+
+            <FormInput
+              v-model="keywords"
+              v-bind="keywordsAttrs"
+              name="keywords"
+              label="Keywords"
+              placeholder="Comma-separated keywords"
+              :error="errors.keywords"
+              hint="Separate keywords with commas"
             />
           </div>
         </BaseCard>
@@ -397,37 +399,29 @@ function goBack() {
             />
             
             <FormInput
-              v-model="sortOrder"
-              v-bind="sortOrderAttrs"
-              name="sort_order"
+              v-model="displayOrder"
+              v-bind="displayOrderAttrs"
+              name="display_order"
               label="Display Order"
               type="number"
               :min="0"
-              :error="errors.sort_order"
+              :error="errors.display_order"
             />
             
             <FormSwitch
-              v-model="isFeatured"
-              v-bind="isFeaturedAttrs"
-              name="is_featured"
-              label="Featured Category"
+              v-model="isActive"
+              v-bind="isActiveAttrs"
+              name="is_active"
+              label="Active"
             />
           </div>
         </BaseCard>
 
-        <!-- Attribute Template -->
-        <BaseCard title="Attribute Template">
-          <div class="space-y-4">
-            <FormSelect
-              v-model="attributeTemplateId"
-              v-bind="attributeTemplateIdAttrs"
-              name="attribute_template_id"
-              label="Assign Template"
-              :options="templateOptions"
-              :error="errors.attribute_template_id"
-              hint="Products in this category will inherit attributes from the selected template"
-            />
-          </div>
+        <!-- Keywords Note -->
+        <BaseCard title="Attribute Templates">
+          <p class="text-sm text-gray-500 dark:text-gray-400">
+            Attribute templates are managed from the category detail page after creation.
+          </p>
         </BaseCard>
       </div>
     </form>

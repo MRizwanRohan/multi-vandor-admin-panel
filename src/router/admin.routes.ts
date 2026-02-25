@@ -72,6 +72,12 @@ const adminRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/admin/categories/PendingCategories.vue'),
         meta: { title: 'Pending Categories' },
       },
+      {
+        path: 'categories/:id',
+        name: 'admin-category-detail',
+        component: () => import('@/pages/admin/categories/CategoryDetail.vue'),
+        meta: { title: 'Category Details' },
+      },
       // Attribute Templates
       {
         path: 'attribute-templates',

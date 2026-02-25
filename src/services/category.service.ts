@@ -4,7 +4,14 @@
 
 import api from './api'
 import { getRolePrefix } from './api'
-import type { Category, CategoryTemplateAssignment } from '@/types'
+import type {
+  Category,
+  CategoryStatus,
+  CategoryTemplateAssignment,
+  CategoryApprovePayload,
+  CategoryRejectPayload,
+  CategoryRequest,
+} from '@/types'
 
 const adminPrefix = () => `/admin/categories`
 const vendorPrefix = () => `/vendor/categories`
@@ -25,12 +32,14 @@ export interface CategoryFormData {
   description?: string
   parent_id?: number | null
   image?: string | File
-  status: 'active' | 'inactive'
-  is_featured?: boolean
-  sort_order?: number
-  meta_title?: string
-  meta_description?: string
-  attribute_template_id?: number | null
+  status?: CategoryStatus
+  is_active?: boolean
+  display_order?: number
+  metadata?: {
+    seo_title?: string
+    seo_description?: string
+    keywords?: string[]
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -115,27 +124,30 @@ export const categoryService = {
 
   /**
    * PUT /v1/admin/categories/reorder
-   * Reorder categories
+   * Reorder categories — sends ordered array of IDs
    */
-  async reorder(items: { id: number; sort_order: number; parent_id?: number | null }[]): Promise<void> {
-    await api.put(`${adminPrefix()}/reorder`, { items })
+  async reorder(order: number[]): Promise<void> {
+    await api.put(`${adminPrefix()}/reorder`, { order })
   },
 
   /**
    * PUT /v1/admin/categories/{category}/approve
-   * Approve a pending category
+   * Approve a pending category — optionally with modifications
    */
-  async approve(id: number): Promise<Category> {
-    const response = await api.put<ApiItemResponse>(`${adminPrefix()}/${id}/approve`)
+  async approve(id: number, payload?: CategoryApprovePayload): Promise<Category> {
+    const response = await api.put<ApiItemResponse>(
+      `${adminPrefix()}/${id}/approve`,
+      payload ?? {},
+    )
     return response.data.data
   },
 
   /**
    * PUT /v1/admin/categories/{category}/reject
-   * Reject a pending category
+   * Reject a pending category — with reason, optional suggested alternative & admin notes
    */
-  async reject(id: number, reason: string): Promise<Category> {
-    const response = await api.put<ApiItemResponse>(`${adminPrefix()}/${id}/reject`, { reason })
+  async reject(id: number, payload: CategoryRejectPayload): Promise<Category> {
+    const response = await api.put<ApiItemResponse>(`${adminPrefix()}/${id}/reject`, payload)
     return response.data.data
   },
 
@@ -188,9 +200,9 @@ export const categoryService = {
 
   /**
    * GET /v1/admin/categories/{category}/requests
-   * Get category request history (approval/rejection)
+   * Get category request history (approval/rejection audit trail)
    */
-  async getRequestHistory(id: number): Promise<unknown[]> {
+  async getRequestHistory(id: number): Promise<CategoryRequest[]> {
     const response = await api.get(`${adminPrefix()}/${id}/requests`)
     return response.data.data
   },
@@ -249,9 +261,21 @@ export const categoryService = {
 
   /**
    * PUT /v1/vendor/categories/{category}
-   * Update own pending category
+   * Update own pending category (limited fields: name, description, display_order, metadata)
    */
-  async updatePendingCategory(id: number, data: Partial<CategoryFormData>): Promise<Category> {
+  async updatePendingCategory(
+    id: number,
+    data: {
+      name?: string
+      description?: string
+      display_order?: number
+      metadata?: {
+        seo_title?: string
+        seo_description?: string
+        keywords?: string[]
+      }
+    },
+  ): Promise<Category> {
     const response = await api.put<ApiItemResponse>(`${vendorPrefix()}/${id}`, data)
     return response.data.data
   },

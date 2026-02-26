@@ -47,6 +47,9 @@ onMounted(() => {
     { label: pageTitle.value },
   ])
   
+  // Load data types
+  loadDataTypes()
+  
   if (isEditMode.value) {
     fetchTemplate()
   }
@@ -121,14 +124,32 @@ const [helpText, helpTextAttrs] = defineField('help_text')
 const [min, minAttrs] = defineField('min')
 const [max, maxAttrs] = defineField('max')
 
-// Data type options (per API)
-const dataTypeOptions = [
-  { value: 'text', label: 'Text' },
-  { value: 'number', label: 'Number' },
-  { value: 'select', label: 'Single Select' },
-  { value: 'multiselect', label: 'Multi Select' },
-  { value: 'boolean', label: 'Yes/No' },
-]
+// Data type options (loaded from API)
+const dataTypeOptions = ref<Array<{ value: string; label: string }>>([])
+const isLoadingDataTypes = ref(false)
+
+// Load data types from API
+async function loadDataTypes() {
+  isLoadingDataTypes.value = true
+  try {
+    const types = await attributeTemplateService.getDataTypes()
+    dataTypeOptions.value = types.map(t => ({
+      value: t.value,
+      label: t.label
+    }))
+  } catch (error) {
+    // Fallback to basic types if API fails
+    dataTypeOptions.value = [
+      { value: 'text', label: 'Text' },
+      { value: 'number', label: 'Number' },
+      { value: 'select', label: 'Single Select' },
+      { value: 'multiselect', label: 'Multi Select' },
+      { value: 'boolean', label: 'Yes/No' },
+    ]
+  } finally {
+    isLoadingDataTypes.value = false
+  }
+}
 
 // Show options editor for select types only
 const showOptionsEditor = computed(() =>
@@ -319,6 +340,7 @@ function goBack() {
               label="Data Type"
               :options="dataTypeOptions"
               :error="errors.data_type"
+              :disabled="isLoadingDataTypes"
               required
             />
           </div>

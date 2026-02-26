@@ -7,7 +7,7 @@ import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
 import { attributeTemplateService } from '@/services'
-import { usePagination, useConfirm, useToast } from '@/composables'
+import { usePagination, useConfirm, useToast, useDebounce } from '@/composables'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
@@ -46,6 +46,7 @@ const isLoading = ref(true)
 
 // Filters
 const searchQuery = ref('')
+const debouncedSearch = useDebounce(searchQuery, 300)
 const typeFilter = ref('')
 
 const typeOptions = [
@@ -75,7 +76,7 @@ async function fetchTemplates() {
     const response = await attributeTemplateService.getAll({
       page: pagination.currentPage.value,
       per_page: pagination.perPage.value,
-      search: searchQuery.value || undefined,
+      search: debouncedSearch.value || undefined,
       type: typeFilter.value || undefined,
     })
     templates.value = response.data || []
@@ -89,8 +90,8 @@ async function fetchTemplates() {
   }
 }
 
-// Watch for filter changes
-watch([searchQuery, typeFilter], () => {
+// Watch for filter changes (search is debounced)
+watch([debouncedSearch, typeFilter], () => {
   pagination.goToPage(1)
   fetchTemplates()
 })

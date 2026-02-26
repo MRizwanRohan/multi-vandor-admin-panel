@@ -168,6 +168,16 @@ async function onTemplatesSaved() {
   }
 }
 
+// Helper: get template data_type (handles camelCase from API interceptor)
+function getTemplateType(tmpl: CategoryTemplateAssignment): string {
+  return (tmpl as any).dataType ?? (tmpl as any).data_type ?? tmpl.type ?? ''
+}
+
+// Helper: get template options (handles both array of strings and array of objects)
+function getTemplateOptions(tmpl: CategoryTemplateAssignment): any[] {
+  const opts = tmpl.options ?? (tmpl as any).templateOptions ?? []
+  return Array.isArray(opts) ? opts : []
+}
 // Image error handler
 function handleImageError(event: Event) {
   const target = event.target as HTMLImageElement
@@ -431,15 +441,25 @@ function handleImageError(event: Event) {
                       <p class="text-sm font-medium text-gray-900 dark:text-white">
                         {{ tmpl.name || `Template #${tmpl.attribute_template_id || tmpl.id}` }}
                       </p>
-                      <BaseBadge v-if="tmpl.type" variant="info" size="sm" rounded>{{ tmpl.type }}</BaseBadge>
+                      <BaseBadge v-if="getTemplateType(tmpl)" variant="info" size="sm" rounded>{{ getTemplateType(tmpl) }}</BaseBadge>
                       <BaseBadge v-if="tmpl.source === 'inherited'" variant="warning" size="sm" rounded>
                         inherited{{ tmpl.inherited_from ? ` from ${tmpl.inherited_from.name}` : '' }}
                       </BaseBadge>
                     </div>
                     <div class="flex items-center gap-3 mt-0.5">
-                      <span class="text-xs text-gray-500">Order: {{ tmpl.display_order }}</span>
-                      <span v-if="tmpl.is_variant_defining" class="text-xs text-purple-600 dark:text-purple-400">Variant defining</span>
-                      <span v-if="tmpl.is_filterable" class="text-xs text-blue-600 dark:text-blue-400">Filterable</span>
+                      <span class="text-xs text-gray-500">Order: {{ tmpl.display_order ?? (tmpl as any).displayOrder }}</span>
+                      <span v-if="tmpl.is_variant_defining || (tmpl as any).isVariantDefining" class="text-xs text-purple-600 dark:text-purple-400">Variant defining</span>
+                      <span v-if="tmpl.is_filterable || (tmpl as any).isFilterable" class="text-xs text-blue-600 dark:text-blue-400">Filterable</span>
+                    </div>
+                    <!-- Template Options -->
+                    <div v-if="getTemplateOptions(tmpl).length > 0" class="flex flex-wrap gap-1 mt-1.5">
+                      <span
+                        v-for="opt in getTemplateOptions(tmpl)"
+                        :key="typeof opt === 'string' ? opt : opt.label || opt.value"
+                        class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-400"
+                      >
+                        {{ typeof opt === 'string' ? opt : opt.label || opt.value }}
+                      </span>
                     </div>
                   </div>
                 </div>

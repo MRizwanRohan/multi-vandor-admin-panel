@@ -150,11 +150,10 @@ export const attributeTemplateService = {
    * GET /admin/attribute-templates/variant-combinations/{category}
    */
   async getVariantCombinations(categorySlug: string): Promise<Record<string, { template_name: string; option_value: string; option_label: string }>[]> {
-    const url = `${prefix()}/variant-combinations/${categorySlug}`
-    console.log('[getVariantCombinations] URL:', url)
-    const response = await api.get<{ data: Record<string, { template_name: string; option_value: string; option_label: string }>[] }>(url)
-    console.log('[getVariantCombinations] Full response:', response.data)
-    return response.data.data ?? response.data ?? []
+    const response = await api.get<{ data: Record<string, { template_name: string; option_value: string; option_label: string }>[] }>(
+      `${prefix()}/variant-combinations/${categorySlug}`
+    )
+    return response.data.data ?? []
   },
 
   // ─────────────────────────────────────────────────────────────────

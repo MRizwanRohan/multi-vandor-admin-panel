@@ -3,7 +3,7 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { categoryService } from '@/services'
 import { attributeTemplateService } from '@/services'
 import { useToast } from '@/composables'
@@ -86,19 +86,34 @@ async function loadData() {
     }
 
     // Build editable list from current templates
-    editedTemplates.value = templates.map(t => {
-      // Try to find is_variant_defining from availableTemplates if not in response
-      const fullTemplate = availableTemplates.value.find(at => at.id === (t.attribute_template_id ?? t.id))
+    // Note: response interceptor converts keys to camelCase, but also keeps snake_case originals
+    // Backend returns templates with pivot object containing assignment data
+    editedTemplates.value = templates.map((t: any) => {
+      // Extract the template ID - could be in pivot or directly
+      const templateId = t.pivot?.attributeTemplateId ?? t.pivot?.attribute_template_id 
+        ?? t.attributeTemplateId ?? t.attribute_template_id ?? t.id ?? 0
+
+      // Extract pivot data
+      const pivot = t.pivot ?? {}
+      const isRequiredOverride = pivot.isRequiredOverride ?? pivot.is_required_override ?? t.isRequiredOverride ?? t.is_required_override ?? t.isRequired ?? t.is_required ?? false
+      const displayOrder = pivot.displayOrder ?? pivot.display_order ?? t.displayOrder ?? t.display_order ?? 0
+      const inheritanceMode = pivot.inheritanceMode ?? pivot.inheritance_mode ?? t.inheritanceMode ?? t.inheritance_mode ?? 'inherit'
+      const isInherited = pivot.isInherited ?? pivot.is_inherited ?? false
+
+      // Try to find full template data from availableTemplates
+      const fullTemplate = availableTemplates.value.find(at => at.id === (t.id ?? templateId))
+      const dataType = t.dataType ?? t.data_type ?? fullTemplate?.data_type ?? 'text'
+
       return {
-        attribute_template_id: t.attribute_template_id ?? t.id ?? 0,
-        is_required_override: t.is_required_override ?? t.is_required ?? false,
-        display_order: t.display_order ?? 0,
-        inheritance_mode: t.inheritance_mode ?? 'inherit',
-        name: t.name ?? `Template #${t.attribute_template_id ?? t.id}`,
-        type: t.type ?? 'text',
-        source: t.source ?? 'direct',
-        inherited_from: t.inherited_from ?? null,
-        is_variant_defining: t.is_variant_defining ?? fullTemplate?.is_variant_defining ?? false,
+        attribute_template_id: templateId,
+        is_required_override: isRequiredOverride,
+        display_order: displayOrder,
+        inheritance_mode: inheritanceMode,
+        name: t.name ?? fullTemplate?.name ?? `Template #${templateId}`,
+        type: dataType,
+        source: isInherited ? 'inherited' : (t.source ?? 'direct'),
+        inherited_from: t.inheritedFrom ?? t.inherited_from ?? null,
+        is_variant_defining: t.isVariantDefining ?? t.is_variant_defining ?? fullTemplate?.is_variant_defining ?? false,
       }
     })
   } catch (err: any) {
@@ -157,15 +172,12 @@ function moveTemplate(index: number, direction: 'up' | 'down') {
   })
 }
 
-// Save templates
-async function saveTemplates(closeModal: boolean | Event = true) {
-  // Handle event object being passed when called from template click
-  const shouldClose = typeof closeModal === 'boolean' ? closeModal : true
-  
+// Save templates — returns true on success, false on failure
+async function saveTemplates(closeAfter = true): Promise<boolean> {
   isSaving.value = true
   try {
     const payload = editedTemplates.value
-      .filter(t => t.source !== 'inherited') // Only sync direct templates
+      .filter(t => t.source !== 'inherited')
       .map(t => ({
         attribute_template_id: t.attribute_template_id,
         is_required_override: t.is_required_override,
@@ -174,19 +186,21 @@ async function saveTemplates(closeModal: boolean | Event = true) {
       }))
 
     await categoryService.syncTemplates(props.categoryId, payload)
-    
-    // Only show success toast closing, or if explicitly needed
-    if (shouldClose) {
-      toast.success('Attribute templates synced successfully')
-      emit('saved')
-      close()
-    } else {
-      // If not closing (e.g. generating variants), be silent but still emit saved to refresh parent if needed
-      emit('saved')
+
+    // Notify parent to refresh data
+    emit('saved')
+
+    if (closeAfter) {
+      // Wait for any reactivity updates to settle
+      await nextTick()
+      toast.success('Templates saved successfully')
+      emit('update:modelValue', false)
     }
+
+    return true
   } catch (err: any) {
-    toast.error(err.response?.data?.message || 'Failed to sync templates')
-    throw err
+    toast.error(err.response?.data?.message || 'Failed to save templates')
+    return false
   } finally {
     isSaving.value = false
   }
@@ -211,37 +225,22 @@ function typeColor(type: string): 'info' | 'success' | 'warning' {
 
 // Generate variant combinations
 async function generateVariantCombinations() {
-  // To generate combinations, the backend needs the templates assigned.
-  // We save first to ensure backend has latest state.
-  
   isLoadingVariants.value = true
   variantError.value = null
   showVariantCombinations.value = false
-  
   try {
-    try {
-      await saveTemplates(false) // Save without closing
-    } catch (saveErr) {
-      // Save failed, error already toasted in saveTemplates
-      variantError.value = 'Cannot generate combinations without saving templates first.'
+    // Save first so backend has the latest assigned templates
+    const saved = await saveTemplates(false)
+    if (!saved) {
       isLoadingVariants.value = false
-      return 
+      return
     }
-    
+
     const categorySlug = typeof props.categoryId === 'string' ? props.categoryId : String(props.categoryId)
-    console.log('[VariantCombinations] Fetching for category:', categorySlug)
-    
     const result = await attributeTemplateService.getVariantCombinations(categorySlug)
-    console.log('[VariantCombinations] API Response:', result)
-    
-    variantCombinations.value = result
+    variantCombinations.value = result ?? []
     showVariantCombinations.value = true
-    
-    if (!result || result.length === 0) {
-      console.log('[VariantCombinations] Empty result. Check if templates have is_variant_defining=true AND have options.')
-    }
   } catch (err: any) {
-    console.error('[VariantCombinations] Error:', err)
     variantError.value = err.response?.data?.message || 'Failed to generate variant combinations'
     toast.error(variantError.value!)
     variantCombinations.value = []
@@ -461,7 +460,7 @@ const hasVariantDefiningTemplates = computed(() => {
         <BaseButton variant="secondary" @click="close" :disabled="isSaving">
           Cancel
         </BaseButton>
-        <BaseButton variant="primary" :loading="isSaving" @click="saveTemplates">
+        <BaseButton variant="primary" :loading="isSaving" @click="saveTemplates()">
           <ArrowPathIcon class="mr-1.5 h-4 w-4" />
           Save Templates
         </BaseButton>

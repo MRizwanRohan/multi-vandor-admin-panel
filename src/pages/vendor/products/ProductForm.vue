@@ -56,6 +56,7 @@ const isLoadingTemplates = ref(false)
 
 // Categories
 const categories = ref<{ value: string; label: string }[]>([])
+const categorySlugMap = ref<Record<string, string>>({}) // id → slug
 
 // Product Type
 const productType = ref<ProductType>('simple')
@@ -131,6 +132,12 @@ async function loadCategories() {
       value: String(cat.id),
       label: cat.name,
     }))
+    // Build id → slug map for template loading
+    const slugMap: Record<string, string> = {}
+    response.data.forEach(cat => {
+      slugMap[String(cat.id)] = cat.slug
+    })
+    categorySlugMap.value = slugMap
   } catch (err: any) {
     const message = err.response?.data?.message || 'Failed to load categories'
     toast.error(message)
@@ -151,8 +158,15 @@ watch(
     
     isLoadingTemplates.value = true
     try {
+      // Look up category slug from id (endpoint requires slug, not numeric id)
+      const slug = categorySlugMap.value[categoryId]
+      if (!slug) {
+        console.error('Category slug not found for id:', categoryId)
+        categoryTemplates.value = []
+        return
+      }
       // Use vendor endpoint to get category templates
-      const templates = await vendorTemplateService.getCategoryTemplates(categoryId)
+      const templates = await vendorTemplateService.getCategoryTemplates(slug)
       categoryTemplates.value = templates
       
       // Reset attribute values when category changes (for new products)

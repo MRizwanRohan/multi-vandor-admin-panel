@@ -140,24 +140,38 @@ const errorInputClasses =
       </option>
     </select>
 
-    <!-- Multi-select -->
-    <select
+    <!-- Multi-select (checkbox style) -->
+    <div
       v-else-if="dataType === 'multiselect'"
-      :id="inputId"
-      :value="modelValue"
-      :required="required"
-      multiple
-      :class="[inputClasses, 'min-h-[80px]', error ? errorInputClasses : '']"
-      @change="handleMultiselectChange"
+      class="rounded-lg border border-gray-300 bg-white p-2 dark:border-gray-600 dark:bg-gray-800"
+      :class="[error ? errorInputClasses : '']"
     >
-      <option
-        v-for="opt in options"
-        :key="opt.value"
-        :value="opt.value"
-      >
-        {{ opt.label }}
-      </option>
-    </select>
+      <div class="flex flex-wrap gap-2">
+        <label
+          v-for="opt in options"
+          :key="opt.value"
+          :class="[
+            'inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-all select-none',
+            isOptionSelected(opt.value)
+              ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-900/40 dark:text-primary-300'
+              : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-400 dark:hover:border-gray-500'
+          ]"
+        >
+          <input
+            type="checkbox"
+            :value="opt.value"
+            :checked="isOptionSelected(opt.value)"
+            class="sr-only"
+            @change="toggleOption(opt.value)"
+          />
+          <span v-if="isOptionSelected(opt.value)" class="text-primary-500 dark:text-primary-400">✓</span>
+          {{ opt.label }}
+        </label>
+      </div>
+      <p v-if="Array.isArray(modelValue) && (modelValue as string[]).length > 0" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+        {{ (modelValue as string[]).length }} selected
+      </p>
+    </div>
 
     <!-- Color picker -->
     <div v-else-if="dataType === 'color'" class="flex items-center gap-3">

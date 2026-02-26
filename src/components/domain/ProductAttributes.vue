@@ -55,16 +55,36 @@ const regularTemplates = computed(() =>
   filteredTemplates.value.filter((t) => !t.is_variant_defining)
 )
 
+// Check if a template should use multiselect (variant-defining in variable product)
+const shouldUseMultiselect = (template: AttributeTemplate): boolean => {
+  return props.productType === 'variable' && !!(template.is_variant_defining || (template as any).isVariantDefining)
+    && (template.data_type === 'select' || template.data_type === 'multiselect')
+}
+
+// Get effective data_type (override select → multiselect for variant attrs in variable products)
+const getEffectiveDataType = (template: AttributeTemplate): string => {
+  if (shouldUseMultiselect(template)) return 'multiselect'
+  return template.data_type
+}
+
 // Get value for a template
 const getValue = (templateId: number): string | number | boolean | string[] => {
   const attr = props.modelValue.find((a) => a.template_id === templateId)
-  return attr?.value ?? getDefaultValue(templateId)
+  const template = props.templates.find((t) => t.id === templateId)
+  const val = attr?.value ?? getDefaultValue(templateId)
+  // Ensure array for multiselect variant attrs
+  if (template && shouldUseMultiselect(template) && !Array.isArray(val)) {
+    return val ? [val as string] : []
+  }
+  return val
 }
 
 // Get default value based on data type
 const getDefaultValue = (templateId: number): string | number | boolean | string[] => {
   const template = props.templates.find((t) => t.id === templateId)
   if (!template) return ''
+
+  if (shouldUseMultiselect(template)) return []
 
   switch (template.data_type) {
     case 'boolean':
@@ -173,7 +193,7 @@ watch(
         >
           <AttributeValueInput
             :model-value="getValue(template.id)"
-            :data-type="template.data_type"
+            :data-type="getEffectiveDataType(template)"
             :label="template.name"
             :placeholder="template.placeholder || `${template.name} নির্বাচন করুন`"
             :options="getSelectOptions(template)"
@@ -181,6 +201,16 @@ watch(
             :error="errors[template.id]"
             @update:model-value="updateValue(template.id, $event)"
           />
+          <!-- Selected options preview for multiselect -->
+          <div v-if="shouldUseMultiselect(template) && Array.isArray(getValue(template.id)) && (getValue(template.id) as string[]).length > 0" class="mt-2 flex flex-wrap gap-1.5">
+            <span
+              v-for="val in (getValue(template.id) as string[])"
+              :key="val"
+              class="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2.5 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/50 dark:text-primary-300"
+            >
+              {{ getSelectOptions(template).find(o => o.value === val)?.label || val }}
+            </span>
+          </div>
           <p
             v-if="template.help_text"
             class="mt-1 text-xs text-gray-500 dark:text-gray-400"

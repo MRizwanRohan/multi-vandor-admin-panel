@@ -75,15 +75,14 @@ async function fetchTemplates() {
     const response = await attributeTemplateService.getAll({
       page: pagination.currentPage.value,
       per_page: pagination.perPage.value,
-      search: searchQuery.value,
-      data_type: typeFilter.value as never || undefined,
+      search: searchQuery.value || undefined,
+      type: typeFilter.value || undefined,
     })
-    templates.value = response.data
-    pagination.totalItems.value = response.meta.total
+    templates.value = response.data || []
+    pagination.totalItems.value = response.meta?.total || 0
   } catch (err: any) {
     const message = err.response?.data?.message || 'Failed to load templates'
     toast.error(message)
-    console.error('Template API Error:', err)
     templates.value = []
   } finally {
     isLoading.value = false
@@ -136,7 +135,7 @@ function viewTemplate(template: AttributeTemplate) {
 }
 
 async function deleteTemplate(template: AttributeTemplate) {
-  const confirmed = await confirm.require({
+  const confirmed = await confirm.confirm({
     title: 'Delete Template',
     message: `Are you sure you want to delete "${template.name}"? This action cannot be undone.`,
     confirmText: 'Delete',
@@ -255,13 +254,13 @@ async function toggleActive(template: AttributeTemplate) {
 
           <template #cell-categories="{ row }">
             <span class="text-gray-900 dark:text-white">
-              {{ row.category_count }}
+              {{ row.categoriesCount ?? row.categories_count ?? 0 }}
             </span>
           </template>
 
           <template #cell-products="{ row }">
             <span class="text-gray-900 dark:text-white">
-              {{ row.product_count }}
+              {{ row.productsCount ?? row.products_count ?? '-' }}
             </span>
           </template>
 

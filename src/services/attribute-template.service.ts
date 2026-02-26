@@ -210,4 +210,63 @@ export const attributeTemplateService = {
   async reorderOptions(templateSlug: string | number, order: number[]): Promise<void> {
     await api.put(`${prefix()}/${templateSlug}/options/reorder`, { order })
   },
+
+  // ─────────────────────────────────────────────────────────────────
+  // Category Template Sync (Admin)
+  // ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Get templates assigned to a category
+   * GET /admin/categories/{category}/templates
+   */
+  async getCategoryTemplates(categorySlug: string): Promise<AttributeTemplate[]> {
+    const response = await api.get<{ data: AttributeTemplate[] }>(
+      `${getRolePrefix()}/categories/${categorySlug}/templates`
+    )
+    return response.data.data
+  },
+
+  /**
+   * Sync templates to a category
+   * PUT /admin/categories/{category}/templates
+   */
+  async syncCategoryTemplates(
+    categorySlug: string,
+    templates: Array<{
+      id: number
+      is_required_override?: boolean | null
+      display_order?: number
+      inheritance_mode?: 'inherit' | 'replace'
+    }>
+  ): Promise<void> {
+    await api.put(`${getRolePrefix()}/categories/${categorySlug}/templates`, { templates })
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Vendor Template Service — Read-only access for vendors
+// ═══════════════════════════════════════════════════════════════════
+
+export const vendorTemplateService = {
+  /**
+   * Get templates assigned to a category (vendor view)
+   * GET /vendor/categories/{category}/templates
+   */
+  async getCategoryTemplates(categorySlug: string): Promise<AttributeTemplate[]> {
+    const response = await api.get<{ data: AttributeTemplate[] }>(
+      `/vendor/categories/${categorySlug}/templates`
+    )
+    return response.data.data
+  },
+
+  /**
+   * Generate variant combinations for a category
+   * GET /vendor/categories/{category}/variant-combinations
+   */
+  async getVariantCombinations(categorySlug: string): Promise<Record<string, { template_name: string; option_value: string; option_label: string }>[]> {
+    const response = await api.get<{ data: Record<string, { template_name: string; option_value: string; option_label: string }>[] }>(
+      `/vendor/categories/${categorySlug}/variant-combinations`
+    )
+    return response.data.data
+  },
 }

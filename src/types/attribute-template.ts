@@ -109,7 +109,7 @@ export interface AttributeTemplateListParams {
   page?: number
   per_page?: number
   search?: string
-  data_type?: AttributeDataType
+  type?: AttributeDataType
   is_filterable?: boolean
   is_variant_defining?: boolean
   is_active?: boolean

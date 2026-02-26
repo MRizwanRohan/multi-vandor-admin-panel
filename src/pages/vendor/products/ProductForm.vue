@@ -66,6 +66,12 @@ const categoryTemplates = ref<AttributeTemplate[]>([])
 const attributeValues = ref<ProductAttributeInput[]>([])
 const attributeErrors = ref<Record<number, string>>({})
 
+// Non-variant templates (shown in Product Attributes card for simple, or non-variant attrs for variable)
+const nonVariantTemplates = computed(() =>
+  productType.value === 'variable'
+    ? categoryTemplates.value.filter(t => !t.is_variant_defining && !(t as any).isVariantDefining)
+    : categoryTemplates.value
+)
 // Variants (for variable products)
 const variantAttributes = ref<VariantMatrixAttribute[]>([])
 const variants = ref<ProductVariant[]>([])
@@ -540,7 +546,7 @@ function cancel() {
 
         <!-- Attributes (from category templates) -->
         <BaseCard
-          v-if="values.categoryId && categoryTemplates.length > 0"
+          v-if="values.categoryId && nonVariantTemplates.length > 0"
           title="Product Attributes"
         >
           <template #header-actions>

@@ -92,10 +92,16 @@ const adminRoutes: RouteRecordRaw[] = [
         meta: { title: 'Create Template' },
       },
       {
-        path: 'attribute-templates/:id/edit',
+        path: 'attribute-templates/:slug/edit',
         name: 'admin-template-edit',
         component: () => import('@/pages/admin/templates/TemplateForm.vue'),
         meta: { title: 'Edit Template' },
+      },
+      {
+        path: 'attribute-templates/:slug',
+        name: 'admin-template-detail',
+        component: () => import('@/pages/admin/templates/TemplateDetail.vue'),
+        meta: { title: 'Template Details' },
       },
       // Vendors
       {

@@ -32,19 +32,18 @@ const breadcrumbStore = useBreadcrumbStore()
 const toast = useToast()
 
 // Mode detection
-const templateId = computed(() => {
-  const raw = route.params.id as string | undefined
-  if (!raw || raw === 'new') return undefined
-  const id = Number(raw)
-  return isNaN(id) ? undefined : id
+const templateSlug = computed(() => {
+  const raw = route.params.slug as string | undefined
+  if (!raw || raw === 'create') return undefined
+  return raw
 })
-const isEditMode = computed(() => templateId.value !== undefined)
+const isEditMode = computed(() => templateSlug.value !== undefined)
 const pageTitle = computed(() => isEditMode.value ? 'Edit Template' : 'Add Template')
 
 // Set page info
 onMounted(() => {
   breadcrumbStore.setPageInfo(pageTitle.value, [
-    { label: 'Templates', to: '/admin/templates' },
+    { label: 'Attribute Templates', to: '/admin/attribute-templates' },
     { label: pageTitle.value },
   ])
   
@@ -60,15 +59,17 @@ const options = ref<Array<{
   value: string
   label: string
   color_code: string
+  image_url: string
   is_active: boolean
+  is_deprecated: boolean
   display_order: number
-}>>([])
+}>>([]) 
 
 // Form validation
 const templateSchema = toTypedSchema(z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   description: z.string().optional(),
-  data_type: z.enum(['text', 'number', 'select', 'multiselect', 'boolean', 'color', 'date']),
+  data_type: z.enum(['text', 'number', 'select', 'multiselect', 'boolean']),
   is_required: z.boolean(),
   is_filterable: z.boolean(),
   is_variant_defining: z.boolean(),
@@ -120,20 +121,18 @@ const [helpText, helpTextAttrs] = defineField('help_text')
 const [min, minAttrs] = defineField('min')
 const [max, maxAttrs] = defineField('max')
 
-// Data type options
+// Data type options (per API)
 const dataTypeOptions = [
   { value: 'text', label: 'Text' },
   { value: 'number', label: 'Number' },
-  { value: 'select', label: 'Select (Single)' },
-  { value: 'multiselect', label: 'Multi-Select' },
-  { value: 'boolean', label: 'Boolean (Yes/No)' },
-  { value: 'color', label: 'Color' },
-  { value: 'date', label: 'Date' },
+  { value: 'select', label: 'Single Select' },
+  { value: 'multiselect', label: 'Multi Select' },
+  { value: 'boolean', label: 'Yes/No' },
 ]
 
-// Show options editor for select types
+// Show options editor for select types only
 const showOptionsEditor = computed(() =>
-  ['select', 'multiselect', 'color'].includes(dataType.value)
+  ['select', 'multiselect'].includes(dataType.value)
 )
 
 // Show number validation for number type
@@ -141,11 +140,11 @@ const showNumberValidation = computed(() => dataType.value === 'number')
 
 // Fetch template for editing
 async function fetchTemplate() {
-  if (!templateId.value) return
+  if (!templateSlug.value) return
   
   isLoading.value = true
   try {
-    const template = await attributeTemplateService.getById(templateId.value)
+    const template = await attributeTemplateService.getBySlug(templateSlug.value)
     setValues({
       name: template.name,
       description: template.description || '',
@@ -166,12 +165,14 @@ async function fetchTemplate() {
       value: opt.value,
       label: opt.label,
       color_code: opt.color_code || '',
+      image_url: opt.image_url || '',
       is_active: opt.is_active,
+      is_deprecated: opt.is_deprecated || false,
       display_order: opt.display_order || index,
     })) || []
   } catch (error) {
     toast.error('Failed to fetch template')
-    router.push('/admin/templates')
+    router.push('/admin/attribute-templates')
   } finally {
     isLoading.value = false
   }
@@ -183,7 +184,9 @@ function addOption() {
     value: '',
     label: '',
     color_code: '',
+    image_url: '',
     is_active: true,
+    is_deprecated: false,
     display_order: options.value.length,
   })
 }
@@ -248,15 +251,15 @@ const onSubmit = handleSubmit(async (values) => {
         : undefined,
     }
     
-    if (isEditMode.value && templateId.value) {
-      await attributeTemplateService.update(templateId.value, payload)
+    if (isEditMode.value && templateSlug.value) {
+      await attributeTemplateService.update(templateSlug.value, payload)
       toast.success('Template updated successfully')
     } else {
       await attributeTemplateService.create(payload)
       toast.success('Template created successfully')
     }
     
-    router.push('/admin/templates')
+    router.push('/admin/attribute-templates')
   } catch (error) {
     toast.error(isEditMode.value ? 'Failed to update template' : 'Failed to create template')
   }
@@ -264,7 +267,7 @@ const onSubmit = handleSubmit(async (values) => {
 
 // Navigation
 function goBack() {
-  router.push('/admin/templates')
+  router.push('/admin/attribute-templates')
 }
 </script>
 
@@ -332,34 +335,47 @@ function goBack() {
               <div
                 v-for="(option, index) in options"
                 :key="index"
-                class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
+                class="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
+                :class="{ 'opacity-60': option.is_deprecated }"
               >
                 <button
                   type="button"
-                  class="text-gray-400 cursor-grab"
+                  class="text-gray-400 cursor-grab mt-2"
                 >
                   <Bars3Icon class="h-5 w-5" />
                 </button>
                 
-                <div class="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <FormInput
-                    v-model="option.label"
-                    placeholder="Label (e.g., Red)"
-                    @update:model-value="(val) => updateValue(index, val)"
-                  />
-                  <FormInput
-                    v-model="option.value"
-                    placeholder="Value (e.g., red)"
-                  />
-                  <div class="flex items-center gap-2">
-                    <input
-                      v-if="dataType === 'color'"
-                      v-model="option.color_code"
-                      type="color"
-                      class="h-10 w-16 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
+                <div class="flex-1 space-y-2">
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <FormInput
+                      v-model="option.label"
+                      placeholder="Label (e.g., Red)"
+                      @update:model-value="(val) => updateValue(index, val)"
                     />
+                    <FormInput
+                      v-model="option.value"
+                      placeholder="Value (e.g., red)"
+                    />
+                    <div class="flex items-center gap-2">
+                      <input
+                        v-model="option.color_code"
+                        type="color"
+                        class="h-10 w-12 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
+                        title="Color code (optional)"
+                      />
+                      <FormInput
+                        v-model="option.color_code"
+                        placeholder="#FF0000"
+                        class="flex-1"
+                      />
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
                     <BaseBadge :color="option.is_active ? 'green' : 'gray'" class="whitespace-nowrap">
                       {{ option.is_active ? 'Active' : 'Inactive' }}
+                    </BaseBadge>
+                    <BaseBadge v-if="option.is_deprecated" color="orange" class="whitespace-nowrap">
+                      Deprecated
                     </BaseBadge>
                   </div>
                 </div>
@@ -371,6 +387,7 @@ function goBack() {
                     size="sm"
                     :disabled="index === 0"
                     @click="moveOption(index, 'up')"
+                    title="Move up"
                   >
                     ↑
                   </BaseButton>
@@ -380,6 +397,7 @@ function goBack() {
                     size="sm"
                     :disabled="index === options.length - 1"
                     @click="moveOption(index, 'down')"
+                    title="Move down"
                   >
                     ↓
                   </BaseButton>
@@ -388,6 +406,7 @@ function goBack() {
                     variant="ghost"
                     size="sm"
                     @click="removeOption(index)"
+                    title="Remove option"
                   >
                     <TrashIcon class="h-4 w-4 text-red-500" />
                   </BaseButton>

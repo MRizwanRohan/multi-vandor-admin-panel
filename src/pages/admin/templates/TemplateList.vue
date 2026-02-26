@@ -23,6 +23,7 @@ import {
   TrashIcon,
   TagIcon,
   SwatchIcon,
+  EyeIcon,
 } from '@heroicons/vue/24/outline'
 
 const router = useRouter()
@@ -51,11 +52,9 @@ const typeOptions = [
   { value: '', label: 'All Types' },
   { value: 'text', label: 'Text' },
   { value: 'number', label: 'Number' },
-  { value: 'select', label: 'Select' },
-  { value: 'multiselect', label: 'Multi-Select' },
-  { value: 'boolean', label: 'Boolean' },
-  { value: 'color', label: 'Color' },
-  { value: 'date', label: 'Date' },
+  { value: 'select', label: 'Single Select' },
+  { value: 'multiselect', label: 'Multi Select' },
+  { value: 'boolean', label: 'Yes/No' },
 ]
 
 // Table columns
@@ -107,8 +106,6 @@ function getTypeBadgeColor(type: string): 'blue' | 'green' | 'purple' | 'orange'
     select: 'purple',
     multiselect: 'orange',
     boolean: 'pink',
-    color: 'pink',
-    date: 'gray',
   }
   return colors[type] || 'gray'
 }
@@ -118,22 +115,24 @@ function getTypeLabel(type: string): string {
   const labels: Record<string, string> = {
     text: 'Text',
     number: 'Number',
-    select: 'Select',
-    multiselect: 'Multi-Select',
-    boolean: 'Boolean',
-    color: 'Color',
-    date: 'Date',
+    select: 'Single Select',
+    multiselect: 'Multi Select',
+    boolean: 'Yes/No',
   }
   return labels[type] || type
 }
 
 // Actions
 function createTemplate() {
-  router.push('/admin/templates/new')
+  router.push('/admin/attribute-templates/create')
 }
 
 function editTemplate(template: AttributeTemplate) {
-  router.push(`/admin/templates/${template.id}`)
+  router.push(`/admin/attribute-templates/${template.slug}/edit`)
+}
+
+function viewTemplate(template: AttributeTemplate) {
+  router.push(`/admin/attribute-templates/${template.slug}`)
 }
 
 async function deleteTemplate(template: AttributeTemplate) {
@@ -231,7 +230,7 @@ async function toggleActive(template: AttributeTemplate) {
         >
           <template #cell-name="{ row }">
             <div class="flex items-center gap-3">
-              <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+              <div class="shrink-0 w-10 h-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
                 <SwatchIcon v-if="row.data_type === 'color'" class="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
                 <TagIcon v-else class="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
               </div>
@@ -282,7 +281,16 @@ async function toggleActive(template: AttributeTemplate) {
               <BaseButton
                 variant="ghost"
                 size="sm"
+                @click="viewTemplate(row)"
+                title="View Details"
+              >
+                <EyeIcon class="h-4 w-4" />
+              </BaseButton>
+              <BaseButton
+                variant="ghost"
+                size="sm"
                 @click="editTemplate(row)"
+                title="Edit"
               >
                 <PencilIcon class="h-4 w-4" />
               </BaseButton>
@@ -290,6 +298,7 @@ async function toggleActive(template: AttributeTemplate) {
                 variant="ghost"
                 size="sm"
                 @click="deleteTemplate(row)"
+                title="Delete"
               >
                 <TrashIcon class="h-4 w-4 text-red-500" />
               </BaseButton>

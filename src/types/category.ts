@@ -50,10 +50,22 @@ export interface CategoryBreadcrumb {
 }
 
 export interface CategoryTemplateAssignment {
+  /** Pivot fields (always present) */
   attribute_template_id: number
   is_required_override: boolean | null
   display_order: number
   inheritance_mode: 'inherit' | 'replace' | null
+
+  /** Enriched fields from API (present in GET responses) */
+  id?: number
+  name?: string
+  type?: string
+  is_required?: boolean
+  is_variant_defining?: boolean
+  is_filterable?: boolean
+  source?: 'direct' | 'inherited'
+  inherited_from?: { id: number; name: string } | null
+  options?: string[]
 }
 
 // ── Create/Update DTOs ──

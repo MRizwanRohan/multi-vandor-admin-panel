@@ -8,12 +8,13 @@ import { useRouter } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
 import { categoryService } from '@/services'
 import { useConfirm, useToast } from '@/composables'
+import { useDragDrop } from '@/composables'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import CategoryTreeRow from './CategoryTreeRow.vue'
 import type { Category } from '@/types'
-import { PlusIcon, FunnelIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/vue/24/outline'
+import { PlusIcon, FunnelIcon, MagnifyingGlassIcon, XMarkIcon, ArrowsUpDownIcon, CheckIcon, XMarkIcon as XIcon } from '@heroicons/vue/24/outline'
 
 const router = useRouter()
 const breadcrumbStore = useBreadcrumbStore()
@@ -34,6 +35,59 @@ const expandedIds = ref<Set<number>>(new Set())
 const statusFilter = ref<'all' | 'active' | 'inactive' | 'pending' | 'rejected'>('all')
 const searchQuery = ref('')
 const showSearch = ref(false)
+
+// Reorder mode
+const isReorderMode = ref(false)
+const reorderList = ref<Category[]>([])
+const isSavingOrder = ref(false)
+
+// Drag & drop for reorder
+const { state: dragState, handlers: dragHandlers, dragClasses, isDraggingIndex, isDropTarget } = useDragDrop(reorderList, {
+  onReorder: () => {
+    // Items already reordered in-place by useDragDrop
+  },
+})
+
+function enterReorderMode() {
+  isReorderMode.value = true
+  // Flatten root-level categories for reorder (reorder is root-level only)
+  reorderList.value = [...categories.value]
+  expandAll()
+}
+
+function cancelReorder() {
+  isReorderMode.value = false
+  reorderList.value = []
+}
+
+async function saveReorder() {
+  isSavingOrder.value = true
+  try {
+    const order = reorderList.value.map(c => c.id)
+    await categoryService.reorder(order)
+    // Update local categories with new order
+    categories.value = [...reorderList.value]
+    isReorderMode.value = false
+    reorderList.value = []
+    toast.success('Categories reordered successfully')
+  } catch (err: any) {
+    toast.error(err.response?.data?.message || 'Failed to reorder categories')
+  } finally {
+    isSavingOrder.value = false
+  }
+}
+
+function moveReorderItem(index: number, direction: 'up' | 'down') {
+  if (direction === 'up' && index > 0) {
+    const newList = [...reorderList.value]
+    ;[newList[index - 1], newList[index]] = [newList[index], newList[index - 1]]
+    reorderList.value = newList
+  } else if (direction === 'down' && index < reorderList.value.length - 1) {
+    const newList = [...reorderList.value]
+    ;[newList[index], newList[index + 1]] = [newList[index + 1], newList[index]]
+    reorderList.value = newList
+  }
+}
 
 // Fetch categories
 async function fetchCategories() {
@@ -271,6 +325,26 @@ async function deleteCategory(category: Category) {
           >
             <MagnifyingGlassIcon class="h-4 w-4" />
           </button>
+          <!-- Reorder button -->
+          <BaseButton
+            v-if="!isReorderMode && categories.length > 1"
+            variant="secondary"
+            size="sm"
+            @click="enterReorderMode"
+          >
+            <ArrowsUpDownIcon class="mr-1.5 h-4 w-4" />
+            Reorder
+          </BaseButton>
+          <!-- Reorder save/cancel -->
+          <template v-if="isReorderMode">
+            <BaseButton variant="primary" size="sm" :loading="isSavingOrder" @click="saveReorder">
+              <CheckIcon class="mr-1.5 h-4 w-4" />
+              Save Order
+            </BaseButton>
+            <BaseButton variant="secondary" size="sm" :disabled="isSavingOrder" @click="cancelReorder">
+              Cancel
+            </BaseButton>
+          </template>
           <BaseButton variant="primary" @click="openCreate">
             <PlusIcon class="mr-2 h-4 w-4" />
           Add Category
@@ -328,8 +402,75 @@ async function deleteCategory(category: Category) {
       </div>
     </div>
 
-    <!-- Categories tree -->
-    <BaseCard padding="none">
+    <!-- Reorder Mode -->
+    <BaseCard v-if="isReorderMode" padding="none">
+      <div class="border-b border-gray-200 dark:border-gray-700 bg-amber-50 dark:bg-amber-900/10 px-4 py-3">
+        <div class="flex items-center gap-2">
+          <ArrowsUpDownIcon class="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          <p class="text-sm font-medium text-amber-800 dark:text-amber-300">Reorder Mode</p>
+          <span class="text-xs text-amber-600 dark:text-amber-400">— Drag rows or use arrows to reorder root categories</span>
+        </div>
+      </div>
+      <div class="divide-y divide-gray-200 dark:divide-gray-700">
+        <div
+          v-for="(cat, index) in reorderList"
+          :key="cat.id"
+          draggable="true"
+          v-bind="dragHandlers(index)"
+          class="flex items-center gap-3 px-4 py-3 transition-colors cursor-move"
+          :class="{
+            'opacity-50': isDraggingIndex(index),
+            'bg-primary-50 dark:bg-primary-900/20 border-primary-300': isDropTarget(index),
+            'hover:bg-gray-50 dark:hover:bg-gray-700/50': !isDraggingIndex(index) && !isDropTarget(index),
+          }"
+        >
+          <!-- Drag handle -->
+          <div class="flex shrink-0 items-center text-gray-400 dark:text-gray-500">
+            <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M7 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" />
+            </svg>
+          </div>
+
+          <!-- Index badge -->
+          <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+            {{ index + 1 }}
+          </span>
+
+          <!-- Category info -->
+          <div class="flex-1 min-w-0">
+            <p class="font-medium text-gray-900 dark:text-white truncate">{{ cat.name }}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ cat.children?.length || 0 }} sub-categories · {{ cat.product_count || 0 }} products
+            </p>
+          </div>
+
+          <!-- Up/Down arrows -->
+          <div class="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              :disabled="index === 0"
+              class="rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-600 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed dark:hover:bg-gray-600 dark:hover:text-gray-300"
+              title="Move up"
+              @click="moveReorderItem(index, 'up')"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" /></svg>
+            </button>
+            <button
+              type="button"
+              :disabled="index === reorderList.length - 1"
+              class="rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-600 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed dark:hover:bg-gray-600 dark:hover:text-gray-300"
+              title="Move down"
+              @click="moveReorderItem(index, 'down')"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </BaseCard>
+
+    <!-- Categories tree (normal mode) -->
+    <BaseCard v-else padding="none">
       <div v-if="isLoading" class="flex items-center justify-center py-12">
         <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600"></div>
       </div>

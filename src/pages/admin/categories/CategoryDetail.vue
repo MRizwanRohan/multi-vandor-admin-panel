@@ -13,6 +13,7 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
+import CategoryTemplateManager from './CategoryTemplateManager.vue'
 import type { Category, CategoryTemplateAssignment, CategoryRequest } from '@/types'
 import {
   ArrowLeftIcon,
@@ -31,6 +32,8 @@ import {
   GlobeAltIcon,
   BoltIcon,
   ClockIcon,
+  AdjustmentsHorizontalIcon,
+  FunnelIcon,
 } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
@@ -47,6 +50,12 @@ const requestHistory = ref<CategoryRequest[]>([])
 const isLoading = ref(true)
 const isToggling = ref(false)
 const loadError = ref<string | null>(null)
+const showTemplateManager = ref(false)
+
+// Children filter
+const childrenFilter = ref<string>('all')
+const filteredChildren = ref<Category[]>([])
+const isLoadingChildren = ref(false)
 
 onMounted(() => fetchData())
 
@@ -75,6 +84,9 @@ async function fetchData() {
     } catch {
       requestHistory.value = []
     }
+
+    // Init filtered children
+    filteredChildren.value = cat.children || []
   } catch (err: any) {
     const msg = err.response?.data?.message || 'Failed to load category'
     loadError.value = msg
@@ -125,6 +137,35 @@ async function handleDelete() {
 // Status badge
 function statusVariant(s: string): 'success' | 'warning' | 'danger' | 'info' {
   return { active: 'success' as const, pending: 'warning' as const, rejected: 'danger' as const, inactive: 'info' as const }[s] ?? 'info'
+}
+
+// Filter children using API endpoint
+async function filterChildrenByStatus(status: string) {
+  childrenFilter.value = status
+  if (!category.value) return
+  if (status === 'all') {
+    filteredChildren.value = category.value.children || []
+    return
+  }
+  isLoadingChildren.value = true
+  try {
+    const children = await categoryService.getChildren(category.value.slug, status)
+    filteredChildren.value = children
+  } catch {
+    filteredChildren.value = []
+  } finally {
+    isLoadingChildren.value = false
+  }
+}
+
+// Refresh templates after sync
+async function onTemplatesSaved() {
+  if (!category.value) return
+  try {
+    templates.value = await categoryService.getCategoryTemplates(categorySlug.value)
+  } catch {
+    // Keep existing
+  }
 }
 
 // Image error handler
@@ -275,12 +316,39 @@ function handleImageError(event: Event) {
           </BaseCard>
 
           <!-- Children -->
-          <BaseCard title="Sub-categories" v-if="category.children?.length">
-            <div class="divide-y divide-gray-100 dark:divide-gray-700 -mt-1">
+          <BaseCard v-if="category.children?.length" padding="none">
+            <div class="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+              <h3 class="text-base font-semibold text-gray-900 dark:text-white">Sub-categories</h3>
+              <!-- Status filter -->
+              <div class="flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-[10px]">
+                <button
+                  v-for="f in ['all', 'active', 'pending', 'inactive', 'rejected']"
+                  :key="f"
+                  type="button"
+                  class="px-2 py-1 font-medium capitalize transition-colors first:rounded-l-lg last:rounded-r-lg"
+                  :class="childrenFilter === f ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/50 dark:text-primary-300' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'"
+                  @click="filterChildrenByStatus(f)"
+                >
+                  {{ f }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Loading spinner for filter -->
+            <div v-if="isLoadingChildren" class="flex items-center justify-center py-6">
+              <div class="h-5 w-5 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" />
+            </div>
+
+            <div v-else-if="filteredChildren.length === 0" class="py-6 text-center">
+              <FunnelIcon class="mx-auto h-6 w-6 text-gray-300 dark:text-gray-600" />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">No {{ childrenFilter !== 'all' ? childrenFilter : '' }} sub-categories found</p>
+            </div>
+
+            <div v-else class="divide-y divide-gray-100 dark:divide-gray-700 px-6 pb-4">
               <div
-                v-for="child in category.children"
+                v-for="child in filteredChildren"
                 :key="child.id"
-                class="flex items-center justify-between py-3 first:pt-0"
+                class="flex items-center justify-between py-3 first:pt-3"
               >
                 <div class="flex items-center gap-3 min-w-0">
                   <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700">
@@ -324,24 +392,64 @@ function handleImageError(event: Event) {
           </BaseCard>
 
           <!-- Templates -->
-          <BaseCard title="Attribute Templates" v-if="templates.length">
-            <div class="divide-y divide-gray-100 dark:divide-gray-700 -mt-1">
+          <BaseCard padding="none">
+            <div class="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+              <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                Attribute Templates
+                <span v-if="templates.length" class="ml-1.5 text-sm font-normal text-gray-400">({{ templates.length }})</span>
+              </h3>
+              <BaseButton variant="secondary" size="sm" @click="showTemplateManager = true">
+                <AdjustmentsHorizontalIcon class="mr-1.5 h-4 w-4" />
+                Manage Templates
+              </BaseButton>
+            </div>
+
+            <div v-if="templates.length === 0" class="py-6 text-center">
+              <DocumentTextIcon class="mx-auto h-8 w-8 text-gray-300 dark:text-gray-600" />
+              <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">No templates assigned</p>
+              <button
+                type="button"
+                class="mt-2 text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                @click="showTemplateManager = true"
+              >
+                + Add attribute templates
+              </button>
+            </div>
+
+            <div v-else class="divide-y divide-gray-100 dark:divide-gray-700 px-6 pb-4">
               <div
                 v-for="tmpl in templates"
-                :key="tmpl.attribute_template_id"
-                class="flex items-center justify-between py-3 first:pt-0"
+                :key="tmpl.attribute_template_id || tmpl.id"
+                class="flex items-center justify-between py-3 first:pt-3"
               >
                 <div class="flex items-center gap-3">
-                  <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-100 dark:bg-primary-900/30">
-                    <DocumentTextIcon class="h-4 w-4 text-primary-600 dark:text-primary-400" />
+                  <div class="flex h-9 w-9 items-center justify-center rounded-lg" :class="tmpl.source === 'inherited' ? 'bg-gray-100 dark:bg-gray-700' : 'bg-primary-100 dark:bg-primary-900/30'">
+                    <DocumentTextIcon class="h-4 w-4" :class="tmpl.source === 'inherited' ? 'text-gray-400' : 'text-primary-600 dark:text-primary-400'" />
                   </div>
                   <div>
-                    <p class="text-sm font-medium text-gray-900 dark:text-white">Template #{{ tmpl.attribute_template_id }}</p>
-                    <p class="text-xs text-gray-500">Order: {{ tmpl.display_order }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="text-sm font-medium text-gray-900 dark:text-white">
+                        {{ tmpl.name || `Template #${tmpl.attribute_template_id || tmpl.id}` }}
+                      </p>
+                      <BaseBadge v-if="tmpl.type" variant="info" size="sm" rounded>{{ tmpl.type }}</BaseBadge>
+                      <BaseBadge v-if="tmpl.source === 'inherited'" variant="warning" size="sm" rounded>
+                        inherited{{ tmpl.inherited_from ? ` from ${tmpl.inherited_from.name}` : '' }}
+                      </BaseBadge>
+                    </div>
+                    <div class="flex items-center gap-3 mt-0.5">
+                      <span class="text-xs text-gray-500">Order: {{ tmpl.display_order }}</span>
+                      <span v-if="tmpl.is_variant_defining" class="text-xs text-purple-600 dark:text-purple-400">Variant defining</span>
+                      <span v-if="tmpl.is_filterable" class="text-xs text-blue-600 dark:text-blue-400">Filterable</span>
+                    </div>
                   </div>
                 </div>
                 <div class="flex items-center gap-3">
-                  <span v-if="tmpl.is_required_override" class="text-xs text-amber-600 dark:text-amber-400">Required</span>
+                  <span
+                    v-if="tmpl.is_required_override || tmpl.is_required"
+                    class="text-xs text-amber-600 dark:text-amber-400 font-medium"
+                  >
+                    Required
+                  </span>
                   <span v-if="tmpl.inheritance_mode" class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-400">
                     {{ tmpl.inheritance_mode }}
                   </span>
@@ -547,5 +655,13 @@ function handleImageError(event: Event) {
         </div>
       </div>
     </template>
+    <!-- Template Manager Modal -->
+    <CategoryTemplateManager
+      v-if="category"
+      v-model="showTemplateManager"
+      :category-id="category.slug"
+      :category-name="category.name"
+      @saved="onTemplatesSaved"
+    />
   </div>
 </template>

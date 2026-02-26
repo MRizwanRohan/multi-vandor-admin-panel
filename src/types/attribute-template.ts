@@ -10,6 +10,12 @@ export interface AttributeTemplate {
   slug: string
   description: string | null
   data_type: AttributeDataType
+  // Computed fields from API
+  data_type_label?: string // e.g., "Single Select"
+  input_type?: string // e.g., "select"
+  requires_options?: boolean // true for select/multiselect
+  can_define_variants?: boolean // true for select/multiselect
+  // Main fields
   is_required: boolean
   is_filterable: boolean
   is_variant_defining: boolean
@@ -20,9 +26,15 @@ export interface AttributeTemplate {
   placeholder: string | null
   help_text: string | null
   created_by: number | null
+  creator?: {
+    id: number
+    name: string
+  }
   options?: AttributeTemplateOption[]
-  category_count: number
-  product_count: number
+  // Count fields (from API)
+  category_count?: number
+  categories_count?: number // Detail view uses this name
+  product_count?: number
   created_at: string
   updated_at: string
 }
@@ -36,15 +48,27 @@ export interface AttributeTemplateOption {
   image_url: string | null
   is_active: boolean
   is_deprecated: boolean
+  // Computed fields from API
+  is_color?: boolean // true when color_code is not null
+  has_image?: boolean // true when image_url is not null/empty
   display_order: number
+  created_at?: string
 }
 
 export interface AttributeValidationRules {
   min?: number
   max?: number
   regex?: string
-  min_selections?: number
-  max_selections?: number
+  min_length?: number
+  max_length?: number
+}
+
+// Data type info from /data-types endpoint
+export interface AttributeDataTypeInfo {
+  value: AttributeDataType
+  label: string
+  input_type: string
+  requires_options: boolean
 }
 
 // ── Create/Update DTOs ──

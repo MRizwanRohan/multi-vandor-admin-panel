@@ -33,3 +33,7 @@ export { useClipboard, useCopyText, type UseClipboardOptions } from './useClipbo
 export { useBreakpoint, useIsDesktop, useIsMobile, BREAKPOINTS, type BreakpointKey } from './useBreakpoint'
 export { useExport, createExportColumns, type ExportColumn, type ExportOptions } from './useExport'
 export { useDragDrop, reorderArray, type DragDropOptions, type DragDropState } from './useDragDrop'
+
+// Domain Composables - Products
+export { useProduct } from './useProduct'
+export { useVariantBuilder } from './useVariantBuilder'

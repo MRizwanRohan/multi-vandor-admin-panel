@@ -3,9 +3,14 @@
 // ═══════════════════════════════════════════════════════════════════
 
 // Product
+export { default as ProductAttributes } from './ProductAttributes.vue'
 export { default as VariantMatrix } from './VariantMatrix.vue'
 export { default as ProductQuickView } from './ProductQuickView.vue'
 export { default as ProductStatusFlow } from './ProductStatusFlow.vue'
+export { default as ProductGallery } from './ProductGallery.vue'
+export { default as PriceDisplay } from './PriceDisplay.vue'
+export { default as StockBadge } from './StockBadge.vue'
+export { default as SearchFilters } from './SearchFilters.vue'
 
 // Category
 export { default as CategoryTreeView } from './CategoryTreeView.vue'

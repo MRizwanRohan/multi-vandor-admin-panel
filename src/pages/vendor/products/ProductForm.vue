@@ -6,7 +6,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
-import { productService, categoryService } from '@/services'
+import { productService, categoryService, attributeTemplateService } from '@/services'
 import { useToast } from '@/composables'
 import { useForm } from 'vee-validate'
 import { toTypedSchema } from '@vee-validate/zod'
@@ -18,10 +18,20 @@ import FormTextarea from '@/components/form/FormTextarea.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
 import FormSwitch from '@/components/form/FormSwitch.vue'
 import PageLoader from '@/components/ui/PageLoader.vue'
+import { ProductAttributes, VariantMatrix } from '@/components/domain'
+import type { 
+  AttributeTemplate, 
+  ProductAttributeInput, 
+  VariantMatrixAttribute, 
+  ProductVariant,
+  ProductType 
+} from '@/types'
 import {
   PhotoIcon,
   XMarkIcon,
   ArrowLeftIcon,
+  CubeIcon,
+  Squares2X2Icon,
 } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
@@ -41,9 +51,22 @@ const isEditing = computed(() => productId.value !== undefined)
 // Loading
 const isLoading = ref(false)
 const isSaving = ref(false)
+const isLoadingTemplates = ref(false)
 
 // Categories
 const categories = ref<{ value: string; label: string }[]>([])
+
+// Product Type
+const productType = ref<ProductType>('simple')
+
+// Attribute Templates (from category)
+const categoryTemplates = ref<AttributeTemplate[]>([])
+const attributeValues = ref<ProductAttributeInput[]>([])
+const attributeErrors = ref<Record<number, string>>({})
+
+// Variants (for variable products)
+const variantAttributes = ref<VariantMatrixAttribute[]>([])
+const variants = ref<ProductVariant[]>([])
 
 // Images
 const images = ref<string[]>([])
@@ -114,6 +137,36 @@ async function loadCategories() {
   }
 }
 
+// Load attribute templates when category changes
+watch(
+  () => values.categoryId,
+  async (categoryId) => {
+    if (!categoryId) {
+      categoryTemplates.value = []
+      attributeValues.value = []
+      return
+    }
+    
+    isLoadingTemplates.value = true
+    try {
+      // Use vendor endpoint to get category templates
+      const templates = await attributeTemplateService.getByCategory(categoryId, true)
+      categoryTemplates.value = templates
+      
+      // Reset attribute values when category changes (for new products)
+      if (!isEditing.value) {
+        attributeValues.value = []
+      }
+    } catch (err: any) {
+      console.error('Failed to load templates:', err)
+      categoryTemplates.value = []
+    } finally {
+      isLoadingTemplates.value = false
+    }
+  },
+  { immediate: false }
+)
+
 // Load product for editing
 async function loadProduct() {
   if (!productId.value) return
@@ -135,6 +188,27 @@ async function loadProduct() {
       metaDescription: product.meta_description,
     })
     images.value = product.images?.map(img => img.url) || []
+    
+    // Load product type
+    productType.value = product.type || 'simple'
+    
+    // Load attributes
+    if (product.attributes?.length) {
+      attributeValues.value = product.attributes.map(attr => ({
+        template_id: attr.template_id,
+        value: attr.value,
+      }))
+    }
+    
+    // Load variants
+    if (product.variants?.length) {
+      variants.value = product.variants
+    }
+    
+    // Load variant config
+    if (product.variant_matrix?.attributes) {
+      variantAttributes.value = product.variant_matrix.attributes
+    }
   } catch (err: any) {
     const message = err.response?.data?.message || 'Failed to load product'
     toast.error(message)
@@ -170,14 +244,112 @@ function removeImage(index: number) {
   images.value.splice(index, 1)
 }
 
+// Handle variant attributes change (from ProductAttributes component)
+function handleVariantAttributesChange(attrs: VariantMatrixAttribute[]) {
+  variantAttributes.value = attrs
+}
+
+// Generate variant combinations from selected attributes
+function generateVariants() {
+  if (variantAttributes.value.length === 0) {
+    toast.error('প্রথমে ভেরিয়েন্ট অ্যাট্রিবিউট নির্বাচন করুন')
+    return
+  }
+
+  const generateCombinations = (
+    attrs: VariantMatrixAttribute[],
+    index: number,
+    current: { template: string; template_id: number; value: string; option_id: number }[]
+  ): { template: string; template_id: number; value: string; option_id: number }[][] => {
+    if (index >= attrs.length) return [current]
+
+    const result: { template: string; template_id: number; value: string; option_id: number }[][] = []
+    const attr = attrs[index]
+
+    for (const option of attr.options) {
+      result.push(
+        ...generateCombinations(attrs, index + 1, [
+          ...current,
+          {
+            template: attr.name,
+            template_id: attr.id,
+            value: option.label,
+            option_id: option.id,
+          },
+        ])
+      )
+    }
+
+    return result
+  }
+
+  const combinations = generateCombinations(variantAttributes.value, 0, [])
+
+  variants.value = combinations.map((options, i) => ({
+    id: 0,
+    sku: `${values.sku || 'SKU'}-${options.map((o) => o.value.substring(0, 2).toUpperCase()).join('-')}`,
+    name: options.map((o) => o.value).join(' / '),
+    price: values.price || 0,
+    sale_price: values.compareAtPrice || null,
+    effective_price: values.compareAtPrice || values.price || 0,
+    stock_quantity: 0,
+    is_in_stock: false,
+    is_active: true,
+    weight: null,
+    image_url: null,
+    barcode: null,
+    options,
+  }))
+
+  toast.success(`${variants.value.length}টি ভেরিয়েন্ট তৈরি হয়েছে`)
+}
+
+// Validate required attributes
+function validateAttributes(): boolean {
+  attributeErrors.value = {}
+  let isValid = true
+
+  for (const template of categoryTemplates.value) {
+    if (template.is_required) {
+      const attrValue = attributeValues.value.find((a) => a.template_id === template.id)
+      const value = attrValue?.value
+
+      if (
+        value === undefined ||
+        value === null ||
+        value === '' ||
+        (Array.isArray(value) && value.length === 0)
+      ) {
+        attributeErrors.value[template.id] = `${template.name} আবশ্যক`
+        isValid = false
+      }
+    }
+  }
+
+  return isValid
+}
+
 // Submit form
 const onSubmit = handleSubmit(async (formValues) => {
+  // Validate attributes
+  if (!validateAttributes()) {
+    toast.error('সব আবশ্যক অ্যাট্রিবিউট পূরণ করুন')
+    return
+  }
+
+  // For variable products, check if variants exist
+  if (productType.value === 'variable' && variants.value.length === 0) {
+    toast.error('ভেরিয়েবল প্রোডাক্টের জন্য ভেরিয়েন্ট তৈরি করুন')
+    return
+  }
+
   isSaving.value = true
   try {
     const data = {
       name: formValues.name,
       description: formValues.description,
       category_id: Number(formValues.categoryId),
+      type: productType.value,
       base_price: formValues.price,
       sale_price: formValues.compareAtPrice,
       sku: formValues.sku || '',
@@ -186,6 +358,19 @@ const onSubmit = handleSubmit(async (formValues) => {
       meta_title: formValues.metaTitle,
       meta_description: formValues.metaDescription,
       status: (formValues.isActive ? 'active' : 'inactive') as 'active' | 'inactive',
+      attributes: attributeValues.value,
+      variants: productType.value === 'variable' 
+        ? variants.value.map(v => ({
+            sku: v.sku,
+            price: v.price,
+            sale_price: v.sale_price,
+            stock_quantity: v.stock_quantity,
+            is_active: v.is_active,
+            weight: v.weight,
+            barcode: v.barcode,
+            options: v.options.map(o => ({ option_id: o.option_id })),
+          }))
+        : undefined,
     }
 
     if (isEditing.value) {
@@ -260,7 +445,161 @@ function cancel() {
               placeholder="Select category"
               required
             />
+
+            <!-- Product Type -->
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Product Type <span class="text-danger-500">*</span>
+              </label>
+              <div class="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  :class="[
+                    'flex items-center gap-3 rounded-lg border-2 p-4 text-left transition-all',
+                    productType === 'simple'
+                      ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
+                      : 'border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600',
+                  ]"
+                  @click="productType = 'simple'"
+                >
+                  <CubeIcon
+                    :class="[
+                      'h-8 w-8',
+                      productType === 'simple' ? 'text-primary-600' : 'text-gray-400',
+                    ]"
+                  />
+                  <div>
+                    <p
+                      :class="[
+                        'font-medium',
+                        productType === 'simple'
+                          ? 'text-primary-700 dark:text-primary-300'
+                          : 'text-gray-900 dark:text-white',
+                      ]"
+                    >
+                      Simple Product
+                    </p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      সিঙ্গল আইটেম, কোনো ভেরিয়েশন নেই
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  :class="[
+                    'flex items-center gap-3 rounded-lg border-2 p-4 text-left transition-all',
+                    productType === 'variable'
+                      ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
+                      : 'border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600',
+                  ]"
+                  @click="productType = 'variable'"
+                >
+                  <Squares2X2Icon
+                    :class="[
+                      'h-8 w-8',
+                      productType === 'variable' ? 'text-primary-600' : 'text-gray-400',
+                    ]"
+                  />
+                  <div>
+                    <p
+                      :class="[
+                        'font-medium',
+                        productType === 'variable'
+                          ? 'text-primary-700 dark:text-primary-300'
+                          : 'text-gray-900 dark:text-white',
+                      ]"
+                    >
+                      Variable Product
+                    </p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      সাইজ, কালার ইত্যাদি ভেরিয়েশন সহ
+                    </p>
+                  </div>
+                </button>
+              </div>
+            </div>
           </div>
+        </BaseCard>
+
+        <!-- Attributes (from category templates) -->
+        <BaseCard
+          v-if="values.categoryId && categoryTemplates.length > 0"
+          title="Product Attributes"
+        >
+          <template #header-actions>
+            <span
+              v-if="isLoadingTemplates"
+              class="text-sm text-gray-500 dark:text-gray-400"
+            >
+              Loading...
+            </span>
+          </template>
+          
+          <ProductAttributes
+            v-model="attributeValues"
+            :templates="categoryTemplates"
+            :product-type="productType"
+            :errors="attributeErrors"
+            :non-variant-only="productType === 'variable'"
+            @variant-attributes="handleVariantAttributesChange"
+          />
+        </BaseCard>
+
+        <!-- Variant Configuration (for variable products) -->
+        <BaseCard
+          v-if="productType === 'variable' && values.categoryId"
+          title="Variant Configuration"
+        >
+          <div class="space-y-4">
+            <!-- Variant-defining attributes selection -->
+            <div v-if="categoryTemplates.filter(t => t.is_variant_defining).length > 0">
+              <p class="mb-3 text-sm text-gray-600 dark:text-gray-400">
+                ভেরিয়েন্ট তৈরির জন্য অ্যাট্রিবিউট অপশন নির্বাচন করুন
+              </p>
+              
+              <ProductAttributes
+                v-model="attributeValues"
+                :templates="categoryTemplates"
+                :product-type="productType"
+                :errors="attributeErrors"
+                variant-only
+                @variant-attributes="handleVariantAttributesChange"
+              />
+
+              <BaseButton
+                v-if="variantAttributes.length > 0"
+                variant="primary"
+                class="mt-4"
+                @click="generateVariants"
+              >
+                ভেরিয়েন্ট তৈরি করুন
+              </BaseButton>
+            </div>
+            <div
+              v-else
+              class="rounded-lg border-2 border-dashed border-gray-300 p-6 text-center dark:border-gray-600"
+            >
+              <p class="text-sm text-gray-500 dark:text-gray-400">
+                এই ক্যাটাগরিতে কোনো ভেরিয়েন্ট-নির্ধারণকারী অ্যাট্রিবিউট নেই।
+                <br />
+                অ্যাডমিনকে অনুরোধ করুন ক্যাটাগরিতে Color, Size এর মতো অ্যাট্রিবিউট যোগ করতে।
+              </p>
+            </div>
+          </div>
+        </BaseCard>
+
+        <!-- Variant Matrix (for variable products with generated variants) -->
+        <BaseCard
+          v-if="productType === 'variable' && variants.length > 0"
+          title="Product Variants"
+        >
+          <VariantMatrix
+            :attributes="variantAttributes"
+            :variants="variants"
+            @update:variants="variants = $event"
+            @generate="generateVariants"
+          />
         </BaseCard>
 
         <!-- Images -->
@@ -320,7 +659,7 @@ function cancel() {
           <div class="grid gap-4 sm:grid-cols-2">
             <FormInput
               v-model.number="values.price"
-              label="Price (৳)"
+              :label="productType === 'variable' ? 'Base Price (৳)' : 'Price (৳)'"
               name="price"
               type="number"
               :min="0"
@@ -329,17 +668,23 @@ function cancel() {
 
             <FormInput
               v-model.number="values.compareAtPrice"
-              label="Compare at Price (৳)"
+              :label="productType === 'variable' ? 'Base Sale Price (৳)' : 'Compare at Price (৳)'"
               name="compareAtPrice"
               type="number"
               :min="0"
-              hint="Original price before discount"
+              :hint="productType === 'variable' ? 'Default for new variants' : 'Original price before discount'"
             />
           </div>
+          <p
+            v-if="productType === 'variable'"
+            class="mt-2 text-sm text-gray-500 dark:text-gray-400"
+          >
+            💡 প্রতিটি ভেরিয়েন্টের জন্য আলাদা দাম সেট করতে পারবেন
+          </p>
         </BaseCard>
 
-        <!-- Inventory -->
-        <BaseCard title="Inventory">
+        <!-- Inventory (only for simple products) -->
+        <BaseCard v-if="productType === 'simple'" title="Inventory">
           <div class="grid gap-4 sm:grid-cols-2">
             <FormInput
               v-model="values.sku"

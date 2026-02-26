@@ -27,6 +27,10 @@ export interface Product {
   category: ProductCategory
   vendor: ProductVendor
   primary_image: string | null
+  thumbnail?: string | null
+  // Variable product specific
+  variant_count?: number
+  price_range?: { min: number; max: number } | null
   created_at: string
   updated_at: string
 }
@@ -189,10 +193,123 @@ export interface ProductListParams {
   status?: ProductStatus
   category_id?: number
   vendor_id?: number
+  brand_id?: number
   is_featured?: boolean
   is_in_stock?: boolean
+  in_stock?: boolean
   min_price?: number
   max_price?: number
-  sort?: string
+  price_min?: number
+  price_max?: number
+  rating_min?: number
+  sort?: ProductSort
   order?: 'asc' | 'desc'
+}
+
+// Sort options
+export type ProductSort =
+  | 'latest'
+  | 'oldest'
+  | 'price_asc'
+  | 'price_desc'
+  | 'name_asc'
+  | 'name_desc'
+  | 'rating'
+  | 'popular'
+
+// Search facets
+export interface SearchFacets {
+  categories: FacetItem[]
+  brands: FacetItem[]
+  vendors?: FacetItem[]
+  price_range?: { min: number; max: number }
+  price_ranges?: PriceRangeFacet[]
+  attributes?: AttributeFacet[]
+  ratings?: RatingFacet[]
+}
+
+export interface FacetItem {
+  id: number
+  name: string
+  count: number
+}
+
+export interface PriceRangeFacet {
+  min: number
+  max: number
+  count: number
+}
+
+export interface AttributeFacet {
+  id: number
+  name: string
+  values: { value: string; label?: string; count: number }[]
+}
+
+export interface RatingFacet {
+  rating: number
+  count: number
+}
+
+// Status configuration
+export interface ProductStatusConfig {
+  label: string
+  color: string
+  bgColor: string
+  textColor: string
+}
+
+export const PRODUCT_STATUS_CONFIG: Record<ProductStatus, ProductStatusConfig> = {
+  draft: {
+    label: 'Draft',
+    color: 'secondary',
+    bgColor: 'bg-gray-100 dark:bg-gray-700',
+    textColor: 'text-gray-700 dark:text-gray-300',
+  },
+  pending: {
+    label: 'Pending Review',
+    color: 'warning',
+    bgColor: 'bg-yellow-100 dark:bg-yellow-900/30',
+    textColor: 'text-yellow-700 dark:text-yellow-300',
+  },
+  approved: {
+    label: 'Approved',
+    color: 'success',
+    bgColor: 'bg-green-100 dark:bg-green-900/30',
+    textColor: 'text-green-700 dark:text-green-300',
+  },
+  rejected: {
+    label: 'Rejected',
+    color: 'danger',
+    bgColor: 'bg-red-100 dark:bg-red-900/30',
+    textColor: 'text-red-700 dark:text-red-300',
+  },
+  archived: {
+    label: 'Archived',
+    color: 'dark',
+    bgColor: 'bg-gray-200 dark:bg-gray-600',
+    textColor: 'text-gray-600 dark:text-gray-400',
+  },
+}
+
+// Major edit fields that trigger re-review
+export const MAJOR_EDIT_FIELDS = [
+  'price',
+  'sale_price',
+  'cost_price',
+  'sku',
+  'name',
+  'category_id',
+  'type',
+  'weight',
+  'dimensions',
+]
+
+// Helper function
+export function getProductStatusConfig(status: ProductStatus): ProductStatusConfig {
+  return PRODUCT_STATUS_CONFIG[status] || PRODUCT_STATUS_CONFIG.draft
+}
+
+export function isMajorEdit(changedFields: string[]): boolean {
+  return changedFields.some((field) => MAJOR_EDIT_FIELDS.includes(field))
 }

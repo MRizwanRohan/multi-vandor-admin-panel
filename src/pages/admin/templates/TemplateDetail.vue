@@ -23,7 +23,6 @@ import {
   SwatchIcon,
   FunnelIcon,
   CubeIcon,
-  ExclamationTriangleIcon,
 } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
@@ -136,44 +135,6 @@ async function deleteTemplate() {
       toast.error(error.response.data.message || 'Template is in use and cannot be deleted')
     } else {
       toast.error('Failed to delete template')
-    }
-  }
-}
-
-async function deprecateOption(optionId: number) {
-  if (!template.value) return
-  
-  try {
-    await attributeTemplateService.deprecateOption(optionId)
-    toast.success('Option deprecated successfully')
-    await fetchTemplate() // Reload to show updated status
-  } catch (error) {
-    toast.error('Failed to deprecate option')
-  }
-}
-
-async function deleteOption(optionId: number) {
-  if (!template.value) return
-  
-  const confirmed = await confirm.confirm({
-    title: 'Delete Option',
-    message: 'Are you sure you want to delete this option? This action cannot be undone.',
-    confirmText: 'Delete',
-    cancelText: 'Cancel',
-    variant: 'danger',
-  })
-  
-  if (!confirmed) return
-  
-  try {
-    await attributeTemplateService.deleteOption(optionId)
-    toast.success('Option deleted successfully')
-    await fetchTemplate() // Reload to show updated options
-  } catch (error: any) {
-    if (error.response?.status === 409) {
-      toast.error('Option is in use. Try deprecating instead.')
-    } else {
-      toast.error('Failed to delete option')
     }
   }
 }
@@ -331,27 +292,9 @@ const inactiveOptions = computed(() =>
                           <div class="text-sm text-gray-500 dark:text-gray-400 font-mono">{{ option.value }}</div>
                         </div>
                       </div>
-                      <div class="flex items-center gap-2">
-                        <span class="text-xs text-gray-500 dark:text-gray-400">
-                          #{{ option.display_order }}
-                        </span>
-                        <BaseButton
-                          variant="ghost"
-                          size="sm"
-                          @click="deprecateOption(option.id)"
-                          title="Deprecate"
-                        >
-                          <ExclamationTriangleIcon class="h-4 w-4 text-orange-500" />
-                        </BaseButton>
-                        <BaseButton
-                          variant="ghost"
-                          size="sm"
-                          @click="deleteOption(option.id)"
-                          title="Delete"
-                        >
-                          <TrashIcon class="h-4 w-4 text-red-500" />
-                        </BaseButton>
-                      </div>
+                      <span class="text-xs text-gray-500 dark:text-gray-400">
+                        #{{ option.display_order }}
+                      </span>
                     </div>
                   </div>
                 </div>

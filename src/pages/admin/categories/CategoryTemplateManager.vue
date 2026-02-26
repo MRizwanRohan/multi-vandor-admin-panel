@@ -18,6 +18,7 @@ import {
   ArrowPathIcon,
   DocumentTextIcon,
   InformationCircleIcon,
+  CubeIcon,
 } from '@heroicons/vue/24/outline'
 
 interface Props {
@@ -41,6 +42,12 @@ const isSaving = ref(false)
 const currentTemplates = ref<CategoryTemplateAssignment[]>([])
 const availableTemplates = ref<AttributeTemplate[]>([])
 const selectedTemplateId = ref<number | null>(null)
+
+// Variant combinations state
+const isLoadingVariants = ref(false)
+const showVariantCombinations = ref(false)
+const variantCombinations = ref<Record<string, { template_name: string; option_value: string; option_label: string }>[]>([])
+const variantError = ref<string | null>(null)
 
 // Edited template assignments
 const editedTemplates = ref<{
@@ -183,6 +190,32 @@ function typeColor(type: string): 'info' | 'success' | 'warning' {
   }
   return map[type] ?? 'info'
 }
+
+// Generate variant combinations
+async function generateVariantCombinations() {
+  isLoadingVariants.value = true
+  variantError.value = null
+  showVariantCombinations.value = false
+  try {
+    const categorySlug = typeof props.categoryId === 'string' ? props.categoryId : String(props.categoryId)
+    variantCombinations.value = await attributeTemplateService.getVariantCombinations(categorySlug)
+    showVariantCombinations.value = true
+  } catch (err: any) {
+    variantError.value = err.response?.data?.message || 'Failed to generate variant combinations'
+    toast.error(variantError.value!)
+    variantCombinations.value = []
+  } finally {
+    isLoadingVariants.value = false
+  }
+}
+
+// Check if any templates are variant-defining
+const hasVariantDefiningTemplates = computed(() => {
+  return editedTemplates.value.some(t => {
+    const fullTemplate = availableTemplates.value.find(at => at.id === t.attribute_template_id)
+    return fullTemplate?.is_variant_defining
+  })
+})
 </script>
 
 <template>
@@ -321,6 +354,63 @@ function typeColor(type: string): 'info' | 'success' | 'warning' {
       </div>
       <div v-else-if="availableTemplates.length === 0 && editedTemplates.length === 0" class="text-xs text-gray-400 dark:text-gray-500">
         No attribute templates available. Create templates first from the Attribute Templates section.
+      </div>
+
+      <!-- Variant Combinations Section -->
+      <div v-if="editedTemplates.length > 0" class="pt-4 border-t border-gray-200 dark:border-gray-700">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <CubeIcon class="h-5 w-5 text-gray-500" />
+            <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">Variant Combinations</h4>
+          </div>
+          <BaseButton
+            v-if="hasVariantDefiningTemplates"
+            variant="secondary"
+            size="sm"
+            :loading="isLoadingVariants"
+            @click="generateVariantCombinations"
+          >
+            <CubeIcon class="mr-1.5 h-4 w-4" />
+            Generate
+          </BaseButton>
+          <span v-else class="text-xs text-gray-400 dark:text-gray-500">
+            No variant-defining templates assigned
+          </span>
+        </div>
+
+        <!-- Variant combinations display -->
+        <div v-if="showVariantCombinations && variantCombinations.length > 0" class="space-y-2">
+          <div class="max-h-60 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+            <table class="w-full text-xs">
+              <thead class="sticky top-0 bg-gray-100 dark:bg-gray-700">
+                <tr>
+                  <th class="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">#</th>
+                  <th v-for="key in Object.keys(variantCombinations[0] || {})" :key="key" class="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
+                    {{ variantCombinations[0][key]?.template_name || key }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                <tr v-for="(combo, index) in variantCombinations" :key="index">
+                  <td class="px-3 py-2 text-gray-400">{{ index + 1 }}</td>
+                  <td v-for="(value, key) in combo" :key="key" class="px-3 py-2">
+                    <span class="inline-flex items-center gap-1">
+                      <span class="text-gray-900 dark:text-white">{{ value.option_label }}</span>
+                      <span class="text-gray-400 dark:text-gray-500">({{ value.option_value }})</span>
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 text-center">
+            {{ variantCombinations.length }} possible variant{{ variantCombinations.length !== 1 ? 's' : '' }}
+          </p>
+        </div>
+
+        <div v-else-if="showVariantCombinations && variantCombinations.length === 0 && !variantError" class="text-center py-4 text-xs text-gray-400 dark:text-gray-500">
+          No variant combinations available. Make sure variant-defining templates have options.
+        </div>
       </div>
     </div>
 

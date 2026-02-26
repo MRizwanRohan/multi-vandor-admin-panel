@@ -10,7 +10,7 @@ import { toTypedSchema } from '@vee-validate/zod'
 import { z } from 'zod'
 import { useBreadcrumbStore } from '@/stores'
 import { attributeTemplateService } from '@/services'
-import { useToast } from '@/composables'
+import { useToast, useConfirm, useDragDrop } from '@/composables'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
@@ -24,12 +24,14 @@ import {
   PlusIcon,
   TrashIcon,
   Bars3Icon,
+  ExclamationTriangleIcon,
 } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
 const router = useRouter()
 const breadcrumbStore = useBreadcrumbStore()
 const toast = useToast()
+const confirm = useConfirm()
 
 // Mode detection
 const templateSlug = computed(() => {
@@ -67,6 +69,36 @@ const options = ref<Array<{
   is_deprecated: boolean
   display_order: number
 }>>([]) 
+
+// Drag and drop for options reordering
+const { state: dragState, handlers: dragHandlers, dragClasses: getDragClasses } = useDragDrop(options, {
+  onReorder: async (newItems, from, to) => {
+    // Update display order
+    newItems.forEach((opt, i) => {
+      opt.display_order = i
+    })
+    
+    // If in edit mode and all options have IDs, call reorder API
+    if (isEditMode.value && templateSlug.value && newItems.every(o => o.id)) {
+      try {
+        const order = newItems.map(o => o.id!)
+        await attributeTemplateService.reorderOptions(templateSlug.value, order)
+        toast.success('Options reordered')
+      } catch (error) {
+        toast.error('Failed to reorder options')
+      }
+    }
+  }
+})
+
+// Wrapper for drag classes
+function dragClasses(index: number) {
+  return {
+    ...getDragClasses(index),
+    'ring-2 ring-indigo-500 bg-indigo-50 dark:bg-indigo-900/20': dragState.value.dragOverIndex === index && dragState.value.dragIndex !== index,
+    'opacity-50 scale-95': dragState.value.isDragging && dragState.value.dragIndex === index,
+  }
+}
 
 // Form validation
 const templateSchema = toTypedSchema(z.object({
@@ -212,7 +244,35 @@ function addOption() {
   })
 }
 
-function removeOption(index: number) {
+async function removeOption(index: number) {
+  const option = options.value[index]
+  
+  // If option has an ID (existing in DB), call API to delete
+  if (option.id && isEditMode.value) {
+    const confirmed = await confirm.confirm({
+      title: 'Delete Option',
+      message: 'Are you sure you want to delete this option? This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      variant: 'danger',
+    })
+    
+    if (!confirmed) return
+    
+    try {
+      await attributeTemplateService.deleteOption(option.id)
+      toast.success('Option deleted successfully')
+    } catch (error: any) {
+      if (error.response?.status === 409) {
+        toast.error('Option is in use. Try deprecating instead.')
+        return
+      }
+      toast.error('Failed to delete option')
+      return
+    }
+  }
+  
+  // Remove from local array
   options.value.splice(index, 1)
   // Reorder
   options.value.forEach((opt, i) => {
@@ -220,18 +280,46 @@ function removeOption(index: number) {
   })
 }
 
-function moveOption(index: number, direction: 'up' | 'down') {
+async function deprecateOption(index: number) {
+  const option = options.value[index]
+  
+  if (!option.id || !isEditMode.value) {
+    toast.error('Option must be saved first before deprecating')
+    return
+  }
+  
+  try {
+    await attributeTemplateService.deprecateOption(option.id)
+    option.is_deprecated = true
+    toast.success('Option deprecated successfully')
+  } catch (error) {
+    toast.error('Failed to deprecate option')
+  }
+}
+
+async function moveOption(index: number, direction: 'up' | 'down') {
   const newIndex = direction === 'up' ? index - 1 : index + 1
   if (newIndex < 0 || newIndex >= options.value.length) return
   
-  const temp = options.value[index]
-  options.value[index] = options.value[newIndex]
-  options.value[newIndex] = temp
+  // Use splice for reactive array mutation
+  const [movedItem] = options.value.splice(index, 1)
+  options.value.splice(newIndex, 0, movedItem)
   
   // Update display order
   options.value.forEach((opt, i) => {
     opt.display_order = i
   })
+  
+  // If in edit mode and all options have IDs, call reorder API
+  if (isEditMode.value && templateSlug.value && options.value.every(o => o.id)) {
+    try {
+      const order = options.value.map(o => o.id!)
+      await attributeTemplateService.reorderOptions(templateSlug.value, order)
+      toast.success('Options reordered')
+    } catch (error) {
+      toast.error('Failed to reorder options')
+    }
+  }
 }
 
 // Auto-generate value from label
@@ -356,13 +444,19 @@ function goBack() {
             <div v-else class="space-y-3">
               <div
                 v-for="(option, index) in options"
-                :key="index"
-                class="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
-                :class="{ 'opacity-60': option.is_deprecated }"
+                :key="option.id || `new-${index}`"
+                class="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg transition-all duration-200"
+                :class="[
+                  { 'opacity-60': option.is_deprecated },
+                  dragClasses(index)
+                ]"
+                draggable="true"
+                v-bind="dragHandlers(index)"
               >
                 <button
                   type="button"
-                  class="text-gray-400 cursor-grab mt-2"
+                  class="text-gray-400 cursor-grab mt-2 hover:text-gray-600 dark:hover:text-gray-300"
+                  @mousedown.stop
                 >
                   <Bars3Icon class="h-5 w-5" />
                 </button>
@@ -422,6 +516,16 @@ function goBack() {
                     title="Move down"
                   >
                     ↓
+                  </BaseButton>
+                  <BaseButton
+                    v-if="option.id && isEditMode && !option.is_deprecated"
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    @click="deprecateOption(index)"
+                    title="Deprecate option"
+                  >
+                    <ExclamationTriangleIcon class="h-4 w-4 text-orange-500" />
                   </BaseButton>
                   <BaseButton
                     type="button"
@@ -549,3 +653,28 @@ function goBack() {
     </form>
   </div>
 </template>
+
+<style scoped>
+/* Drag and drop styles */
+[draggable="true"] {
+  cursor: grab;
+}
+
+[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.is-dragging {
+  opacity: 0.5;
+  transform: scale(0.98);
+}
+
+.drag-over {
+  box-shadow: 0 0 0 2px rgb(99 102 241 / 0.5);
+  background-color: rgb(238 242 255 / 0.5);
+}
+
+:deep(.dark) .drag-over {
+  background-color: rgb(99 102 241 / 0.1);
+}
+</style>

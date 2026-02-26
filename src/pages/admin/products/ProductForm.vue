@@ -125,7 +125,7 @@ async function fetchProduct() {
   isLoading.value = true
   try {
     // When editing, the API returns full ProductDetail
-    const product = await productService.getById(productId.value!) as ProductDetail
+    const product = await productService.adminShow(productId.value!) as ProductDetail
     setValues({
       name: product.name,
       sku: product.sku,
@@ -214,10 +214,12 @@ const onSubmit = handleSubmit(async (values) => {
     }
     
     if (isEditMode.value) {
-      await productService.update(productId.value!, productData as any)
+      await productService.adminUpdate(productId.value!, productData as any)
       toast.success('Product updated successfully')
     } else {
-      await productService.create(productData as any)
+      // Admin typically doesn't create products - vendors do
+      // If admin creation is needed, add adminCreate method to service
+      await productService.vendorCreate(productData as any)
       toast.success('Product created successfully')
     }
     

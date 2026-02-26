@@ -1,148 +1,166 @@
 // ═══════════════════════════════════════════════════════════════════
-// Notification Service — Notification API calls
+// Notification Service — Notification API calls (Dynamic)
+// Matches backend API: /api/v1/notifications/*
 // ═══════════════════════════════════════════════════════════════════
 
 import api, { getRolePrefix } from './api'
-import type { Notification, NotificationType, NotificationPreferences } from '@/types'
+import type {
+  Notification,
+  NotificationFilters,
+  NotificationMeta,
+  NotificationPreferences,
+  UpdateNotificationPreferencesPayload,
+  BroadcastNotificationPayload,
+  SendNotificationPayload,
+  EmailLog,
+  EmailLogFilters,
+} from '@/types'
 import type { PaginatedResponse } from '@/types'
+
+// ─────────────────────────────────────────────────────────────────
+// Response Types
+// ─────────────────────────────────────────────────────────────────
+
+export interface NotificationListResponse {
+  success: boolean
+  data: Notification[]
+  meta: NotificationMeta
+}
+
+export interface UnreadCountResponse {
+  success: boolean
+  data: { unread_count: number }
+}
+
+export interface MarkAllReadResponse {
+  success: boolean
+  message: string
+  data: { marked_count: number }
+}
+
+export interface ClearAllResponse {
+  success: boolean
+  message: string
+  data: { deleted_count: number }
+}
+
+export interface PreferencesResponse {
+  success: boolean
+  data: NotificationPreferences
+}
+
+// Re-export types used externally
+export type { NotificationFilters }
+
+// ─────────────────────────────────────────────────────────────────
+// Service
+// ─────────────────────────────────────────────────────────────────
 
 const prefix = () => `${getRolePrefix()}/notifications`
 
-export interface NotificationFilters {
-  page?: number
-  per_page?: number
-  type?: NotificationType
-  is_read?: boolean
-}
-
-export interface NotificationStats {
-  total: number
-  unread: number
-  by_type: Record<NotificationType, number>
-}
-
 export const notificationService = {
+  // ───────────────────────────────────────────────────────────────
+  // Core Notification CRUD
+  // ───────────────────────────────────────────────────────────────
+
   /**
-   * Get paginated notifications
+   * GET /notifications — Paginated notification list
    */
-  async getAll(params?: NotificationFilters): Promise<PaginatedResponse<Notification>> {
-    const response = await api.get<PaginatedResponse<Notification>>(prefix(), { params })
+  async getAll(params?: NotificationFilters): Promise<NotificationListResponse> {
+    const response = await api.get<NotificationListResponse>(prefix(), { params })
     return response.data
   },
 
   /**
-   * Get unread notifications count
+   * GET /notifications/unread-count — Lightweight badge count
    */
   async getUnreadCount(): Promise<number> {
-    const response = await api.get<{ data: { count: number } }>(`${prefix()}/unread-count`)
-    return response.data.data.count
+    const response = await api.get<UnreadCountResponse>(`${prefix()}/unread-count`)
+    return response.data.data.unread_count
   },
 
   /**
-   * Get notification statistics
+   * PUT /notifications/{id}/read — Mark single notification as read
    */
-  async getStats(): Promise<NotificationStats> {
-    const response = await api.get<{ data: NotificationStats }>(`${prefix()}/stats`)
-    return response.data.data
+  async markAsRead(id: string): Promise<void> {
+    await api.put(`${prefix()}/${id}/read`)
   },
 
   /**
-   * Get recent notifications (for header dropdown)
+   * PUT /notifications/mark-all-read — Mark all as read
    */
-  async getRecent(limit: number = 5): Promise<Notification[]> {
-    const response = await api.get<{ data: Notification[] }>(`${prefix()}/recent`, {
-      params: { limit },
-    })
-    return response.data.data
+  async markAllAsRead(): Promise<number> {
+    const response = await api.put<MarkAllReadResponse>(`${prefix()}/mark-all-read`)
+    return response.data.data.marked_count
   },
 
   /**
-   * Mark notification as read
+   * DELETE /notifications/{id} — Delete single notification
    */
-  async markAsRead(id: number): Promise<Notification> {
-    const response = await api.patch<{ data: Notification }>(`${prefix()}/${id}/read`)
-    return response.data.data
-  },
-
-  /**
-   * Mark all notifications as read
-   */
-  async markAllAsRead(): Promise<{ count: number }> {
-    const response = await api.post<{ data: { count: number } }>(`${prefix()}/mark-all-read`)
-    return response.data.data
-  },
-
-  /**
-   * Delete notification
-   */
-  async delete(id: number): Promise<void> {
+  async delete(id: string): Promise<void> {
     await api.delete(`${prefix()}/${id}`)
   },
 
   /**
-   * Delete all notifications
+   * DELETE /notifications/clear-all — Clear all notifications
    */
-  async deleteAll(): Promise<{ count: number }> {
-    const response = await api.delete<{ data: { count: number } }>(`${prefix()}/all`)
-    return response.data.data
+  async clearAll(): Promise<number> {
+    const response = await api.delete<ClearAllResponse>(`${prefix()}/clear-all`)
+    return response.data.data.deleted_count
   },
 
-  /**
-   * Bulk delete notifications
-   */
-  async bulkDelete(ids: number[]): Promise<{ success: number; failed: number }> {
-    const response = await api.post<{ data: { success: number; failed: number } }>(
-      `${prefix()}/bulk-delete`,
-      { ids }
-    )
-    return response.data.data
-  },
-
-  // ─────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────
   // Notification Preferences
-  // ─────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────
 
   /**
-   * Get notification preferences
+   * GET /notifications/preferences — Get notification preferences
    */
   async getPreferences(): Promise<NotificationPreferences> {
-    const response = await api.get<{ data: NotificationPreferences }>(`${prefix()}/preferences`)
+    const response = await api.get<PreferencesResponse>(`${prefix()}/preferences`)
     return response.data.data
   },
 
   /**
-   * Update notification preferences
+   * PUT /notifications/preferences — Update notification preferences
    */
-  async updatePreferences(preferences: Partial<NotificationPreferences>): Promise<NotificationPreferences> {
-    const response = await api.put<{ data: NotificationPreferences }>(
-      `${prefix()}/preferences`,
-      preferences
-    )
+  async updatePreferences(payload: UpdateNotificationPreferencesPayload): Promise<void> {
+    await api.put(`${prefix()}/preferences`, payload)
+  },
+
+  // ───────────────────────────────────────────────────────────────
+  // Admin-only Operations
+  // ───────────────────────────────────────────────────────────────
+
+  /**
+   * POST /admin/notifications/broadcast — Broadcast to users by role
+   */
+  async broadcast(
+    payload: BroadcastNotificationPayload,
+  ): Promise<{ recipients_count: number; job_id: string }> {
+    const response = await api.post<{
+      success: boolean
+      data: { recipients_count: number; job_id: string }
+    }>('/admin/notifications/broadcast', payload)
     return response.data.data
   },
 
-  // ─────────────────────────────────────────────────────────────────
-  // Push Notifications
-  // ─────────────────────────────────────────────────────────────────
-
   /**
-   * Register device for push notifications
+   * POST /admin/notifications/send — Send to specific users
    */
-  async registerDevice(token: string, platform: 'web' | 'ios' | 'android'): Promise<void> {
-    await api.post(`${prefix()}/devices`, { token, platform })
+  async sendToUsers(payload: SendNotificationPayload): Promise<{ sent_count: number }> {
+    const response = await api.post<{
+      success: boolean
+      data: { sent_count: number }
+    }>('/admin/notifications/send', payload)
+    return response.data.data
   },
 
   /**
-   * Unregister device
+   * GET /admin/email-logs — View email delivery logs
    */
-  async unregisterDevice(token: string): Promise<void> {
-    await api.delete(`${prefix()}/devices`, { data: { token } })
-  },
-
-  /**
-   * Test push notification (admin only)
-   */
-  async testPushNotification(userId?: number): Promise<void> {
-    await api.post(`${prefix()}/test-push`, { user_id: userId })
+  async getEmailLogs(params?: EmailLogFilters): Promise<PaginatedResponse<EmailLog>> {
+    const response = await api.get<PaginatedResponse<EmailLog>>('/admin/email-logs', { params })
+    return response.data
   },
 }

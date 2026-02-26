@@ -74,7 +74,7 @@ const columns: TableColumn[] = [
 async function fetchProducts() {
   isLoading.value = true
   try {
-    const response = await productService.getAll({
+    const response = await productService.adminList({
       page: pagination.currentPage.value,
       per_page: pagination.perPage.value,
       search: searchQuery.value,
@@ -123,7 +123,7 @@ async function deleteProduct(product: Product) {
 
   if (confirmed) {
     try {
-      await productService.delete(product.id)
+      await productService.adminDelete(product.id)
       toast.success('Product deleted successfully')
       fetchProducts()
     } catch (error) {

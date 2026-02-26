@@ -60,6 +60,7 @@ const editedTemplates = ref<{
   type: string
   source: string
   inherited_from: { id: number; name: string } | null
+  is_variant_defining: boolean
 }[]>([])
 
 // Load data when modal opens
@@ -85,16 +86,21 @@ async function loadData() {
     }
 
     // Build editable list from current templates
-    editedTemplates.value = templates.map(t => ({
-      attribute_template_id: t.attribute_template_id ?? t.id ?? 0,
-      is_required_override: t.is_required_override ?? t.is_required ?? false,
-      display_order: t.display_order ?? 0,
-      inheritance_mode: t.inheritance_mode ?? 'inherit',
-      name: t.name ?? `Template #${t.attribute_template_id ?? t.id}`,
-      type: t.type ?? 'text',
-      source: t.source ?? 'direct',
-      inherited_from: t.inherited_from ?? null,
-    }))
+    editedTemplates.value = templates.map(t => {
+      // Try to find is_variant_defining from availableTemplates if not in response
+      const fullTemplate = availableTemplates.value.find(at => at.id === (t.attribute_template_id ?? t.id))
+      return {
+        attribute_template_id: t.attribute_template_id ?? t.id ?? 0,
+        is_required_override: t.is_required_override ?? t.is_required ?? false,
+        display_order: t.display_order ?? 0,
+        inheritance_mode: t.inheritance_mode ?? 'inherit',
+        name: t.name ?? `Template #${t.attribute_template_id ?? t.id}`,
+        type: t.type ?? 'text',
+        source: t.source ?? 'direct',
+        inherited_from: t.inherited_from ?? null,
+        is_variant_defining: t.is_variant_defining ?? fullTemplate?.is_variant_defining ?? false,
+      }
+    })
   } catch (err: any) {
     toast.error(err.response?.data?.message || 'Failed to load templates')
   } finally {
@@ -123,6 +129,7 @@ function addTemplate() {
     type: tmpl.data_type,
     source: 'direct',
     inherited_from: null,
+    is_variant_defining: tmpl.is_variant_defining ?? false,
   })
   selectedTemplateId.value = null
 }
@@ -151,7 +158,10 @@ function moveTemplate(index: number, direction: 'up' | 'down') {
 }
 
 // Save templates
-async function saveTemplates() {
+async function saveTemplates(closeModal: boolean | Event = true) {
+  // Handle event object being passed when called from template click
+  const shouldClose = typeof closeModal === 'boolean' ? closeModal : true
+  
   isSaving.value = true
   try {
     const payload = editedTemplates.value
@@ -164,11 +174,19 @@ async function saveTemplates() {
       }))
 
     await categoryService.syncTemplates(props.categoryId, payload)
-    toast.success('Attribute templates synced successfully')
-    emit('saved')
-    close()
+    
+    // Only show success toast closing, or if explicitly needed
+    if (shouldClose) {
+      toast.success('Attribute templates synced successfully')
+      emit('saved')
+      close()
+    } else {
+      // If not closing (e.g. generating variants), be silent but still emit saved to refresh parent if needed
+      emit('saved')
+    }
   } catch (err: any) {
     toast.error(err.response?.data?.message || 'Failed to sync templates')
+    throw err
   } finally {
     isSaving.value = false
   }
@@ -193,14 +211,37 @@ function typeColor(type: string): 'info' | 'success' | 'warning' {
 
 // Generate variant combinations
 async function generateVariantCombinations() {
+  // To generate combinations, the backend needs the templates assigned.
+  // We save first to ensure backend has latest state.
+  
   isLoadingVariants.value = true
   variantError.value = null
   showVariantCombinations.value = false
+  
   try {
+    try {
+      await saveTemplates(false) // Save without closing
+    } catch (saveErr) {
+      // Save failed, error already toasted in saveTemplates
+      variantError.value = 'Cannot generate combinations without saving templates first.'
+      isLoadingVariants.value = false
+      return 
+    }
+    
     const categorySlug = typeof props.categoryId === 'string' ? props.categoryId : String(props.categoryId)
-    variantCombinations.value = await attributeTemplateService.getVariantCombinations(categorySlug)
+    console.log('[VariantCombinations] Fetching for category:', categorySlug)
+    
+    const result = await attributeTemplateService.getVariantCombinations(categorySlug)
+    console.log('[VariantCombinations] API Response:', result)
+    
+    variantCombinations.value = result
     showVariantCombinations.value = true
+    
+    if (!result || result.length === 0) {
+      console.log('[VariantCombinations] Empty result. Check if templates have is_variant_defining=true AND have options.')
+    }
   } catch (err: any) {
+    console.error('[VariantCombinations] Error:', err)
     variantError.value = err.response?.data?.message || 'Failed to generate variant combinations'
     toast.error(variantError.value!)
     variantCombinations.value = []
@@ -211,10 +252,7 @@ async function generateVariantCombinations() {
 
 // Check if any templates are variant-defining
 const hasVariantDefiningTemplates = computed(() => {
-  return editedTemplates.value.some(t => {
-    const fullTemplate = availableTemplates.value.find(at => at.id === t.attribute_template_id)
-    return fullTemplate?.is_variant_defining
-  })
+  return editedTemplates.value.some(t => t.is_variant_defining)
 })
 </script>
 
@@ -279,9 +317,12 @@ const hasVariantDefiningTemplates = computed(() => {
 
               <!-- Template info -->
               <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
                   <p class="text-sm font-medium text-gray-900 dark:text-white">{{ tmpl.name }}</p>
                   <BaseBadge :variant="typeColor(tmpl.type)" size="sm" rounded>{{ tmpl.type }}</BaseBadge>
+                  <BaseBadge v-if="tmpl.is_variant_defining" variant="success" size="sm" rounded>
+                    variant
+                  </BaseBadge>
                   <BaseBadge v-if="tmpl.source === 'inherited'" variant="info" size="sm" rounded>
                     inherited{{ tmpl.inherited_from ? ` from ${tmpl.inherited_from.name}` : '' }}
                   </BaseBadge>

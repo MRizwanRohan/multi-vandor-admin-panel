@@ -6,7 +6,8 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
-import { productService, categoryService, attributeTemplateService } from '@/services'
+import { productService, categoryService } from '@/services'
+import { vendorTemplateService } from '@/services/attribute-template.service'
 import { useToast } from '@/composables'
 import { useForm } from 'vee-validate'
 import { toTypedSchema } from '@vee-validate/zod'
@@ -124,7 +125,8 @@ onMounted(async () => {
 // Load categories
 async function loadCategories() {
   try {
-    const response = await categoryService.getAll({ per_page: 100 })
+    // Use vendor endpoint - getAll uses admin endpoint
+    const response = await categoryService.getVisibleCategories()
     categories.value = response.data.map(cat => ({
       value: String(cat.id),
       label: cat.name,
@@ -150,7 +152,7 @@ watch(
     isLoadingTemplates.value = true
     try {
       // Use vendor endpoint to get category templates
-      const templates = await attributeTemplateService.getByCategory(categoryId, true)
+      const templates = await vendorTemplateService.getCategoryTemplates(categoryId)
       categoryTemplates.value = templates
       
       // Reset attribute values when category changes (for new products)
@@ -173,7 +175,7 @@ async function loadProduct() {
   
   isLoading.value = true
   try {
-    const product = await productService.getById(productId.value!) as import('@/types').ProductDetail
+    const product = await productService.vendorShow(productId.value!) as import('@/types').ProductDetail
     setValues({
       name: product.name,
       description: product.description,
@@ -374,10 +376,10 @@ const onSubmit = handleSubmit(async (formValues) => {
     }
 
     if (isEditing.value) {
-      await productService.update(productId.value!, data)
+      await productService.vendorUpdate(productId.value!, data)
       toast.success('Product updated successfully')
     } else {
-      await productService.create(data as import('@/services/product.service').ProductFormData)
+      await productService.vendorCreate(data as import('@/services/product.service').ProductFormData)
       toast.success('Product created successfully')
     }
     

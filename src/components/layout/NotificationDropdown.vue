@@ -1,56 +1,36 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <!-- Notification Dropdown — Bell icon dropdown with notifications -->
+<!-- Dynamic: Fetches from API, real-time ready -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { onMounted, onUnmounted } from 'vue'
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/vue'
 import { BellIcon, CheckIcon } from '@heroicons/vue/24/outline'
 import { useNotificationStore } from '@/stores'
+import { useNotification } from '@/composables'
+import NotificationItem from '../domain/NotificationItem.vue'
 import AppSpinner from '../ui/AppSpinner.vue'
+import type { Notification } from '@/types'
 
-interface Props {
-  dashboardType?: 'admin' | 'vendor'
-}
-
-const props = withDefaults(defineProps<Props>(), {
-  dashboardType: 'admin',
-})
-
-const router = useRouter()
-const notificationStore = useNotificationStore()
-
-const unreadCount = computed(() => notificationStore.unreadCount)
-const notifications = computed(() => notificationStore.recentNotifications)
+const store = useNotificationStore()
+const { handleNotificationClick, viewAllNotifications } = useNotification()
 
 onMounted(() => {
-  notificationStore.fetchNotifications(true)
+  store.fetchNotifications(true)
+  store.startPolling()
 })
 
-function markAllRead() {
-  notificationStore.markAllAsRead()
+onUnmounted(() => {
+  store.stopPolling()
+})
+
+function onNotificationClick(notification: Notification) {
+  handleNotificationClick(notification)
 }
 
-function handleNotificationClick(notification: { id: string | number; read_at: string | null }) {
-  if (!notification.read_at) {
-    notificationStore.markAsRead(notification.id as string)
-  }
-}
-
-function viewAll() {
-  const path = props.dashboardType === 'admin' ? '/admin/notifications' : '/vendor/notifications'
-  router.push(path)
-}
-
-function timeAgo(date: string): string {
-  const now = new Date()
-  const d = new Date(date)
-  const diff = Math.floor((now.getTime() - d.getTime()) / 1000)
-  if (diff < 60) return 'just now'
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-  return `${Math.floor(diff / 86400)}d ago`
+function onDelete(id: string) {
+  store.deleteNotification(id)
 }
 </script>
 
@@ -61,10 +41,10 @@ function timeAgo(date: string): string {
     >
       <BellIcon class="h-5 w-5" />
       <span
-        v-if="unreadCount > 0"
+        v-if="store.unreadCount > 0"
         class="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-danger-600 px-1 text-[10px] font-bold text-white"
       >
-        {{ unreadCount > 99 ? '99+' : unreadCount }}
+        {{ store.unreadCount > 99 ? '99+' : store.unreadCount }}
       </span>
     </PopoverButton>
 
@@ -77,18 +57,24 @@ function timeAgo(date: string): string {
       leave-to-class="transform scale-95 opacity-0"
     >
       <PopoverPanel
-        class="absolute right-0 z-50 mt-2 w-80 origin-top-right rounded-xl border border-gray-200 bg-white shadow-lg ring-1 ring-black/5 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+        class="absolute right-0 z-50 mt-2 w-96 origin-top-right rounded-xl border border-gray-200 bg-white shadow-lg ring-1 ring-black/5 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
       >
         <!-- Header -->
         <div class="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
             Notifications
+            <span
+              v-if="store.unreadCount > 0"
+              class="ml-1.5 inline-flex items-center rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/50 dark:text-primary-300"
+            >
+              {{ store.unreadCount }}
+            </span>
           </h3>
           <button
-            v-if="unreadCount > 0"
+            v-if="store.unreadCount > 0"
             type="button"
             class="inline-flex items-center gap-1 text-xs text-primary-600 transition-colors hover:text-primary-700 dark:text-primary-400"
-            @click="markAllRead"
+            @click="store.markAllAsRead()"
           >
             <CheckIcon class="h-3.5 w-3.5" />
             Mark all read
@@ -96,55 +82,37 @@ function timeAgo(date: string): string {
         </div>
 
         <!-- Notifications list -->
-        <div class="max-h-80 overflow-y-auto">
+        <div class="max-h-[400px] overflow-y-auto">
           <!-- Loading -->
-          <div v-if="notificationStore.isLoading" class="flex justify-center py-6">
+          <div v-if="store.isLoading && !store.hasNotifications" class="flex justify-center py-8">
             <AppSpinner size="sm" />
           </div>
 
           <!-- Empty -->
           <div
-            v-else-if="notifications.length === 0"
-            class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400"
+            v-else-if="!store.hasNotifications"
+            class="px-4 py-10 text-center"
           >
-            No notifications yet
+            <BellIcon class="mx-auto h-10 w-10 text-gray-300 dark:text-gray-600" />
+            <p class="mt-2 text-sm font-medium text-gray-500 dark:text-gray-400">
+              No notifications yet
+            </p>
+            <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              We'll notify you when something important happens
+            </p>
           </div>
 
           <!-- Items -->
-          <div v-else>
-            <button
-              v-for="notification in notifications"
+          <div v-else class="divide-y divide-gray-100 dark:divide-gray-700/50">
+            <NotificationItem
+              v-for="notification in store.recentNotifications"
               :key="notification.id"
-              type="button"
-              class="flex w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
-              :class="!notification.read_at ? 'bg-primary-50/50 dark:bg-primary-900/10' : ''"
-              @click="handleNotificationClick(notification)"
-            >
-              <!-- Unread dot -->
-              <div class="mt-1.5 shrink-0">
-                <div
-                  :class="[
-                    'h-2 w-2 rounded-full',
-                    !notification.read_at
-                      ? 'bg-primary-600 dark:bg-primary-400'
-                      : 'bg-transparent',
-                  ]"
-                />
-              </div>
-
-              <!-- Content -->
-              <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-medium text-gray-900 dark:text-white">
-                  {{ notification.title }}
-                </p>
-                <p class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
-                  {{ notification.message }}
-                </p>
-                <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
-                  {{ timeAgo(notification.created_at) }}
-                </p>
-              </div>
-            </button>
+              :notification="notification"
+              :compact="true"
+              :show-delete="true"
+              @click="onNotificationClick"
+              @delete="onDelete"
+            />
           </div>
         </div>
 
@@ -153,9 +121,9 @@ function timeAgo(date: string): string {
           <button
             type="button"
             class="w-full rounded-lg px-3 py-2 text-center text-sm font-medium text-primary-600 transition-colors hover:bg-gray-50 dark:text-primary-400 dark:hover:bg-gray-700"
-            @click="viewAll"
+            @click="viewAllNotifications"
           >
-            View all notifications
+            View all notifications →
           </button>
         </div>
       </PopoverPanel>

@@ -3,17 +3,22 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useForm } from 'vee-validate'
 import { toTypedSchema } from '@vee-validate/zod'
 import { z } from 'zod'
-import { useBreadcrumbStore, useAuthStore } from '@/stores'
+import { useRouter } from 'vue-router'
+import { useBreadcrumbStore, useAuthStore, useNotificationStore } from '@/stores'
 import { authService } from '@/services'
 import { useToast } from '@/composables'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import FormInput from '@/components/form/FormInput.vue'
-import { UserCircleIcon, KeyIcon, BellIcon } from '@heroicons/vue/24/outline'
+import NotificationToggle from '@/components/domain/NotificationToggle.vue'
+import AppSpinner from '@/components/ui/AppSpinner.vue'
+import { UserCircleIcon, KeyIcon, BellIcon, ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline'
+
+const router = useRouter()
 
 const breadcrumbStore = useBreadcrumbStore()
 const authStore = useAuthStore()
@@ -111,26 +116,68 @@ const submitPassword = handlePasswordSubmit(async (values) => {
   }
 })
 
-// Notification settings
-const notificationSettings = ref({
-  emailOrders: true,
-  emailMarketing: false,
-  pushOrders: true,
-  pushMessages: true,
+// Notification preferences (dynamic from API)
+const notificationStore = useNotificationStore()
+const isSavingNotifications = ref(false)
+const isLoadingNotifications = ref(false)
+
+const notificationForm = ref({
+  email_promotional: true,
+  email_newsletter: true,
+  inapp_order_updates: true,
+  inapp_reviews: true,
+  push_enabled: false,
 })
 
-const isSavingNotifications = ref(false)
+// Load preferences when notifications tab is first activated
+const notificationsLoaded = ref(false)
+
+async function loadNotificationPreferences() {
+  if (notificationsLoaded.value) return
+  isLoadingNotifications.value = true
+  try {
+    const prefs = await notificationStore.fetchPreferences()
+    if (prefs) {
+      notificationForm.value.email_promotional = prefs.email.promotional
+      notificationForm.value.email_newsletter = prefs.email.newsletter
+      notificationForm.value.inapp_order_updates = prefs.inapp.order_updates
+      notificationForm.value.inapp_reviews = prefs.inapp.reviews
+      notificationForm.value.push_enabled = prefs.push.enabled
+    }
+    notificationsLoaded.value = true
+  } catch {
+    // defaults already set
+  } finally {
+    isLoadingNotifications.value = false
+  }
+}
 
 async function saveNotifications() {
   isSavingNotifications.value = true
   try {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    toast.success('Notification settings saved')
+    const success = await notificationStore.updatePreferences({
+      email_promotional: notificationForm.value.email_promotional,
+      email_newsletter: notificationForm.value.email_newsletter,
+      inapp_order_updates: notificationForm.value.inapp_order_updates,
+      inapp_reviews: notificationForm.value.inapp_reviews,
+      push_enabled: notificationForm.value.push_enabled,
+    })
+    if (success) {
+      toast.success('Notification settings saved')
+    } else {
+      toast.error('Failed to save notification settings')
+    }
+  } catch {
+    toast.error('Failed to save notification settings')
   } finally {
     isSavingNotifications.value = false
   }
 }
+
+// Watch tab changes to load notifications when needed
+watch(activeTab, (tab) => {
+  if (tab === 'notifications') loadNotificationPreferences()
+})
 </script>
 
 <template>
@@ -274,88 +321,81 @@ async function saveNotifications() {
 
     <!-- Notifications tab -->
     <BaseCard v-show="activeTab === 'notifications'">
-      <div class="space-y-6">
+      <!-- Loading -->
+      <div v-if="isLoadingNotifications" class="flex justify-center py-8">
+        <AppSpinner size="lg" />
+      </div>
+
+      <div v-else class="space-y-6">
         <div>
           <h3 class="text-lg font-medium text-gray-900 dark:text-white">
-            Email Notifications
+            Quick Notification Settings
           </h3>
           <p class="text-sm text-gray-500 dark:text-gray-400">
-            Manage your email notification preferences
+            Manage your most common notification preferences
           </p>
         </div>
 
-        <div class="space-y-4">
-          <label class="flex items-center justify-between">
-            <div>
-              <p class="font-medium text-gray-900 dark:text-white">Order Updates</p>
-              <p class="text-sm text-gray-500 dark:text-gray-400">
-                Receive emails about order status changes
-              </p>
-            </div>
-            <input
-              v-model="notificationSettings.emailOrders"
-              type="checkbox"
-              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+        <!-- Email -->
+        <div>
+          <h4 class="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            Email
+          </h4>
+          <div class="divide-y divide-gray-100 dark:divide-gray-700/50">
+            <NotificationToggle
+              v-model="notificationForm.email_promotional"
+              label="Promotional emails"
+              description="Receive updates about sales and special offers"
             />
-          </label>
-
-          <label class="flex items-center justify-between">
-            <div>
-              <p class="font-medium text-gray-900 dark:text-white">Marketing</p>
-              <p class="text-sm text-gray-500 dark:text-gray-400">
-                Receive promotional emails and offers
-              </p>
-            </div>
-            <input
-              v-model="notificationSettings.emailMarketing"
-              type="checkbox"
-              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            <NotificationToggle
+              v-model="notificationForm.email_newsletter"
+              label="Newsletter"
+              description="Weekly digest of trending products and platform updates"
             />
-          </label>
+          </div>
         </div>
 
         <hr class="border-gray-200 dark:border-gray-700" />
 
+        <!-- In-App -->
         <div>
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white">
-            Push Notifications
-          </h3>
-          <p class="text-sm text-gray-500 dark:text-gray-400">
-            Manage your push notification preferences
-          </p>
+          <h4 class="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            In-App
+          </h4>
+          <div class="divide-y divide-gray-100 dark:divide-gray-700/50">
+            <NotificationToggle
+              v-model="notificationForm.inapp_order_updates"
+              label="Order updates"
+              description="Status changes, shipping, delivery notifications"
+            />
+            <NotificationToggle
+              v-model="notificationForm.inapp_reviews"
+              label="Review notifications"
+              description="When reviews are approved or responded to"
+            />
+          </div>
         </div>
 
-        <div class="space-y-4">
-          <label class="flex items-center justify-between">
-            <div>
-              <p class="font-medium text-gray-900 dark:text-white">Order Updates</p>
-              <p class="text-sm text-gray-500 dark:text-gray-400">
-                Get push notifications for order updates
-              </p>
-            </div>
-            <input
-              v-model="notificationSettings.pushOrders"
-              type="checkbox"
-              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-            />
-          </label>
+        <hr class="border-gray-200 dark:border-gray-700" />
 
-          <label class="flex items-center justify-between">
-            <div>
-              <p class="font-medium text-gray-900 dark:text-white">Messages</p>
-              <p class="text-sm text-gray-500 dark:text-gray-400">
-                Get push notifications for new messages
-              </p>
-            </div>
-            <input
-              v-model="notificationSettings.pushMessages"
-              type="checkbox"
-              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-            />
-          </label>
-        </div>
+        <!-- Push -->
+        <NotificationToggle
+          v-model="notificationForm.push_enabled"
+          label="Push notifications"
+          description="Receive real-time browser notifications"
+        />
 
-        <div class="flex justify-end">
+        <!-- Actions -->
+        <div class="flex items-center justify-between">
+          <button
+            type="button"
+            class="inline-flex items-center gap-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+            @click="router.push(authStore.isAdmin ? '/admin/notifications/preferences' : '/vendor/notifications/preferences')"
+          >
+            All notification settings
+            <ArrowTopRightOnSquareIcon class="h-4 w-4" />
+          </button>
+
           <BaseButton variant="primary" :loading="isSavingNotifications" @click="saveNotifications">
             Save Preferences
           </BaseButton>

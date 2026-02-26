@@ -211,6 +211,19 @@ const vendorRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/shared/Profile.vue'),
         meta: { title: 'Profile' },
       },
+      // Notifications
+      {
+        path: 'notifications',
+        name: 'vendor-notifications',
+        component: () => import('@/pages/shared/notifications/NotificationList.vue'),
+        meta: { title: 'Notifications' },
+      },
+      {
+        path: 'notifications/preferences',
+        name: 'vendor-notification-preferences',
+        component: () => import('@/pages/shared/notifications/NotificationPreferences.vue'),
+        meta: { title: 'Notification Preferences' },
+      },
     ],
   },
   // Vendor status pages (outside main layout)

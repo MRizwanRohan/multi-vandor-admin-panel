@@ -15,5 +15,5 @@ export { couponService, type CouponFilters, type CouponStats, type ValidateCoupo
 export { analyticsService, type DateRange, type SalesReport, type VendorReport, type ProductReport } from './analytics.service'
 export { payoutService, type PayoutFilters, type PayoutStats, type BankAccount, type CreateBankAccountRequest } from './payout.service'
 export { uploadService, type UploadedFile, type UploadProgress, type UploadOptions, type ChunkedUploadSession } from './upload.service'
-export { notificationService, type NotificationFilters, type NotificationStats } from './notification.service'
+export { notificationService, type NotificationFilters } from './notification.service'
 export { shippingService, type ShippingZone, type ShippingMethod, type ShippingRegion, type ShippingClass, type ShippingRate, type ShippingCalculation } from './shipping.service'

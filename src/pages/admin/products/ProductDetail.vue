@@ -45,7 +45,7 @@ onMounted(() => {
 async function fetchProduct() {
   isLoading.value = true
   try {
-    product.value = await productService.getById(productId.value) as ProductDetail
+    product.value = await productService.adminShow(productId.value) as ProductDetail
     breadcrumbStore.setPageInfo(product.value.name, [
       { label: 'Products', to: '/admin/products' },
       { label: product.value.name },
@@ -121,7 +121,7 @@ async function deleteProduct() {
 
   if (confirmed) {
     try {
-      await productService.delete(product.value.id)
+      await productService.adminDelete(product.value.id)
       toast.success('Product deleted successfully')
       router.push('/admin/products')
     } catch (error) {

@@ -37,3 +37,6 @@ export { useDragDrop, reorderArray, type DragDropOptions, type DragDropState } f
 // Domain Composables - Products
 export { useProduct } from './useProduct'
 export { useVariantBuilder } from './useVariantBuilder'
+
+// Domain Composables - Notifications
+export { useNotification, timeAgo, type NotificationColorStyles } from './useNotification'

@@ -315,6 +315,14 @@ export const productService = {
     await api.delete(`${ADMIN_BASE}/${productSlug}`)
   },
 
+  /**
+   * PUT /admin/products/{product} - Admin update product (for moderation)
+   */
+  async adminUpdate(productSlug: string | number, data: Partial<CreateProductRequest | ProductFormData>): Promise<ProductDetail> {
+    const response = await api.put<ApiResponse<ProductDetail>>(`${ADMIN_BASE}/${productSlug}`, data)
+    return response.data.data
+  },
+
   // ═════════════════════════════════════════════════════════════════
   // Legacy methods (backward compatibility with existing code)
   // ═════════════════════════════════════════════════════════════════

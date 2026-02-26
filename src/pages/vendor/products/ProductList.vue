@@ -68,7 +68,7 @@ const columns: TableColumn[] = [
 async function fetchProducts() {
   isLoading.value = true
   try {
-    const response = await productService.getAll({
+    const response = await productService.vendorList({
       page: pagination.currentPage.value,
       per_page: pagination.perPage.value,
       search: searchQuery.value,
@@ -112,7 +112,7 @@ async function deleteProduct(product: Product) {
 
   if (confirmed) {
     try {
-      await productService.delete(product.id)
+      await productService.vendorDelete(product.id)
       toast.success('Product deleted successfully')
       fetchProducts()
     } catch (error) {
@@ -166,7 +166,7 @@ function getStockStatus(product: Product): { text: string; class: string } {
         />
       </div>
 
-      <BaseButton variant="primary" to="/vendor/products/new">
+      <BaseButton variant="primary" to="/vendor/products/create">
         <PlusIcon class="mr-2 h-4 w-4" />
         Add Product
       </BaseButton>
@@ -254,7 +254,7 @@ function getStockStatus(product: Product): { text: string; class: string } {
             title="No products yet"
             description="Start selling by adding your first product."
             action-text="Add Product"
-            action-to="/vendor/products/new"
+            action-to="/vendor/products/create"
           />
         </template>
       </DataTable>

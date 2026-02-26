@@ -62,7 +62,7 @@ async function fetchProduct() {
   
   isLoading.value = true
   try {
-    const data = await productService.getById(productId.value)
+    const data = await productService.vendorShow(productId.value)
     product.value = data as ProductDetailType
     if (data.images && data.images.length > 0) {
       selectedImage.value = data.images[0]

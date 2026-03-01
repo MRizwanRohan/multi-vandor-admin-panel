@@ -179,13 +179,45 @@ const stats = computed(() => ({
   inStock: props.variants.filter(v => v.stock_quantity > 0).length,
   totalStock: props.variants.reduce((sum, v) => sum + v.stock_quantity, 0)
 }))
+
+// Price Range
+const priceRange = computed(() => {
+  if (props.variants.length === 0) return null
+  
+  const prices = props.variants
+    .filter(v => v.is_active)
+    .map(v => {
+      // Calculate effective price for each variant
+      const basePrice = v.price || props.basePrice || 0
+      const salePrice = v.sale_price
+      // If sale is active and sale_price is less than price
+      if (salePrice && salePrice < basePrice) {
+        return salePrice
+      }
+      return basePrice
+    })
+  
+  if (prices.length === 0) return null
+  
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+  
+  return {
+    min,
+    max,
+    isSame: Math.abs(min - max) < 0.01,
+    display: min === max 
+      ? `${props.currency}${min.toLocaleString('en-BD')}`
+      : `${props.currency}${min.toLocaleString('en-BD')} – ${props.currency}${max.toLocaleString('en-BD')}`
+  }
+})
 </script>
 
 <template>
   <div class="space-y-4">
     <!-- Header with stats -->
     <div class="flex flex-wrap items-center justify-between gap-4">
-      <div class="flex items-center gap-4 text-sm">
+      <div class="flex flex-wrap items-center gap-4 text-sm">
         <span class="text-gray-600 dark:text-gray-400">
           মোট: <span class="font-semibold text-gray-900 dark:text-white">{{ stats.total }}</span>
         </span>
@@ -197,6 +229,11 @@ const stats = computed(() => ({
         </span>
         <span class="text-gray-600 dark:text-gray-400">
           মোট স্টক: <span class="font-semibold text-gray-900 dark:text-white">{{ stats.totalStock }}</span>
+        </span>
+        
+        <!-- Price Range Badge -->
+        <span v-if="priceRange" class="inline-flex items-center gap-1.5 rounded-full bg-primary-100 px-3 py-1 text-sm font-medium text-primary-700 dark:bg-primary-900/50 dark:text-primary-300">
+          💰 {{ priceRange.display }}
         </span>
       </div>
       

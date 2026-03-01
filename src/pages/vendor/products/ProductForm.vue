@@ -227,6 +227,42 @@ const formProgress = computed(() => {
 })
 
 // ══════════════════════════════════════════════════════════════════════
+// Price Range Calculation (for variable products)
+// ══════════════════════════════════════════════════════════════════════
+const previewPriceRange = computed(() => {
+  if (productType.value !== 'variable' || variants.value.length === 0) {
+    return null
+  }
+  
+  const prices = variants.value
+    .filter(v => v.is_active)
+    .map(v => {
+      // Calculate effective price for each variant
+      const basePrice = v.price || values.price || 0
+      const salePrice = v.sale_price
+      // If sale_price exists and is less than price
+      if (salePrice && salePrice < basePrice) {
+        return salePrice
+      }
+      return basePrice
+    })
+  
+  if (prices.length === 0) return null
+  
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+  
+  return {
+    min,
+    max,
+    isSame: Math.abs(min - max) < 0.01,
+    display: min === max 
+      ? `৳${min.toLocaleString('en-BD')}`
+      : `৳${min.toLocaleString('en-BD')} – ৳${max.toLocaleString('en-BD')}`
+  }
+})
+
+// ══════════════════════════════════════════════════════════════════════
 // Unsaved Changes Warning
 // ══════════════════════════════════════════════════════════════════════
 watch(values, () => {
@@ -1554,22 +1590,38 @@ function cancel() {
                     {{ values.name || 'Product Name' }}
                   </h1>
                   
-                  <!-- Price -->
-                  <div class="space-y-1">
-                    <div class="flex items-baseline gap-3">
+                  <!-- Price Display -->
+                  <div class="space-y-2">
+                    <!-- Variable Product: Show Price Range -->
+                    <div v-if="productType === 'variable' && previewPriceRange">
+                      <div class="flex items-baseline gap-2">
+                        <span class="text-3xl font-bold text-primary-600 dark:text-primary-400">
+                          {{ previewPriceRange.display }}
+                        </span>
+                      </div>
+                      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        {{ variants.length }} variants available
+                      </p>
+                    </div>
+                    
+                    <!-- Simple Product: Show Single Price -->
+                    <div v-else class="flex items-baseline gap-3">
                       <span class="text-3xl font-bold text-primary-600 dark:text-primary-400">
-                        ৳{{ Number(values.salePrice || values.price || 0).toLocaleString('en-BD') }}
+                        ৳{{ Number(values.sale_price || values.price || 0).toLocaleString('en-BD') }}
                       </span>
                       <span
-                        v-if="values.salePrice && values.price && values.salePrice < values.price"
+                        v-if="values.sale_price && values.price && values.sale_price < values.price"
                         class="text-lg text-gray-400 line-through"
                       >
                         ৳{{ Number(values.price).toLocaleString('en-BD') }}
                       </span>
+                      <span
+                        v-if="values.sale_price && values.price && values.sale_price < values.price"
+                        class="rounded bg-danger-100 px-2 py-0.5 text-sm font-medium text-danger-700 dark:bg-danger-900/30 dark:text-danger-400"
+                      >
+                        -{{ Math.round((1 - values.sale_price / values.price) * 100) }}%
+                      </span>
                     </div>
-                    <p v-if="values.salePrice && values.price && values.salePrice < values.price" class="text-sm text-success-600">
-                      {{ Math.round((1 - values.salePrice / values.price) * 100) }}% OFF
-                    </p>
                   </div>
 
                   <!-- Short Description -->
@@ -1582,12 +1634,19 @@ function cancel() {
                     <span
                       :class="[
                         'inline-flex items-center rounded-full px-3 py-1 text-sm font-medium',
-                        Number(values.stock) > 0
+                        (productType === 'variable' ? variants.filter(v => v.stock_quantity > 0).length > 0 : Number(values.stock) > 0)
                           ? 'bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-400'
                           : 'bg-danger-100 text-danger-700 dark:bg-danger-900/30 dark:text-danger-400'
                       ]"
                     >
-                      {{ Number(values.stock) > 0 ? `In Stock (${values.stock})` : 'Out of Stock' }}
+                      <template v-if="productType === 'variable'">
+                        {{ variants.filter(v => v.stock_quantity > 0).length > 0 
+                          ? `In Stock (${variants.filter(v => v.stock_quantity > 0).length} variants)` 
+                          : 'Out of Stock' }}
+                      </template>
+                      <template v-else>
+                        {{ Number(values.stock) > 0 ? `In Stock (${values.stock})` : 'Out of Stock' }}
+                      </template>
                     </span>
                   </div>
 

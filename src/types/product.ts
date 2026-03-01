@@ -6,6 +6,13 @@ export type ProductType = 'simple' | 'variable'
 export type ProductStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'archived'
 export type ProductVisibility = 'visible' | 'hidden' | 'catalog'
 
+/** Price range for variable products */
+export interface PriceRange {
+  min: number
+  max: number
+  display: string // Formatted: "৳450 – ৳1,000" or "৳500" if same
+}
+
 export interface Product {
   id: number
   name: string
@@ -37,7 +44,7 @@ export interface Product {
   thumbnail?: string | null
   // Variable product specific
   variant_count?: number
-  price_range?: { min: number; max: number } | null
+  price_range?: PriceRange | null
   created_at: string
   updated_at: string
 }

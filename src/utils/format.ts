@@ -89,6 +89,76 @@ export function formatCompactNumber(num: number): string {
   return `${sign}${absNum}`
 }
 
+/**
+ * Format price range for variable products
+ * @example formatPriceRange(450, 1000) → "৳450 – ৳1,000"
+ * @example formatPriceRange(500, 500) → "৳500"
+ */
+export function formatPriceRange(
+  min: number | null | undefined,
+  max: number | null | undefined,
+  options: { compact?: boolean } = {}
+): string {
+  const minPrice = min ?? 0
+  const maxPrice = max ?? 0
+
+  const formatFn = (amount: number) => formatCurrency(amount, { 
+    showSymbol: true, 
+    decimals: 0,
+    compact: options.compact 
+  })
+
+  // Same price - show single price
+  if (Math.abs(minPrice - maxPrice) < 0.01) {
+    return formatFn(minPrice)
+  }
+
+  // Different prices - show range
+  return `${formatFn(minPrice)} – ${formatFn(maxPrice)}`
+}
+
+/**
+ * Calculate price range from variants
+ * @returns PriceRange object with min, max, and display
+ */
+export function calculatePriceRange(
+  variants: Array<{ price?: number | null; sale_price?: number | null; effective_price?: number }>,
+  basePrice: number = 0
+): { min: number; max: number; display: string } | null {
+  if (!variants || variants.length === 0) return null
+
+  // Calculate effective prices for each variant
+  const prices = variants.map(v => {
+    // If variant has effective_price, use it
+    if (typeof v.effective_price === 'number') return v.effective_price
+    
+    // Otherwise calculate: sale_price if active, else price, else basePrice
+    const variantPrice = v.price ?? basePrice
+    return (v.sale_price && v.sale_price < variantPrice) ? v.sale_price : variantPrice
+  })
+
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+
+  return {
+    min,
+    max,
+    display: formatPriceRange(min, max),
+  }
+}
+
+/**
+ * Get discount percentage
+ * @example getDiscountPercentage(1000, 800) → 20
+ */
+export function getDiscountPercentage(
+  originalPrice: number | null | undefined,
+  salePrice: number | null | undefined
+): number | null {
+  if (!originalPrice || !salePrice || salePrice >= originalPrice) return null
+  return Math.round(((originalPrice - salePrice) / originalPrice) * 100)
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // Number Formatting
 // ═══════════════════════════════════════════════════════════════════

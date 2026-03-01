@@ -7,7 +7,7 @@ import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
 import { productService } from '@/services'
-import { useCurrency, usePagination, useConfirm, useToast } from '@/composables'
+import { useCurrency, usePagination, useConfirm, useToast, useProduct } from '@/composables'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
@@ -22,6 +22,9 @@ import {
   TrashIcon,
   PencilIcon,
   EyeIcon,
+  DocumentDuplicateIcon,
+  PaperAirplaneIcon,
+  ArrowUpTrayIcon,
 } from '@heroicons/vue/24/outline'
 
 const router = useRouter()
@@ -30,6 +33,7 @@ const currency = useCurrency()
 const confirm = useConfirm()
 const toast = useToast()
 const pagination = usePagination()
+const { submitForReview, duplicateProduct, importProducts } = useProduct()
 
 // Set page info
 onMounted(() => {
@@ -49,9 +53,19 @@ const statusFilter = ref('')
 
 const statusOptions = [
   { value: '', label: 'All Status' },
-  { value: 'active', label: 'Active' },
-  { value: 'inactive', label: 'Inactive' },
   { value: 'draft', label: 'Draft' },
+  { value: 'pending', label: 'Pending Review' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+]
+
+// Status tabs for quick filtering
+const statusTabs = [
+  { value: '', label: 'All' },
+  { value: 'draft', label: 'Draft' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
 ]
 
 // Table columns
@@ -97,8 +111,51 @@ watch([() => pagination.currentPage.value, () => pagination.perPage.value], () =
 })
 
 // Actions
+function viewProduct(product: Product) {
+  router.push(`/vendor/products/${product.slug}`)
+}
+
 function editProduct(product: Product) {
-  router.push(`/vendor/products/${product.id}/edit`)
+  router.push(`/vendor/products/${product.slug}/edit`)
+}
+
+async function handleSubmitForReview(product: Product) {
+  const confirmed = await confirm.show({
+    title: 'Submit for Review',
+    message: `Submit "${product.name}" for admin review? You won't be able to edit it until it's reviewed.`,
+    confirmText: 'Submit',
+    cancelText: 'Cancel',
+    variant: 'primary',
+  })
+  if (confirmed) {
+    try {
+      await submitForReview(product.slug)
+      fetchProducts()
+    } catch { /* error handled in composable */ }
+  }
+}
+
+async function handleDuplicate(product: Product) {
+  try {
+    const duplicated = await duplicateProduct(product.slug)
+    router.push(`/vendor/products/${duplicated.slug}/edit`)
+  } catch { /* error handled in composable */ }
+}
+
+async function handleImport() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.csv'
+  input.onchange = async (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0]
+    if (file) {
+      try {
+        await importProducts(file)
+        fetchProducts()
+      } catch { /* error handled in composable */ }
+    }
+  }
+  input.click()
 }
 
 async function deleteProduct(product: Product) {
@@ -122,11 +179,12 @@ async function deleteProduct(product: Product) {
 }
 
 // Status badge variant
-function getStatusVariant(status: string): 'success' | 'warning' | 'secondary' {
-  const variants: Record<string, 'success' | 'warning' | 'secondary'> = {
-    active: 'success',
-    inactive: 'warning',
+function getStatusVariant(status: string): 'success' | 'warning' | 'secondary' | 'info' | 'danger' {
+  const variants: Record<string, 'success' | 'warning' | 'secondary' | 'info' | 'danger'> = {
+    approved: 'success',
+    pending: 'warning',
     draft: 'secondary',
+    rejected: 'danger',
   }
   return variants[status] || 'secondary'
 }
@@ -166,10 +224,34 @@ function getStockStatus(product: Product): { text: string; class: string } {
         />
       </div>
 
-      <BaseButton variant="primary" to="/vendor/products/create">
-        <PlusIcon class="mr-2 h-4 w-4" />
-        Add Product
-      </BaseButton>
+      <div class="flex items-center gap-2">
+        <BaseButton variant="secondary" @click="handleImport">
+          <ArrowUpTrayIcon class="mr-2 h-4 w-4" />
+          Import
+        </BaseButton>
+        <BaseButton variant="primary" to="/vendor/products/create">
+          <PlusIcon class="mr-2 h-4 w-4" />
+          Add Product
+        </BaseButton>
+      </div>
+    </div>
+
+    <!-- Status tabs -->
+    <div class="flex gap-1 border-b border-gray-200 dark:border-gray-700">
+      <button
+        v-for="tab in statusTabs"
+        :key="tab.value"
+        type="button"
+        :class="[
+          'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+          statusFilter === tab.value
+            ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+        ]"
+        @click="statusFilter = tab.value"
+      >
+        {{ tab.label }}
+      </button>
     </div>
 
     <!-- Products table -->
@@ -193,6 +275,7 @@ function getStockStatus(product: Product): { text: string; class: string } {
                 :src="row.primary_image"
                 :alt="row.name"
                 class="h-full w-full object-cover"
+                loading="lazy"
               />
               <div v-else class="flex h-full w-full items-center justify-center text-gray-400">
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -225,23 +308,57 @@ function getStockStatus(product: Product): { text: string; class: string } {
         </template>
 
         <template #cell-status="{ row }">
-          <BaseBadge :variant="getStatusVariant(row.status)" class="capitalize">
-            {{ row.status }}
-          </BaseBadge>
+          <div>
+            <BaseBadge :variant="getStatusVariant(row.status)" class="capitalize">
+              {{ row.status }}
+            </BaseBadge>
+            <p v-if="row.status === 'rejected' && row.rejection_reason" class="mt-1 text-xs text-danger-600 dark:text-danger-400 max-w-50 truncate" :title="row.rejection_reason">
+              {{ row.rejection_reason }}
+            </p>
+          </div>
         </template>
 
         <template #cell-actions="{ row }">
-          <div class="flex items-center justify-end gap-2">
+          <div class="flex items-center justify-end gap-1">
             <button
               type="button"
               class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+              title="View"
+              @click="viewProduct(row)"
+            >
+              <EyeIcon class="h-5 w-5" />
+            </button>
+            <button
+              v-if="['draft', 'rejected', 'approved'].includes(row.status)"
+              type="button"
+              class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+              title="Edit"
               @click="editProduct(row)"
             >
               <PencilIcon class="h-5 w-5" />
             </button>
             <button
+              v-if="['draft', 'rejected'].includes(row.status)"
+              type="button"
+              class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-gray-700 dark:hover:text-primary-400"
+              title="Submit for Review"
+              @click="handleSubmitForReview(row)"
+            >
+              <PaperAirplaneIcon class="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+              title="Duplicate"
+              @click="handleDuplicate(row)"
+            >
+              <DocumentDuplicateIcon class="h-5 w-5" />
+            </button>
+            <button
+              v-if="['draft', 'rejected'].includes(row.status)"
               type="button"
               class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-danger-600 dark:hover:bg-gray-700 dark:hover:text-danger-400"
+              title="Delete"
               @click="deleteProduct(row)"
             >
               <TrashIcon class="h-5 w-5" />

@@ -49,7 +49,12 @@ export function useProduct() {
   /** Check if product can be submitted for review */
   const canSubmit = computed(() => {
     if (!product.value) return false
-    return product.value.status === 'draft'
+    return ['draft', 'rejected'].includes(product.value.status)
+  })
+
+  /** Check if product can be duplicated */
+  const canDuplicate = computed(() => {
+    return product.value !== null
   })
 
   /** Check if product is visible to customers */
@@ -214,6 +219,79 @@ export function useProduct() {
     }
   }
 
+  /**
+   * Duplicate product
+   */
+  async function duplicateProduct(slugOrId: string | number) {
+    submitting.value = true
+    error.value = null
+    try {
+      const duplicated = await productService.vendorDuplicate(slugOrId)
+      toast.success('Product duplicated successfully')
+      return duplicated
+    } catch (e: any) {
+      const message = e.response?.data?.message || 'Failed to duplicate product'
+      error.value = message
+      toast.error(message)
+      throw e
+    } finally {
+      submitting.value = false
+    }
+  }
+
+  /**
+   * Get completeness score
+   */
+  async function getCompleteness(slugOrId: string | number) {
+    try {
+      return await productService.vendorGetCompleteness(slugOrId)
+    } catch (e: any) {
+      console.error('Failed to fetch completeness:', e)
+      throw e
+    }
+  }
+
+  /**
+   * Schedule product publishing
+   */
+  async function schedulePublish(slugOrId: string | number, publishAt: string) {
+    submitting.value = true
+    error.value = null
+    try {
+      const updated = await productService.vendorSchedule(slugOrId, publishAt)
+      product.value = updated
+      toast.success('Product scheduled for publishing')
+      return updated
+    } catch (e: any) {
+      const message = e.response?.data?.message || 'Failed to schedule product'
+      error.value = message
+      toast.error(message)
+      throw e
+    } finally {
+      submitting.value = false
+    }
+  }
+
+  /**
+   * Import products via CSV
+   */
+  async function importProducts(file: File) {
+    submitting.value = true
+    error.value = null
+    try {
+      const result = await productService.vendorImport(file)
+      toast.success(`Imported ${result.success} products successfully`)
+      return result
+    } catch (e: any) {
+      const message = e.response?.data?.message || 'Failed to import products'
+      error.value = message
+      toast.error(message)
+      throw e
+    } finally {
+      submitting.value = false
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────
   // Image Methods
   // ─────────────────────────────────────────────────────────────────
@@ -348,6 +426,103 @@ export function useProduct() {
   }
 
   /**
+   * Fetch single product (admin)
+   */
+  async function adminFetchProduct(slugOrId: string | number) {
+    loading.value = true
+    error.value = null
+    try {
+      const data = await productService.adminShow(slugOrId)
+      product.value = data
+      return data
+    } catch (e: any) {
+      error.value = e.response?.data?.message || 'Failed to fetch product'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /**
+   * Delete product (admin)
+   */
+  async function adminDeleteProduct(slugOrId: string | number) {
+    submitting.value = true
+    error.value = null
+    try {
+      await productService.adminDelete(slugOrId)
+      toast.success('Product deleted')
+      products.value = products.value.filter(
+        (p) => p.slug !== slugOrId && p.id !== slugOrId
+      )
+    } catch (e: any) {
+      const message = e.response?.data?.message || 'Failed to delete product'
+      error.value = message
+      toast.error(message)
+      throw e
+    } finally {
+      submitting.value = false
+    }
+  }
+
+  /**
+   * Bulk approve products (admin)
+   */
+  async function adminBulkApprove(ids: number[]) {
+    submitting.value = true
+    error.value = null
+    try {
+      const result = await productService.adminBulkApprove(ids)
+      toast.success(`${result.approved ?? result.total} products approved`)
+      return result
+    } catch (e: any) {
+      const message = e.response?.data?.message || 'Failed to bulk approve'
+      error.value = message
+      toast.error(message)
+      throw e
+    } finally {
+      submitting.value = false
+    }
+  }
+
+  /**
+   * Bulk reject products (admin)
+   */
+  async function adminBulkReject(ids: number[], reason: string) {
+    submitting.value = true
+    error.value = null
+    try {
+      const result = await productService.adminBulkReject(ids, reason)
+      toast.success(`${result.rejected ?? result.total} products rejected`)
+      return result
+    } catch (e: any) {
+      const message = e.response?.data?.message || 'Failed to bulk reject'
+      error.value = message
+      toast.error(message)
+      throw e
+    } finally {
+      submitting.value = false
+    }
+  }
+
+  /**
+   * Bulk set featured (admin)
+   */
+  async function adminBulkSetFeatured(ids: number[], featured: boolean) {
+    submitting.value = true
+    try {
+      const result = await productService.adminBulkSetFeatured(ids, featured)
+      toast.success(`${result.updated} products updated`)
+      return result
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to update featured')
+      throw e
+    } finally {
+      submitting.value = false
+    }
+  }
+
+  /**
    * Toggle featured status (admin)
    */
   async function toggleFeatured(slugOrId: string | number) {
@@ -464,6 +639,7 @@ export function useProduct() {
     canEdit,
     canDelete,
     canSubmit,
+    canDuplicate,
     isCustomerVisible,
     statusConfig,
 
@@ -475,6 +651,10 @@ export function useProduct() {
     deleteProduct,
     submitForReview,
     restoreProduct,
+    duplicateProduct,
+    getCompleteness,
+    schedulePublish,
+    importProducts,
 
     // Image Methods
     uploadImages,
@@ -483,9 +663,14 @@ export function useProduct() {
 
     // Admin Methods
     adminFetchProducts,
+    adminFetchProduct,
+    adminDeleteProduct,
     approveProduct,
     rejectProduct,
     toggleFeatured,
+    adminBulkApprove,
+    adminBulkReject,
+    adminBulkSetFeatured,
 
     // Customer Methods
     browseProducts,

@@ -8,7 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
 import { productService, categoryService } from '@/services'
 import { vendorTemplateService } from '@/services/attribute-template.service'
-import { useToast } from '@/composables'
+import { useToast, useDragDrop } from '@/composables'
 import { useForm } from 'vee-validate'
 import { toTypedSchema } from '@vee-validate/zod'
 import { z } from 'zod'
@@ -33,6 +33,7 @@ import {
   ArrowLeftIcon,
   CubeIcon,
   Squares2X2Icon,
+  Bars3Icon,
 } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
@@ -41,13 +42,8 @@ const breadcrumbStore = useBreadcrumbStore()
 const toast = useToast()
 
 // Check if editing
-const productId = computed(() => {
-  const raw = route.params.id as string | undefined
-  if (!raw) return undefined
-  const id = Number(raw)
-  return isNaN(id) ? undefined : id
-})
-const isEditing = computed(() => productId.value !== undefined)
+const productSlug = computed(() => route.params.id as string | undefined)
+const isEditing = computed(() => !!productSlug.value)
 
 // Loading
 const isLoading = ref(false)
@@ -80,17 +76,34 @@ const variants = ref<ProductVariant[]>([])
 const images = ref<string[]>([])
 const imageInput = ref<HTMLInputElement | null>(null)
 
+// Drag-and-drop image reorder
+const { state: dragState, handlers: dragHandlers, dragClasses, isDraggingIndex, isDropTarget } = useDragDrop(images, {
+  onReorder: (newItems) => {
+    images.value = newItems
+  },
+})
+
 // Form schema
 const schema = toTypedSchema(
   z.object({
     name: z.string().min(3, 'Name must be at least 3 characters'),
+    short_description: z.string().optional(),
     description: z.string().min(10, 'Description must be at least 10 characters'),
     categoryId: z.string().min(1, 'Please select a category'),
+    brand_id: z.number().optional().nullable(),
     price: z.number().min(1, 'Price must be greater than 0'),
-    compareAtPrice: z.number().optional(),
+    cost_price: z.number().optional().nullable(),
+    sale_price: z.number().optional().nullable(),
+    sale_start_date: z.string().optional().nullable(),
+    sale_end_date: z.string().optional().nullable(),
     sku: z.string().optional(),
     stock: z.number().min(0, 'Stock cannot be negative'),
+    low_stock_threshold: z.number().optional().nullable(),
     weight: z.number().optional(),
+    dimensionLength: z.number().optional().nullable(),
+    dimensionWidth: z.number().optional().nullable(),
+    dimensionHeight: z.number().optional().nullable(),
+    visibility: z.enum(['visible', 'hidden', 'catalog_only']).default('visible'),
     isActive: z.boolean(),
     metaTitle: z.string().optional(),
     metaDescription: z.string().optional(),
@@ -101,13 +114,23 @@ const { handleSubmit, setValues, values, resetForm } = useForm({
   validationSchema: schema,
   initialValues: {
     name: '',
+    short_description: '',
     description: '',
     categoryId: '',
+    brand_id: null as number | null,
     price: 0,
-    compareAtPrice: undefined,
+    cost_price: null as number | null,
+    sale_price: null as number | null,
+    sale_start_date: null as string | null,
+    sale_end_date: null as string | null,
     sku: '',
     stock: 0,
-    weight: undefined,
+    low_stock_threshold: null as number | null,
+    weight: undefined as number | undefined,
+    dimensionLength: null as number | null,
+    dimensionWidth: null as number | null,
+    dimensionHeight: null as number | null,
+    visibility: 'visible' as 'visible' | 'hidden' | 'catalog_only',
     isActive: true,
     metaTitle: '',
     metaDescription: '',
@@ -191,21 +214,31 @@ watch(
 
 // Load product for editing
 async function loadProduct() {
-  if (!productId.value) return
+  if (!productSlug.value) return
   
   isLoading.value = true
   try {
-    const product = await productService.vendorShow(productId.value!) as import('@/types').ProductDetail
+    const product = await productService.vendorShow(productSlug.value) as import('@/types').ProductDetail
     setValues({
       name: product.name,
+      short_description: product.short_description || '',
       description: product.description,
       categoryId: String(product.category?.id ?? ''),
+      brand_id: product.brand_id ?? null,
       price: product.price,
-      compareAtPrice: product.sale_price ?? undefined,
+      cost_price: product.cost_price ?? null,
+      sale_price: product.sale_price ?? null,
+      sale_start_date: product.sale_start_date ?? null,
+      sale_end_date: product.sale_end_date ?? null,
       sku: product.sku,
       stock: product.stock_quantity,
+      low_stock_threshold: product.low_stock_threshold ?? null,
       weight: product.weight ?? undefined,
-      isActive: product.status === 'approved',
+      dimensionLength: product.dimensions?.length ?? null,
+      dimensionWidth: product.dimensions?.width ?? null,
+      dimensionHeight: product.dimensions?.height ?? null,
+      visibility: product.visibility || 'visible',
+      isActive: product.is_active,
       metaTitle: product.meta_title,
       metaDescription: product.meta_description,
     })
@@ -352,6 +385,18 @@ function validateAttributes(): boolean {
 }
 
 // Submit form
+let saveAsDraft = false
+
+function submitAsDraft() {
+  saveAsDraft = true
+  onSubmit()
+}
+
+function submitAndPublish() {
+  saveAsDraft = false
+  onSubmit()
+}
+
 const onSubmit = handleSubmit(async (formValues) => {
   // Validate attributes
   if (!validateAttributes()) {
@@ -367,36 +412,63 @@ const onSubmit = handleSubmit(async (formValues) => {
 
   isSaving.value = true
   try {
-    const data = {
+    const data: Record<string, any> = {
       name: formValues.name,
+      short_description: formValues.short_description || undefined,
       description: formValues.description,
       category_id: Number(formValues.categoryId),
       type: productType.value,
-      base_price: formValues.price,
-      sale_price: formValues.compareAtPrice,
+      price: formValues.price,
+      cost_price: formValues.cost_price || undefined,
+      sale_price: formValues.sale_price || undefined,
+      sale_start_date: formValues.sale_start_date || undefined,
+      sale_end_date: formValues.sale_end_date || undefined,
       sku: formValues.sku || '',
       stock_quantity: formValues.stock,
+      low_stock_threshold: formValues.low_stock_threshold || undefined,
       weight: formValues.weight,
+      dimensions: (formValues.dimensionLength || formValues.dimensionWidth || formValues.dimensionHeight)
+        ? {
+            length: formValues.dimensionLength || 0,
+            width: formValues.dimensionWidth || 0,
+            height: formValues.dimensionHeight || 0,
+          }
+        : undefined,
+      visibility: formValues.visibility,
+      is_active: formValues.isActive,
+      brand_id: formValues.brand_id || undefined,
       meta_title: formValues.metaTitle,
       meta_description: formValues.metaDescription,
-      status: (formValues.isActive ? 'active' : 'inactive') as 'active' | 'inactive',
-      attributes: attributeValues.value,
+      attribute_values: attributeValues.value.length > 0 ? attributeValues.value : undefined,
       variants: productType.value === 'variable' 
         ? variants.value.map(v => ({
             sku: v.sku,
             price: v.price,
             sale_price: v.sale_price,
+            sale_start_date: v.sale_start_date || undefined,
+            sale_end_date: v.sale_end_date || undefined,
             stock_quantity: v.stock_quantity,
             is_active: v.is_active,
             weight: v.weight,
             barcode: v.barcode,
-            options: v.options.map(o => ({ option_id: o.option_id })),
+            option_ids: v.options?.map(o => o.option_id),
+          }))
+        : undefined,
+      variant_config: productType.value === 'variable' && variantAttributes.value.length > 0
+        ? variantAttributes.value.map(attr => ({
+            template_id: attr.id,
+            option_ids: attr.options.map(o => o.id),
           }))
         : undefined,
     }
 
+    // Remove draft status handling - use save_as_draft flag
+    if (saveAsDraft) {
+      data.status = 'draft'
+    }
+
     if (isEditing.value) {
-      await productService.vendorUpdate(productId.value!, data)
+      await productService.vendorUpdate(productSlug.value!, data)
       toast.success('Product updated successfully')
     } else {
       await productService.vendorCreate(data as import('@/services/product.service').ProductFormData)
@@ -430,8 +502,11 @@ function cancel() {
         <BaseButton type="button" variant="secondary" @click="cancel">
           Cancel
         </BaseButton>
-        <BaseButton type="submit" variant="primary" :loading="isSaving">
-          {{ isEditing ? 'Save Changes' : 'Create Product' }}
+        <BaseButton type="button" variant="secondary" :loading="isSaving" @click="submitAsDraft">
+          Save as Draft
+        </BaseButton>
+        <BaseButton type="button" variant="primary" :loading="isSaving" @click="submitAndPublish">
+          {{ isEditing ? 'Save Changes' : 'Save & Submit' }}
         </BaseButton>
       </div>
     </div>
@@ -448,6 +523,14 @@ function cancel() {
               name="name"
               placeholder="Enter product name"
               required
+            />
+
+            <FormTextarea
+              v-model="values.short_description"
+              label="Short Description"
+              name="short_description"
+              placeholder="Brief product summary (shown in product cards)"
+              :rows="2"
             />
 
             <FormTextarea
@@ -624,25 +707,44 @@ function cancel() {
           />
         </BaseCard>
 
-        <!-- Images -->
+        <!-- Images (Drag & Drop Reorder) -->
         <BaseCard title="Product Images">
           <div class="space-y-4">
             <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <!-- Existing images -->
+              <!-- Draggable images -->
               <div
                 v-for="(image, index) in images"
-                :key="index"
-                class="relative aspect-square overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
+                :key="`img-${index}`"
+                draggable="true"
+                v-bind="dragHandlers(index)"
+                :class="[
+                  'group relative aspect-square overflow-hidden rounded-lg border-2 transition-all cursor-grab active:cursor-grabbing',
+                  isDraggingIndex(index)
+                    ? 'border-primary-500 opacity-50 scale-95'
+                    : isDropTarget(index)
+                      ? 'border-primary-400 bg-primary-50 dark:bg-primary-900/20 scale-105'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300',
+                ]"
               >
                 <img
                   :src="image"
                   :alt="`Product image ${index + 1}`"
-                  class="h-full w-full object-cover"
+                  class="h-full w-full object-cover pointer-events-none"
+                  loading="lazy"
                 />
+                <!-- Drag handle indicator -->
+                <div class="absolute left-1 top-1 rounded bg-black/50 p-0.5 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Bars3Icon class="h-4 w-4" />
+                </div>
+                <!-- Primary badge -->
+                <div v-if="index === 0" class="absolute left-1 bottom-1 rounded bg-primary-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                  Primary
+                </div>
+                <!-- Remove button -->
                 <button
                   type="button"
-                  class="absolute right-1 top-1 rounded-full bg-red-500 p-1 text-white hover:bg-red-600"
-                  @click="removeImage(index)"
+                  class="absolute right-1 top-1 rounded-full bg-red-500 p-1 text-white hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                  @click.stop="removeImage(index)"
                 >
                   <XMarkIcon class="h-4 w-4" />
                 </button>
@@ -671,7 +773,7 @@ function cancel() {
             />
 
             <p class="text-sm text-gray-500 dark:text-gray-400">
-              You can upload up to 10 images. First image will be the main product image.
+              Drag images to reorder. First image is the main product image. Max 10 images.
             </p>
           </div>
         </BaseCard>
@@ -689,19 +791,47 @@ function cancel() {
             />
 
             <FormInput
-              v-model.number="values.compareAtPrice"
-              :label="productType === 'variable' ? 'Base Sale Price (৳)' : 'Compare at Price (৳)'"
-              name="compareAtPrice"
+              v-model.number="values.cost_price"
+              label="Cost Price (৳)"
+              name="cost_price"
               type="number"
               :min="0"
-              :hint="productType === 'variable' ? 'Default for new variants' : 'Original price before discount'"
+              hint="For profit calculation only, not shown to customers"
+            />
+
+            <FormInput
+              v-model.number="values.sale_price"
+              :label="productType === 'variable' ? 'Base Sale Price (৳)' : 'Sale Price (৳)'"
+              name="sale_price"
+              type="number"
+              :min="0"
+              :hint="productType === 'variable' ? 'Default for new variants' : 'Discounted price'"
             />
           </div>
+
+          <!-- Sale Date Range -->
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
+            <FormInput
+              v-model="values.sale_start_date"
+              label="Sale Start Date"
+              name="sale_start_date"
+              type="datetime-local"
+              hint="When the sale price becomes active"
+            />
+            <FormInput
+              v-model="values.sale_end_date"
+              label="Sale End Date"
+              name="sale_end_date"
+              type="datetime-local"
+              hint="When the sale price expires"
+            />
+          </div>
+
           <p
             v-if="productType === 'variable'"
             class="mt-2 text-sm text-gray-500 dark:text-gray-400"
           >
-            💡 প্রতিটি ভেরিয়েন্টের জন্য আলাদা দাম সেট করতে পারবেন
+            Each variant can have its own price and sale dates
           </p>
         </BaseCard>
 
@@ -723,6 +853,15 @@ function cancel() {
               :min="0"
               required
             />
+
+            <FormInput
+              v-model.number="values.low_stock_threshold"
+              label="Low Stock Threshold"
+              name="low_stock_threshold"
+              type="number"
+              :min="0"
+              hint="Alert when stock falls below this level"
+            />
           </div>
 
           <div class="mt-4">
@@ -734,6 +873,40 @@ function cancel() {
               :min="0"
               :step="0.01"
             />
+          </div>
+
+          <!-- Dimensions -->
+          <div class="mt-4">
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Dimensions (cm)</label>
+            <div class="grid grid-cols-3 gap-3">
+              <FormInput
+                v-model.number="values.dimensionLength"
+                label="Length"
+                name="dimensionLength"
+                type="number"
+                :min="0"
+                :step="0.1"
+                placeholder="L"
+              />
+              <FormInput
+                v-model.number="values.dimensionWidth"
+                label="Width"
+                name="dimensionWidth"
+                type="number"
+                :min="0"
+                :step="0.1"
+                placeholder="W"
+              />
+              <FormInput
+                v-model.number="values.dimensionHeight"
+                label="Height"
+                name="dimensionHeight"
+                type="number"
+                :min="0"
+                :step="0.1"
+                placeholder="H"
+              />
+            </div>
           </div>
         </BaseCard>
 
@@ -767,6 +940,20 @@ function cancel() {
             name="isActive"
             label="Product Active"
             description="Product will be visible to customers"
+          />
+        </BaseCard>
+
+        <!-- Visibility -->
+        <BaseCard title="Visibility">
+          <FormSelect
+            v-model="values.visibility"
+            name="visibility"
+            label="Visibility"
+            :options="[
+              { value: 'visible', label: 'Visible (Search & Catalog)' },
+              { value: 'catalog_only', label: 'Catalog Only' },
+              { value: 'hidden', label: 'Hidden' },
+            ]"
           />
         </BaseCard>
 

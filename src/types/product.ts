@@ -13,9 +13,14 @@ export interface Product {
   sku: string
   price: number
   sale_price: number | null
+  sale_start_date: string | null
+  sale_end_date: string | null
   effective_price: number
+  is_sale_active: boolean
   type: ProductType
   status: ProductStatus
+  rejection_reason: string | null
+  rejected_at: string | null
   visibility: ProductVisibility
   stock_quantity: number
   is_featured: boolean
@@ -24,6 +29,8 @@ export interface Product {
   rating_average: number
   review_count: number
   sales_count: number
+  completeness_score: number
+  scheduled_publish_at: string | null
   category: ProductCategory
   vendor: ProductVendor
   primary_image: string | null
@@ -48,7 +55,7 @@ export interface ProductDetail extends Product {
   brand: ProductBrand | null
   images: ProductImage[]
   attributes: ProductAttribute[]
-  variant_config: VariantConfig | null
+  variant_config: VariantConfigItem[] | null
   variant_matrix: VariantMatrix | null
   variants: ProductVariant[]
 }
@@ -81,9 +88,12 @@ export interface ProductVendor {
 export interface ProductImage {
   id: number
   url: string
+  image_url?: string
   alt_text: string | null
   is_primary: boolean
-  sort_order: number
+  display_order: number
+  /** @deprecated Use display_order */
+  sort_order?: number
 }
 
 export interface ProductAttribute {
@@ -100,6 +110,13 @@ export type AttributeDataType = 'text' | 'number' | 'select' | 'multiselect' | '
 export interface VariantConfig {
   defining_attributes: number[]
   matrix_generated: boolean
+}
+
+export interface VariantConfigItem {
+  template_id: number
+  name: string
+  options: string[]
+  option_ids?: number[]
 }
 
 export interface VariantMatrix {
@@ -125,7 +142,10 @@ export interface ProductVariant {
   name: string
   price: number
   sale_price: number | null
+  sale_start_date: string | null
+  sale_end_date: string | null
   effective_price: number
+  is_sale_active: boolean
   stock_quantity: number
   is_in_stock: boolean
   is_active: boolean
@@ -153,16 +173,27 @@ export interface CreateProductRequest {
   sku: string
   price: number
   sale_price?: number
+  sale_start_date?: string
+  sale_end_date?: string
   cost_price?: number
   stock_quantity?: number
   low_stock_threshold?: number
   weight?: number
   dimensions?: ProductDimensions
   visibility?: ProductVisibility
+  is_active?: boolean
   meta_title?: string
   meta_description?: string
+  attribute_values?: ProductAttributeInput[]
+  /** @deprecated Use attribute_values */
   attributes?: ProductAttributeInput[]
+  variant_config?: VariantConfigInput[]
   variants?: ProductVariantInput[]
+}
+
+export interface VariantConfigInput {
+  template_id: number
+  option_ids: number[]
 }
 
 export interface UpdateProductRequest extends Partial<CreateProductRequest> {
@@ -178,12 +209,15 @@ export interface ProductVariantInput {
   sku?: string
   price: number
   sale_price?: number
+  sale_start_date?: string
+  sale_end_date?: string
   stock_quantity: number
   is_active?: boolean
   weight?: number
   image_id?: number
   barcode?: string
-  options: { option_id: number }[]
+  options?: { option_id: number }[]
+  option_ids?: number[]
 }
 
 export interface ProductListParams {
@@ -312,4 +346,35 @@ export function getProductStatusConfig(status: ProductStatus): ProductStatusConf
 
 export function isMajorEdit(changedFields: string[]): boolean {
   return changedFields.some((field) => MAJOR_EDIT_FIELDS.includes(field))
+}
+
+// ── New API Response Types (v1.1) ──
+
+export interface CompletenessResponse {
+  score: number
+  missing: string[]
+}
+
+export interface BulkActionResponse {
+  approved?: number
+  rejected?: number
+  updated?: number
+  skipped: number
+  total: number
+}
+
+export interface ImportResponse {
+  success: number
+  failed: number
+  errors: ImportError[]
+}
+
+export interface ImportError {
+  row: number
+  sku: string
+  error: string
+}
+
+export interface ScheduleRequest {
+  publish_at: string
 }

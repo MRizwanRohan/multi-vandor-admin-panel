@@ -7,13 +7,22 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
 import { productService } from '@/services'
-import { useCurrency, useDate, useConfirm, useToast } from '@/composables'
+import { useCurrency, useDate, useConfirm, useToast, useProduct } from '@/composables'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
 import PageLoader from '@/components/ui/PageLoader.vue'
 import type { ProductDetail } from '@/types'
-import { PencilIcon, TrashIcon, ArrowLeftIcon } from '@heroicons/vue/24/outline'
+import {
+  PencilIcon,
+  TrashIcon,
+  ArrowLeftIcon,
+  CheckIcon,
+  XMarkIcon,
+  StarIcon,
+  ExclamationTriangleIcon,
+} from '@heroicons/vue/24/outline'
+import { StarIcon as StarSolidIcon } from '@heroicons/vue/24/solid'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,86 +31,47 @@ const currency = useCurrency()
 const date = useDate()
 const confirm = useConfirm()
 const toast = useToast()
+const {
+  approveProduct,
+  rejectProduct,
+  toggleFeatured,
+  adminDeleteProduct,
+  submitting,
+} = useProduct()
 
 // Data
 const product = ref<ProductDetail | null>(null)
 const isLoading = ref(true)
-const productId = computed(() => {
-  const id = Number(route.params.id)
-  return isNaN(id) ? null : id
-})
+const productSlug = computed(() => route.params.id as string)
+const showRejectModal = ref(false)
+const rejectionReason = ref('')
 
 // Set page info
 onMounted(() => {
-  if (!productId.value) {
-    toast.error('Invalid product ID')
+  if (!productSlug.value) {
+    toast.error('Invalid product')
     router.push('/admin/products')
     return
   }
   fetchProduct()
 })
 
+// Computed
+const isPending = computed(() => product.value?.status === 'pending')
+const isRejected = computed(() => product.value?.status === 'rejected')
+
 // Fetch product
 async function fetchProduct() {
   isLoading.value = true
   try {
-    product.value = await productService.adminShow(productId.value) as ProductDetail
+    product.value = await productService.adminShow(productSlug.value) as ProductDetail
     breadcrumbStore.setPageInfo(product.value.name, [
       { label: 'Products', to: '/admin/products' },
       { label: product.value.name },
     ])
   } catch (error) {
     toast.error('Failed to fetch product')
-    // Mock data for demo
-    product.value = {
-      id: productId.value,
-      name: 'Premium Cotton T-Shirt',
-      slug: 'premium-cotton-t-shirt',
-      sku: 'TSH-001',
-      description: 'This premium cotton t-shirt is made from 100% organic cotton, providing exceptional comfort and durability.',
-      short_description: 'High quality cotton t-shirt for everyday wear',
-      price: 1500,
-      sale_price: 1200,
-      effective_price: 1200,
-      cost_price: 800,
-      type: 'simple',
-      status: 'approved',
-      visibility: 'visible',
-      stock_quantity: 150,
-      low_stock_threshold: 20,
-      is_featured: false,
-      is_active: true,
-      is_in_stock: true,
-      rating_average: 4.5,
-      review_count: 12,
-      sales_count: 45,
-      weight: 0.3,
-      dimensions: { length: 30, width: 20, height: 2 },
-      meta_title: 'Premium Cotton T-Shirt | Fashion Store',
-      meta_description: 'Shop premium cotton t-shirts made from organic materials.',
-      published_at: '2024-01-15T10:30:00Z',
-      category: { id: 1, name: 'Clothing', slug: 'clothing' },
-      brand: null,
-      vendor: { id: 1, store_name: 'Fashion Store', slug: 'fashion-store', logo_url: null },
-      primary_image: 'https://placehold.co/400x400?text=Product',
-      images: [
-        { id: 1, url: 'https://placehold.co/400x400?text=Image+1', alt_text: 'Product image 1', is_primary: true, sort_order: 1 },
-        { id: 2, url: 'https://placehold.co/400x400?text=Image+2', alt_text: 'Product image 2', is_primary: false, sort_order: 2 },
-      ],
-      attributes: [
-        { template_id: 1, template_name: 'Material', template_slug: 'material', data_type: 'text', value: '100% Cotton', display_value: '100% Cotton' },
-        { template_id: 2, template_name: 'Care', template_slug: 'care', data_type: 'text', value: 'Machine washable', display_value: 'Machine washable' },
-      ],
-      variant_config: null,
-      variant_matrix: null,
-      variants: [],
-      created_at: '2024-01-15T10:30:00Z',
-      updated_at: '2024-01-20T14:45:00Z',
-    }
-    breadcrumbStore.setPageInfo(product.value.name, [
-      { label: 'Products', to: '/admin/products' },
-      { label: product.value.name },
-    ])
+    router.push('/admin/products')
   } finally {
     isLoading.value = false
   }
@@ -121,13 +91,46 @@ async function deleteProduct() {
 
   if (confirmed) {
     try {
-      await productService.adminDelete(product.value.id)
-      toast.success('Product deleted successfully')
+      await adminDeleteProduct(product.value.slug)
       router.push('/admin/products')
-    } catch (error) {
-      toast.error('Failed to delete product')
-    }
+    } catch { /* handled in composable */ }
   }
+}
+
+// Approve
+async function handleApprove() {
+  if (!product.value) return
+  try {
+    const updated = await approveProduct(product.value.slug)
+    product.value = updated as ProductDetail
+  } catch { /* handled in composable */ }
+}
+
+// Reject
+function openRejectModal() {
+  rejectionReason.value = ''
+  showRejectModal.value = true
+}
+
+async function handleReject() {
+  if (!product.value || !rejectionReason.value.trim()) {
+    toast.error('Please provide a rejection reason')
+    return
+  }
+  try {
+    const updated = await rejectProduct(product.value.slug, rejectionReason.value)
+    product.value = updated as ProductDetail
+    showRejectModal.value = false
+  } catch { /* handled in composable */ }
+}
+
+// Toggle Featured
+async function handleToggleFeatured() {
+  if (!product.value) return
+  try {
+    const result = await toggleFeatured(product.value.slug)
+    product.value.is_featured = result.is_featured
+  } catch { /* handled in composable */ }
 }
 
 // Status badge variant
@@ -175,14 +178,59 @@ const profitMargin = computed(() => {
       </div>
 
       <div class="flex items-center gap-2">
-        <BaseButton variant="secondary" :to="`/admin/products/${product.id}/edit`">
+        <!-- Approve/Reject for pending -->
+        <template v-if="isPending">
+          <BaseButton variant="success" @click="handleApprove" :disabled="submitting">
+            <CheckIcon class="mr-2 h-4 w-4" />
+            Approve
+          </BaseButton>
+          <BaseButton variant="danger" @click="openRejectModal" :disabled="submitting">
+            <XMarkIcon class="mr-2 h-4 w-4" />
+            Reject
+          </BaseButton>
+        </template>
+        <!-- Featured toggle -->
+        <BaseButton
+          variant="secondary"
+          @click="handleToggleFeatured"
+          :disabled="submitting"
+          :title="product.is_featured ? 'Remove from featured' : 'Mark as featured'"
+        >
+          <component :is="product.is_featured ? StarSolidIcon : StarIcon" class="mr-2 h-4 w-4" :class="product.is_featured ? 'text-yellow-500' : ''" />
+          {{ product.is_featured ? 'Unfeature' : 'Feature' }}
+        </BaseButton>
+        <BaseButton variant="secondary" :to="`/admin/products/${product.slug}/edit`">
           <PencilIcon class="mr-2 h-4 w-4" />
           Edit
         </BaseButton>
-        <BaseButton variant="danger" @click="deleteProduct">
+        <BaseButton variant="danger" @click="deleteProduct" :disabled="submitting">
           <TrashIcon class="mr-2 h-4 w-4" />
           Delete
         </BaseButton>
+      </div>
+    </div>
+
+    <!-- Rejection Alert -->
+    <div v-if="isRejected" class="rounded-lg border border-danger-200 bg-danger-50 p-4 dark:border-danger-800 dark:bg-danger-900/20">
+      <div class="flex items-start gap-3">
+        <ExclamationTriangleIcon class="h-5 w-5 text-danger-600 dark:text-danger-400 mt-0.5 shrink-0" />
+        <div>
+          <h3 class="font-medium text-danger-800 dark:text-danger-200">Product Rejected</h3>
+          <p v-if="product.rejection_reason" class="mt-1 text-sm text-danger-700 dark:text-danger-300">
+            Reason: {{ product.rejection_reason }}
+          </p>
+          <p v-if="product.rejected_at" class="mt-1 text-xs text-danger-600 dark:text-danger-400">
+            Rejected on {{ date.format(product.rejected_at, 'MMM D, YYYY') }}
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pending Review Alert -->
+    <div v-if="isPending" class="rounded-lg border border-warning-200 bg-warning-50 p-4 dark:border-warning-800 dark:bg-warning-900/20">
+      <div class="flex items-center gap-3">
+        <ExclamationTriangleIcon class="h-5 w-5 text-warning-600 dark:text-warning-400 shrink-0" />
+        <p class="text-sm text-warning-800 dark:text-warning-200">This product is awaiting your review. Please approve or reject it.</p>
       </div>
     </div>
 
@@ -251,6 +299,50 @@ const profitMargin = computed(() => {
           </div>
         </BaseCard>
 
+        <!-- Variants -->
+        <BaseCard v-if="product.variants && product.variants.length > 0">
+          <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+            Variants ({{ product.variants.length }})
+          </h3>
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead>
+                <tr>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Variant</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
+                  <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Price</th>
+                  <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Stock</th>
+                  <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                <tr v-for="variant in product.variants" :key="variant.id">
+                  <td class="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                    {{ variant.name || variant.attribute_combination?.map(a => a.value).join(' / ') }}
+                  </td>
+                  <td class="px-4 py-3 text-sm text-gray-500">{{ variant.sku }}</td>
+                  <td class="px-4 py-3 text-sm text-gray-900 dark:text-white text-right">
+                    {{ currency.formatCurrency(variant.price) }}
+                    <span v-if="variant.sale_price" class="text-xs text-gray-400 line-through ml-1">
+                      {{ currency.formatCurrency(variant.sale_price) }}
+                    </span>
+                  </td>
+                  <td class="px-4 py-3 text-center">
+                    <span :class="variant.stock_quantity > 0 ? 'text-green-600' : 'text-red-600'" class="font-medium text-sm">
+                      {{ variant.stock_quantity }}
+                    </span>
+                  </td>
+                  <td class="px-4 py-3 text-center">
+                    <BaseBadge :variant="variant.is_active ? 'success' : 'secondary'" size="sm">
+                      {{ variant.is_active ? 'Active' : 'Inactive' }}
+                    </BaseBadge>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </BaseCard>
+
         <!-- SEO -->
         <BaseCard v-if="product.meta_title || product.meta_description || product.slug">
           <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
@@ -304,6 +396,16 @@ const profitMargin = computed(() => {
               <span class="text-success-600 dark:text-success-400 font-medium">
                 {{ currency.formatCurrency(product.sale_price) }}
               </span>
+            </div>
+            <div v-if="product.sale_start_date || product.sale_end_date" class="border-t border-gray-200 dark:border-gray-700 pt-3">
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Sale Period</p>
+              <p v-if="product.sale_start_date" class="text-sm text-gray-900 dark:text-white">
+                From: {{ date.format(product.sale_start_date, 'MMM D, YYYY') }}
+              </p>
+              <p v-if="product.sale_end_date" class="text-sm text-gray-900 dark:text-white">
+                To: {{ date.format(product.sale_end_date, 'MMM D, YYYY') }}
+              </p>
+              <BaseBadge v-if="product.is_sale_active" color="green" size="sm" class="mt-1">Sale Active</BaseBadge>
             </div>
             <div v-if="product.cost_price" class="flex items-center justify-between">
               <span class="text-gray-500 dark:text-gray-400">Cost</span>
@@ -400,5 +502,28 @@ const profitMargin = computed(() => {
         </BaseCard>
       </div>
     </div>
+
+    <!-- Reject Modal -->
+    <Teleport to="body">
+      <div v-if="showRejectModal" class="fixed inset-0 z-50 flex items-center justify-center">
+        <div class="fixed inset-0 bg-black/50" @click="showRejectModal = false"></div>
+        <div class="relative z-10 w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800">
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Reject Product</h3>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
+            Rejecting: <strong>{{ product?.name }}</strong>
+          </p>
+          <textarea
+            v-model="rejectionReason"
+            rows="3"
+            placeholder="Provide a reason for rejection..."
+            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+          ></textarea>
+          <div class="mt-4 flex justify-end gap-3">
+            <BaseButton variant="secondary" size="sm" @click="showRejectModal = false">Cancel</BaseButton>
+            <BaseButton variant="danger" size="sm" @click="handleReject" :disabled="submitting">Reject</BaseButton>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>

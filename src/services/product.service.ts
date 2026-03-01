@@ -13,7 +13,10 @@ import type {
   ProductAttributeInput,
   ProductVariantInput,
   SearchFacets,
-  PaginatedResponse 
+  PaginatedResponse,
+  CompletenessResponse,
+  BulkActionResponse,
+  ImportResponse,
 } from '@/types'
 
 // API Prefixes
@@ -262,6 +265,49 @@ export const productService = {
     return response.data.data
   },
 
+  /**
+   * POST /vendor/products/{product}/duplicate - Duplicate product
+   */
+  async vendorDuplicate(productSlug: string | number): Promise<ProductDetail> {
+    const response = await api.post<ApiResponse<ProductDetail>>(`${VENDOR_BASE}/${productSlug}/duplicate`)
+    return response.data.data
+  },
+
+  /**
+   * GET /vendor/products/{product}/completeness - Get completeness score
+   */
+  async vendorGetCompleteness(productSlug: string | number): Promise<CompletenessResponse> {
+    const response = await api.get<ApiResponse<CompletenessResponse>>(
+      `${VENDOR_BASE}/${productSlug}/completeness`
+    )
+    return response.data.data
+  },
+
+  /**
+   * PUT /vendor/products/{product}/schedule - Schedule publishing
+   */
+  async vendorSchedule(productSlug: string | number, publishAt: string): Promise<ProductDetail> {
+    const response = await api.put<ApiResponse<ProductDetail>>(
+      `${VENDOR_BASE}/${productSlug}/schedule`,
+      { publish_at: publishAt }
+    )
+    return response.data.data
+  },
+
+  /**
+   * POST /vendor/products/import - Bulk CSV import
+   */
+  async vendorImport(file: File): Promise<ImportResponse> {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await api.post<ApiResponse<ImportResponse>>(
+      `${VENDOR_BASE}/import`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    )
+    return response.data.data
+  },
+
   // ═════════════════════════════════════════════════════════════════
   // Admin APIs
   // ═════════════════════════════════════════════════════════════════
@@ -320,6 +366,39 @@ export const productService = {
    */
   async adminUpdate(productSlug: string | number, data: Partial<CreateProductRequest | ProductFormData>): Promise<ProductDetail> {
     const response = await api.put<ApiResponse<ProductDetail>>(`${ADMIN_BASE}/${productSlug}`, data)
+    return response.data.data
+  },
+
+  /**
+   * PUT /admin/products/bulk/approve - Bulk approve products
+   */
+  async adminBulkApprove(productIds: number[]): Promise<BulkActionResponse> {
+    const response = await api.put<ApiResponse<BulkActionResponse>>(
+      `${ADMIN_BASE}/bulk/approve`,
+      { product_ids: productIds }
+    )
+    return response.data.data
+  },
+
+  /**
+   * PUT /admin/products/bulk/reject - Bulk reject products
+   */
+  async adminBulkReject(productIds: number[], reason: string): Promise<BulkActionResponse> {
+    const response = await api.put<ApiResponse<BulkActionResponse>>(
+      `${ADMIN_BASE}/bulk/reject`,
+      { product_ids: productIds, reason }
+    )
+    return response.data.data
+  },
+
+  /**
+   * PUT /admin/products/bulk/featured - Bulk set featured
+   */
+  async adminBulkSetFeatured(productIds: number[], featured: boolean): Promise<{ updated: number }> {
+    const response = await api.put<ApiResponse<{ updated: number }>>(
+      `${ADMIN_BASE}/bulk/featured`,
+      { product_ids: productIds, featured }
+    )
     return response.data.data
   },
 
@@ -465,6 +544,7 @@ export const productService = {
 
   /**
    * Bulk update product status
+   * @deprecated Use adminBulkApprove or adminBulkReject instead
    */
   async bulkUpdateStatus(ids: number[], status: string): Promise<{ success: number; failed: number }> {
     const response = await api.patch<ApiResponse<{ success: number; failed: number }>>(
@@ -486,12 +566,13 @@ export const productService = {
   },
 
   /**
-   * Import products
+   * Import products (admin)
+   * @deprecated Use vendorImport instead
    */
   async import(file: File): Promise<{ success: number; failed: number; errors: string[] }> {
     const formData = new FormData()
     formData.append('file', file)
-    const response = await api.post(`${ADMIN_BASE}/import`, formData, {
+    const response = await api.post(`${VENDOR_BASE}/import`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     return response.data

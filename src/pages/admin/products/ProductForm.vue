@@ -10,6 +10,7 @@ import { toTypedSchema } from '@vee-validate/zod'
 import { z } from 'zod'
 import { useBreadcrumbStore } from '@/stores'
 import { productService, categoryService } from '@/services'
+import { attributeTemplateService } from '@/services/attribute-template.service'
 import { useToast, useDragDrop } from '@/composables'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
@@ -17,7 +18,16 @@ import FormInput from '@/components/form/FormInput.vue'
 import FormTextarea from '@/components/form/FormTextarea.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
 import FormSwitch from '@/components/form/FormSwitch.vue'
-import type { ProductDetail, Category, ProductType } from '@/types'
+import { ProductAttributes, VariantMatrix } from '@/components/domain'
+import type { 
+  ProductDetail, 
+  Category, 
+  ProductType, 
+  AttributeTemplate, 
+  ProductAttributeInput, 
+  VariantMatrixAttribute, 
+  ProductVariant 
+} from '@/types'
 import { PhotoIcon, XMarkIcon, CubeIcon, Squares2X2Icon, Bars3Icon } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
@@ -37,6 +47,24 @@ const pageTitle = computed(() => isEditMode.value ? 'Edit Product' : 'Add Produc
 // Product type
 const productType = ref<ProductType>('simple')
 
+// Attribute Templates
+const categoryTemplates = ref<AttributeTemplate[]>([])
+const attributeValues = ref<ProductAttributeInput[]>([])
+const attributeErrors = ref<Record<number, string>>({})
+const isLoadingTemplates = ref(false)
+const categorySlugMap = ref<Record<number, string>>({})
+
+// Non-variant templates for simple products or non-variant attrs for variable
+const nonVariantTemplates = computed(() =>
+  productType.value === 'variable'
+    ? categoryTemplates.value.filter(t => !t.is_variant_defining && !(t as any).isVariantDefining)
+    : categoryTemplates.value
+)
+
+// Variants for variable products
+const variantAttributes = ref<VariantMatrixAttribute[]>([])
+const variants = ref<ProductVariant[]>([])
+
 // Set page info
 onMounted(() => {
   breadcrumbStore.setPageInfo(pageTitle.value, [
@@ -50,10 +78,53 @@ onMounted(() => {
   fetchCategories()
 })
 
+// Watch category changes to load templates
+watch(
+  () => categoryId.value,
+  async (catId) => {
+    if (!catId) {
+      categoryTemplates.value = []
+      attributeValues.value = []
+      return
+    }
+    
+    isLoadingTemplates.value = true
+    try {
+      const slug = categorySlugMap.value[catId as number]
+      if (!slug) {
+        console.error('Category slug not found for id:', catId)
+        categoryTemplates.value = []
+        return
+      }
+      const templates = await attributeTemplateService.getCategoryTemplates(slug)
+      categoryTemplates.value = templates
+      
+      // Reset attribute values when category changes (for new products)
+      if (!isEditMode.value) {
+        attributeValues.value = []
+      }
+    } catch (err: any) {
+      console.error('Failed to load templates:', err)
+      categoryTemplates.value = []
+    } finally {
+      isLoadingTemplates.value = false
+    }
+  },
+  { immediate: false }
+)
+
 // Data
 const isLoading = ref(false)
 const categories = ref<Category[]>([])
 const uploadedImages = ref<{ id: string; url: string; file?: File }[]>([])
+const variantImageInput = ref<HTMLInputElement | null>(null)
+const currentVariantIndex = ref<number | null>(null)
+const categoryOptions = computed(() => 
+  categories.value.map(cat => ({ 
+    value: cat.id, 
+    label: cat.name 
+  }))
+)
 
 // Drag-and-drop image reorder
 const { state: dragState, handlers: dragHandlers, isDraggingIndex, isDropTarget } = useDragDrop(uploadedImages, {
@@ -79,9 +150,9 @@ const productSchema = toTypedSchema(z.object({
   dimension_length: z.coerce.number().min(0).optional().nullable(),
   dimension_width: z.coerce.number().min(0).optional().nullable(),
   dimension_height: z.coerce.number().min(0).optional().nullable(),
-  visibility: z.enum(['visible', 'hidden', 'catalog_only']).default('visible'),
-  is_active: z.boolean().default(true),
-  is_featured: z.boolean().default(false),
+  visibility: z.enum(['visible', 'hidden', 'catalog_only']),
+  is_active: z.boolean(),
+  is_featured: z.boolean(),
   status: z.enum(['draft', 'pending', 'approved', 'rejected', 'archived']),
   category_id: z.coerce.number().optional(),
   meta_title: z.string().optional(),
@@ -184,7 +255,7 @@ async function fetchProduct() {
       dimension_length: product.dimensions?.length ?? null,
       dimension_width: product.dimensions?.width ?? null,
       dimension_height: product.dimensions?.height ?? null,
-      visibility: product.visibility || 'visible',
+      visibility: (product.visibility === 'catalog' ? 'catalog_only' : product.visibility) as 'visible' | 'hidden' | 'catalog_only',
       is_active: product.is_active,
       is_featured: product.is_featured,
       status: product.status,
@@ -192,7 +263,28 @@ async function fetchProduct() {
       meta_title: product.meta_title || '',
       meta_description: product.meta_description || '',
     })
+    
+    // Load product type, attributes, and variants
     productType.value = product.type || 'simple'
+    
+    // Load attributes
+    if (product.attributes?.length) {
+      attributeValues.value = product.attributes.map(attr => ({
+        template_id: attr.template_id,
+        value: attr.value,
+      }))
+    }
+    
+    // Load variants
+    if (product.variants?.length) {
+      variants.value = product.variants
+    }
+    
+    // Load variant config
+    if (product.variant_matrix?.attributes) {
+      variantAttributes.value = product.variant_matrix.attributes
+    }
+    
     uploadedImages.value = product.images?.map(img => ({
       id: String(img.id),
       url: img.url,
@@ -210,16 +302,105 @@ async function fetchCategories() {
   try {
     const response = await categoryService.getAll()
     categories.value = response.data
+    // Build id → slug map
+    const slugMap: Record<number, string> = {}
+    response.data.forEach(cat => {
+      slugMap[cat.id] = cat.slug
+    })
+    categorySlugMap.value = slugMap
   } catch (error) {
     toast.error('Failed to load categories')
     categories.value = []
   }
 }
 
-// Category options
-const categoryOptions = computed(() => 
-  categories.value.map(c => ({ value: c.id, label: c.name }))
-)
+// Handle variant attributes change
+function handleVariantAttributesChange(attrs: VariantMatrixAttribute[]) {
+  variantAttributes.value = attrs
+}
+
+// Generate variant combinations
+function generateVariants() {
+  if (variantAttributes.value.length === 0) {
+    toast.error('Please select variant attributes first')
+    return
+  }
+
+  const generateCombinations = (
+    attrs: VariantMatrixAttribute[],
+    index: number,
+    current: { template: string; template_id: number; value: string; option_id: number }[]
+  ): { template: string; template_id: number; value: string; option_id: number }[][] => {
+    if (index >= attrs.length) return [current]
+
+    const result: { template: string; template_id: number; value: string; option_id: number }[][] = []
+    const attr = attrs[index]
+
+    for (const option of attr.options) {
+      result.push(
+        ...generateCombinations(attrs, index + 1, [
+          ...current,
+          {
+            template: attr.name,
+            template_id: attr.id,
+            value: option.label,
+            option_id: option.id,
+          },
+        ])
+      )
+    }
+
+    return result
+  }
+
+  const combinations = generateCombinations(variantAttributes.value, 0, [])
+
+  variants.value = combinations.map((options) => ({
+    id: 0,
+    sku: `${sku.value || 'SKU'}-${options.map((o) => o.value.substring(0, 2).toUpperCase()).join('-')}`,
+    name: options.map((o) => o.value).join(' / '),
+    price: Number(price.value) || 0,
+    sale_price: Number(salePrice.value) || 0,
+    sale_start_date: (saleStartDate.value as string) || '',
+    sale_end_date: (saleEndDate.value as string) || '',
+    effective_price: Number(salePrice.value) || Number(price.value) || 0,
+    is_sale_active: !!salePrice.value,
+    stock_quantity: 0,
+    is_in_stock: false,
+    is_active: true,
+    weight: null,
+    image_url: null,
+    barcode: null,
+    options,
+  }))
+
+  toast.success(`Generated ${variants.value.length} variants`)
+}
+
+// Validate required attributes
+function validateAttributes(): boolean {
+  attributeErrors.value = {}
+  let isValid = true
+
+  for (const template of categoryTemplates.value) {
+    if (template.is_required) {
+      const attrValue = attributeValues.value.find((a) => a.template_id === template.id)
+      const value = attrValue?.value
+
+      if (
+        value === undefined ||
+        value === null ||
+        value === '' ||
+        (Array.isArray(value) && value.length === 0)
+      ) {
+        attributeErrors.value[template.id] = `${template.name} is required`
+        isValid = false
+      }
+    }
+  }
+
+  return isValid
+}
 
 // Image upload
 function handleImageUpload(event: Event) {
@@ -252,10 +433,54 @@ function removeImage(imageId: string) {
   uploadedImages.value = uploadedImages.value.filter(img => img.id !== imageId)
 }
 
+// Variant image upload
+function handleVariantImageClick(variantIndex: number) {
+  currentVariantIndex.value = variantIndex
+  variantImageInput.value?.click()
+}
+
+function handleVariantImageUpload(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (!input.files?.length || currentVariantIndex.value === null) return
+
+  const file = input.files[0]
+  if (file.type.startsWith('image/')) {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      if (e.target?.result && currentVariantIndex.value !== null) {
+        updateVariant(currentVariantIndex.value, 'image_url', e.target.result as string)
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // Reset
+  input.value = ''
+  currentVariantIndex.value = null
+}
+
+// Update variant field
+function updateVariant(index: number, field: keyof ProductVariant, value: unknown) {
+  const updated = [...variants.value]
+  updated[index] = { ...updated[index], [field]: value }
+  variants.value = updated
+}
+
 // Submit form
 const onSubmit = handleSubmit(async (values) => {
+  // Validate attributes
+  if (!validateAttributes()) {
+    toast.error('Please fill all required attributes')
+    return
+  }
+
+  // For variable products, check if variants exist
+  if (productType.value === 'variable' && variants.value.length === 0) {
+    toast.error('Please generate variants for variable products')
+    return
+  }
   try {
-    const productData = {
+    const productData: any = {
       ...values,
       type: productType.value,
       dimensions: (values.dimension_length || values.dimension_width || values.dimension_height)
@@ -267,6 +492,20 @@ const onSubmit = handleSubmit(async (values) => {
         : undefined,
       meta_title: values.meta_title || values.name,
       meta_description: values.meta_description || values.short_description,
+      attribute_values: attributeValues.value.length > 0 ? attributeValues.value : undefined,
+      variants: productType.value === 'variable' 
+        ? variants.value.map(v => ({
+            sku: v.sku,
+            price: v.price,
+            sale_price: v.sale_price,
+            stock_quantity: v.stock_quantity,
+            weight: v.weight,
+            image_url: v.image_url,
+            barcode: v.barcode,
+            is_active: v.is_active,
+            options: v.options,
+          }))
+        : undefined,
     }
     // Clean up dimension fields from payload
     delete (productData as any).dimension_length
@@ -377,6 +616,72 @@ const onSubmit = handleSubmit(async (values) => {
                 </div>
               </button>
             </div>
+          </BaseCard>
+
+          <!-- Product Attributes (from category templates) -->
+          <BaseCard
+            v-if="categoryId && nonVariantTemplates.length > 0"
+            title="Product Attributes"
+          >
+            <template #header-actions>
+              <span
+                v-if="isLoadingTemplates"
+                class="text-sm text-gray-500 dark:text-gray-400"
+              >
+                Loading...
+              </span>
+            </template>
+            
+            <ProductAttributes
+              v-model="attributeValues"
+              :templates="categoryTemplates"
+              :product-type="productType"
+              :errors="attributeErrors"
+              :non-variant-only="productType === 'variable'"
+              @variant-attributes="handleVariantAttributesChange"
+            />
+            
+            <!-- For variable products: show variant attributes in a dedicated section -->
+            <template v-if="productType === 'variable' && variantAttributes.length > 0">
+              <div class="mt-6 border-t pt-6 dark:border-gray-700">
+                <h4 class="mb-3 font-medium text-gray-900 dark:text-white">
+                  Variant-Defining Attributes
+                </h4>
+                <ProductAttributes
+                  v-model="attributeValues"
+                  :templates="categoryTemplates"
+                  :product-type="productType"
+                  :errors="attributeErrors"
+                  :variant-only="true"
+                  @variant-attributes="handleVariantAttributesChange"
+                />
+              </div>
+            </template>
+          </BaseCard>
+
+          <!-- Variant Matrix (for variable products) -->
+          <BaseCard
+            v-if="productType === 'variable' && variantAttributes.length > 0"
+            title="Product Variants"
+          >
+            <template #header-actions>
+              <BaseButton
+                size="sm"
+                variant="secondary"
+                @click="generateVariants"
+              >
+                Generate Variants
+              </BaseButton>
+            </template>
+            
+            <VariantMatrix
+              :variants="variants"
+              :attributes="variantAttributes"
+              :base-price="Number(price) || 0"
+              :base-sku="sku || ''"
+              @update:variants="variants = $event"
+              @upload-image="handleVariantImageClick"
+            />
           </BaseCard>
 
           <!-- Images -->
@@ -666,5 +971,14 @@ const onSubmit = handleSubmit(async (values) => {
         </div>
       </div>
     </form>
+    
+    <!-- Hidden variant image input -->
+    <input
+      ref="variantImageInput"
+      type="file"
+      accept="image/*"
+      class="hidden"
+      @change="handleVariantImageUpload"
+    />
   </div>
 </template>

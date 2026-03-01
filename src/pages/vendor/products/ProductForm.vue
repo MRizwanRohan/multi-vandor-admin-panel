@@ -75,6 +75,8 @@ const variants = ref<ProductVariant[]>([])
 // Images
 const images = ref<string[]>([])
 const imageInput = ref<HTMLInputElement | null>(null)
+const variantImageInput = ref<HTMLInputElement | null>(null)
+const currentVariantIndex = ref<number | null>(null)
 
 // Drag-and-drop image reorder
 const { state: dragState, handlers: dragHandlers, dragClasses, isDraggingIndex, isDropTarget } = useDragDrop(images, {
@@ -103,7 +105,7 @@ const schema = toTypedSchema(
     dimensionLength: z.number().optional().nullable(),
     dimensionWidth: z.number().optional().nullable(),
     dimensionHeight: z.number().optional().nullable(),
-    visibility: z.enum(['visible', 'hidden', 'catalog_only']).default('visible'),
+    visibility: z.enum(['visible', 'hidden', 'catalog_only']),
     isActive: z.boolean(),
     metaTitle: z.string().optional(),
     metaDescription: z.string().optional(),
@@ -299,6 +301,39 @@ function removeImage(index: number) {
   images.value.splice(index, 1)
 }
 
+// Handle variant image upload
+function handleVariantImageClick(variantIndex: number) {
+  currentVariantIndex.value = variantIndex
+  variantImageInput.value?.click()
+}
+
+function handleVariantImageUpload(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (!input.files?.length || currentVariantIndex.value === null) return
+
+  const file = input.files[0]
+  if (file.type.startsWith('image/')) {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      if (e.target?.result && currentVariantIndex.value !== null) {
+        updateVariant(currentVariantIndex.value, 'image_url', e.target.result as string)
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // Reset
+  input.value = ''
+  currentVariantIndex.value = null
+}
+
+// Update variant field
+function updateVariant(index: number, field: keyof ProductVariant, value: unknown) {
+  const updated = [...variants.value]
+  updated[index] = { ...updated[index], [field]: value }
+  variants.value = updated
+}
+
 // Handle variant attributes change (from ProductAttributes component)
 function handleVariantAttributesChange(attrs: VariantMatrixAttribute[]) {
   variantAttributes.value = attrs
@@ -346,6 +381,9 @@ function generateVariants() {
     name: options.map((o) => o.value).join(' / '),
     price: values.price || 0,
     sale_price: values.compareAtPrice || null,
+    sale_start_date: null,
+    sale_end_date: null,
+    is_sale_active: false,
     effective_price: values.compareAtPrice || values.price || 0,
     stock_quantity: 0,
     is_in_stock: false,
@@ -704,8 +742,18 @@ function cancel() {
             :variants="variants"
             @update:variants="variants = $event"
             @generate="generateVariants"
+            @upload-image="handleVariantImageClick"
           />
         </BaseCard>
+
+        <!-- Hidden variant image input -->
+        <input
+          ref="variantImageInput"
+          type="file"
+          accept="image/*"
+          class="hidden"
+          @change="handleVariantImageUpload"
+        />
 
         <!-- Images (Drag & Drop Reorder) -->
         <BaseCard title="Product Images">

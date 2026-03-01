@@ -103,10 +103,13 @@ api.interceptors.response.use(
           // Validation error - let the caller handle it
           break
 
-        case 429:
-          // Too many requests
-          toast.error('Too many requests. Please try again later.')
+        case 429: {
+          // Too many requests — parse Retry-After header
+          const retryAfter = error.response?.headers?.['retry-after']
+          const seconds = retryAfter ? Number(retryAfter) || 60 : 60
+          toast.error(`Too many requests. Please wait ${seconds} seconds before trying again.`)
           break
+        }
 
         case 500:
         case 502:

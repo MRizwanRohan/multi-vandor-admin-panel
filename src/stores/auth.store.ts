@@ -62,9 +62,13 @@ export const useAuthStore = defineStore('auth', () => {
       } else if (isVendor.value) {
         router.push('/vendor/dashboard')
       }
-    } catch (e: unknown) {
-      const err = e as { response?: { data?: { message?: string } } }
-      error.value = err.response?.data?.message || 'Login failed'
+    } catch (e: any) {
+      if (e?.isRateLimited) {
+        error.value = e.message
+      } else {
+        const err = e as { response?: { data?: { message?: string } } }
+        error.value = err.response?.data?.message || 'Login failed'
+      }
       throw e
     } finally {
       isLoading.value = false
@@ -85,9 +89,13 @@ export const useAuthStore = defineStore('auth', () => {
       setItem(StorageKeys.USER, response.user)
 
       router.push('/vendor/dashboard')
-    } catch (e: unknown) {
-      const err = e as { response?: { data?: { message?: string } } }
-      error.value = err.response?.data?.message || 'Registration failed'
+    } catch (e: any) {
+      if (e?.isRateLimited) {
+        error.value = e.message
+      } else {
+        const err = e as { response?: { data?: { message?: string } } }
+        error.value = err.response?.data?.message || 'Registration failed'
+      }
       throw e
     } finally {
       isLoading.value = false

@@ -2,6 +2,7 @@
 // Auth Service — Authentication API calls
 // ═══════════════════════════════════════════════════════════════════
 
+import axios from 'axios'
 import api from './api'
 import type {
   User,
@@ -14,14 +15,43 @@ import type {
 
 const PREFIX = '/auth'
 
-// Laravel Sanctum CSRF cookie endpoint
+/**
+ * Laravel Sanctum CSRF cookie endpoint.
+ * IMPORTANT: Uses raw axios (not `api` instance) because the CSRF endpoint
+ * lives at /sanctum/csrf-cookie — NOT under the /api/v1 baseURL.
+ */
 async function getCsrfCookie(): Promise<void> {
   try {
-    await api.get('/sanctum/csrf-cookie')
+    await axios.get('/sanctum/csrf-cookie', {
+      withCredentials: true,
+    })
   } catch {
-    // CSRF cookie fetch may fail — continue with login anyway
+    // CSRF cookie fetch may fail in token-based auth — continue anyway
     console.warn('⚠️ CSRF cookie fetch failed, continuing...')
   }
+}
+
+/**
+ * Parse Retry-After header value (seconds or HTTP-date) from a 429 response.
+ */
+function getRetryAfterSeconds(error: any): number {
+  const retryAfter = error?.response?.headers?.['retry-after']
+  if (!retryAfter) return 60 // default 60s if header missing
+  const parsed = Number(retryAfter)
+  if (!isNaN(parsed)) return parsed
+  // HTTP-date format
+  const date = new Date(retryAfter)
+  if (!isNaN(date.getTime())) {
+    return Math.max(1, Math.ceil((date.getTime() - Date.now()) / 1000))
+  }
+  return 60
+}
+
+/**
+ * Check if an error is a rate-limit (429) response.
+ */
+function isRateLimited(error: any): boolean {
+  return error?.response?.status === 429
 }
 
 export const authService = {
@@ -30,15 +60,27 @@ export const authService = {
    */
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     await getCsrfCookie()
-    const response = await api.post<any>(`${PREFIX}/login`, credentials)
-    const resData = response.data
-    // API returns: { success, message, data: { user, token, token_type } }
-    const loginData = resData?.data || resData
-    return {
-      user: loginData.user,
-      token: loginData.token,
-      token_type: loginData.tokenType || loginData.token_type || 'Bearer',
-      expires_at: loginData.expiresAt || loginData.expires_at || '',
+    try {
+      const response = await api.post<any>(`${PREFIX}/login`, credentials)
+      const resData = response.data
+      // API returns: { success, message, data: { user, token, token_type } }
+      const loginData = resData?.data || resData
+      return {
+        user: loginData.user,
+        token: loginData.token,
+        token_type: loginData.tokenType || loginData.token_type || 'Bearer',
+        expires_at: loginData.expiresAt || loginData.expires_at || '',
+      }
+    } catch (error: any) {
+      if (isRateLimited(error)) {
+        const retryAfter = getRetryAfterSeconds(error)
+        const err = new Error(`Too many login attempts. Please try again after ${retryAfter} seconds.`) as any
+        err.retryAfter = retryAfter
+        err.isRateLimited = true
+        err.response = error.response
+        throw err
+      }
+      throw error
     }
   },
 
@@ -47,15 +89,27 @@ export const authService = {
    */
   async register(data: RegisterData): Promise<AuthResponse> {
     await getCsrfCookie()
-    const response = await api.post<any>(`${PREFIX}/register`, data)
-    const resData = response.data
-    // API returns: { success, message, data: { user, token, token_type } }
-    const regData = resData?.data || resData
-    return {
-      user: regData.user,
-      token: regData.token,
-      token_type: regData.tokenType || regData.token_type || 'Bearer',
-      expires_at: regData.expiresAt || regData.expires_at || '',
+    try {
+      const response = await api.post<any>(`${PREFIX}/register`, data)
+      const resData = response.data
+      // API returns: { success, message, data: { user, token, token_type } }
+      const regData = resData?.data || resData
+      return {
+        user: regData.user,
+        token: regData.token,
+        token_type: regData.tokenType || regData.token_type || 'Bearer',
+        expires_at: regData.expiresAt || regData.expires_at || '',
+      }
+    } catch (error: any) {
+      if (isRateLimited(error)) {
+        const retryAfter = getRetryAfterSeconds(error)
+        const err = new Error(`Too many attempts. Please try again after ${retryAfter} seconds.`) as any
+        err.retryAfter = retryAfter
+        err.isRateLimited = true
+        err.response = error.response
+        throw err
+      }
+      throw error
     }
   },
 

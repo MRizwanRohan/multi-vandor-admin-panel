@@ -54,6 +54,24 @@ function handleMultiselectChange(e: Event) {
   updateValue(values)
 }
 
+// Multi-select helper functions
+function isOptionSelected(optionValue: string): boolean {
+  if (!Array.isArray(props.modelValue)) return false
+  return (props.modelValue as string[]).includes(optionValue)
+}
+
+function toggleOption(optionValue: string) {
+  const currentValues = Array.isArray(props.modelValue) ? (props.modelValue as string[]) : []
+  
+  if (currentValues.includes(optionValue)) {
+    // Remove option
+    updateValue(currentValues.filter(v => v !== optionValue))
+  } else {
+    // Add option
+    updateValue([...currentValues, optionValue])
+  }
+}
+
 const inputClasses =
   'block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition-colors placeholder:text-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500 dark:focus:border-primary-400'
 

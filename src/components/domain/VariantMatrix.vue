@@ -7,22 +7,30 @@ import { ref, computed, watch } from 'vue'
 import type { VariantMatrixAttribute, ProductVariant, VariantOption } from '@/types'
 import { FormInput, FormSwitch } from '@/components/form'
 import { BaseButton } from '@/components/ui'
+import { useConfirm } from '@/composables'
 import { 
   PhotoIcon, 
   TrashIcon,
   PlusIcon,
   ChevronDownIcon,
-  ChevronUpIcon
+  ChevronUpIcon,
+  ClipboardIcon,
+  CubeIcon,
+  TagIcon
 } from '@heroicons/vue/24/outline'
 
 interface Props {
   attributes: VariantMatrixAttribute[]
   variants: ProductVariant[]
   currency?: string
+  basePrice?: number
+  baseSku?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  currency: '৳'
+  currency: '৳',
+  basePrice: 0,
+  baseSku: ''
 })
 
 const emit = defineEmits<{
@@ -31,11 +39,14 @@ const emit = defineEmits<{
   (e: 'uploadImage', variantIndex: number): void
 }>()
 
+const confirm = useConfirm()
+
 // Local state
 const expandedRows = ref<Set<number>>(new Set())
 const bulkEditMode = ref(false)
 const bulkPrice = ref<number | null>(null)
 const bulkStock = ref<number | null>(null)
+const showQuickActions = ref(false)
 
 // Computed: All possible combinations
 const attributeCombinations = computed(() => {
@@ -96,10 +107,50 @@ const updateVariant = (index: number, field: keyof ProductVariant, value: unknow
   emit('update:variants', updated)
 }
 
-// Delete variant
-const deleteVariant = (index: number) => {
-  const updated = props.variants.filter((_, i) => i !== index)
+// Delete variant with confirmation
+const deleteVariant = async (index: number) => {
+  const variant = props.variants[index]
+  const confirmed = await confirm.danger({
+    title: 'Delete Variant?',
+    message: `Are you sure you want to delete "${variant.name}"? This action cannot be undone.`,
+    confirmText: 'Delete',
+    cancelText: 'Cancel',
+  })
+  
+  if (confirmed) {
+    const updated = props.variants.filter((_, i) => i !== index)
+    emit('update:variants', updated)
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// Quick Actions
+// ══════════════════════════════════════════════════════════════════════
+
+// Copy base price to all variants
+const copyBasePriceToAll = () => {
+  if (!props.basePrice) return
+  const updated = props.variants.map(v => ({ ...v, price: props.basePrice || 0 }))
   emit('update:variants', updated)
+  showQuickActions.value = false
+}
+
+// Set same stock for all variants
+const setStockForAll = (stock: number) => {
+  const updated = props.variants.map(v => ({ ...v, stock_quantity: stock }))
+  emit('update:variants', updated)
+  showQuickActions.value = false
+}
+
+// Generate SKU pattern for all variants
+const generateSkuPattern = () => {
+  const baseSku = props.baseSku || 'SKU'
+  const updated = props.variants.map(v => ({
+    ...v,
+    sku: `${baseSku}-${v.options.map(o => o.value.substring(0, 2).toUpperCase()).join('-')}`
+  }))
+  emit('update:variants', updated)
+  showQuickActions.value = false
 }
 
 // Apply bulk edit
@@ -150,6 +201,56 @@ const stats = computed(() => ({
       </div>
       
       <div class="flex items-center gap-2">
+        <!-- Quick Actions Dropdown -->
+        <div class="relative">
+          <BaseButton
+            variant="outline"
+            size="sm"
+            @click="showQuickActions = !showQuickActions"
+          >
+            ⚡ Quick Actions
+          </BaseButton>
+          
+          <div
+            v-if="showQuickActions"
+            class="absolute right-0 top-full z-10 mt-1 w-56 rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-800"
+          >
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+              :disabled="!basePrice"
+              @click="copyBasePriceToAll"
+            >
+              <ClipboardIcon class="h-4 w-4" />
+              Copy base price to all
+            </button>
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+              @click="setStockForAll(10)"
+            >
+              <CubeIcon class="h-4 w-4" />
+              Set stock 10 for all
+            </button>
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+              @click="generateSkuPattern"
+            >
+              <TagIcon class="h-4 w-4" />
+              Auto-generate SKUs
+            </button>
+            <hr class="my-1 border-gray-200 dark:border-gray-700" />
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+              @click="toggleAllActive(false)"
+            >
+              সব নিষ্ক্রিয়
+            </button>
+          </div>
+        </div>
+        
         <BaseButton
           v-if="!bulkEditMode"
           variant="outline"

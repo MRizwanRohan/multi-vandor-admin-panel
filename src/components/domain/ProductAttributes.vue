@@ -62,9 +62,10 @@ const shouldUseMultiselect = (template: AttributeTemplate): boolean => {
 }
 
 // Get effective data_type (override select → multiselect for variant attrs in variable products)
-const getEffectiveDataType = (template: AttributeTemplate): string => {
+type DataType = 'text' | 'number' | 'boolean' | 'select' | 'multiselect' | 'color' | 'date'
+const getEffectiveDataType = (template: AttributeTemplate): DataType => {
   if (shouldUseMultiselect(template)) return 'multiselect'
-  return template.data_type
+  return template.data_type as DataType
 }
 
 // Get value for a template
@@ -168,13 +169,19 @@ watch(
     >
       <div class="flex items-center gap-2">
         <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
-          ভেরিয়েন্ট নির্ধারণকারী অ্যাট্রিবিউট
+          {{ productType === 'variable' ? 'ভেরিয়েন্ট অ্যাট্রিবিউট' : 'পণ্যের বৈশিষ্ট্য' }}
         </h4>
         <span
           v-if="productType === 'variable'"
           class="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/50 dark:text-primary-300"
         >
-          ভেরিয়েন্ট তৈরিতে ব্যবহৃত হবে
+          একাধিক নির্বাচন করুন
+        </span>
+        <span
+          v-else
+          class="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+        >
+          ঐচ্ছিক
         </span>
       </div>
 
@@ -182,14 +189,25 @@ watch(
         v-if="productType === 'variable'"
         class="text-xs text-gray-500 dark:text-gray-400"
       >
-        নির্বাচিত অপশনগুলো দিয়ে প্রোডাক্ট ভেরিয়েন্ট তৈরি হবে। যেমন: সাইজ (S, M, L) × কালার (Red, Blue) = ৬টি ভেরিয়েন্ট
+        ✨ একাধিক Color/Size নির্বাচন করুন → নিচে "ভেরিয়েন্ট তৈরি করুন" ক্লিক করুন → প্রতিটি Variant এ আলাদা দাম/স্টক সেট করুন
+      </p>
+      <p
+        v-else
+        class="text-xs text-gray-500 dark:text-gray-400"
+      >
+        💡 সিম্পল প্রোডাক্টে শুধু একটি অপশন নির্বাচন করুন (যেমন: শুধু "লাল" কালার)
       </p>
 
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div
           v-for="template in variantDefiningTemplates"
           :key="template.id"
-          class="rounded-lg border border-primary-200 bg-primary-50/50 p-4 dark:border-primary-800 dark:bg-primary-900/20"
+          :class="[
+            'rounded-lg border p-4',
+            productType === 'variable'
+              ? 'border-primary-200 bg-primary-50/50 dark:border-primary-800 dark:bg-primary-900/20'
+              : 'border-gray-200 bg-gray-50/50 dark:border-gray-700 dark:bg-gray-800/50'
+          ]"
         >
           <AttributeValueInput
             :model-value="getValue(template.id)"
@@ -197,8 +215,9 @@ watch(
             :label="template.name"
             :placeholder="template.placeholder || `${template.name} নির্বাচন করুন`"
             :options="getSelectOptions(template)"
-            :required="template.is_required"
+            :required="productType === 'variable' ? template.is_required : false"
             :error="errors[template.id]"
+            :show-color-swatch="template.name.toLowerCase().includes('color') || template.name.includes('রং') || template.name.includes('কালার')"
             @update:model-value="updateValue(template.id, $event)"
           />
           <!-- Selected options preview for multiselect -->

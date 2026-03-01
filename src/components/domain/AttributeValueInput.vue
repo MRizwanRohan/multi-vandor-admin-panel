@@ -13,11 +13,86 @@ interface Props {
   options?: { label: string; value: string }[]
   required?: boolean
   error?: string
+  /** Show color swatches for color-type attributes */
+  showColorSwatch?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   placeholder: '',
   required: false,
+  showColorSwatch: false,
+})
+
+// ══════════════════════════════════════════════════════════════════════
+// Color Swatch Support
+// ══════════════════════════════════════════════════════════════════════
+const colorNameToHex: Record<string, string> = {
+  // Basic colors
+  red: '#EF4444',
+  blue: '#3B82F6',
+  green: '#22C55E',
+  yellow: '#EAB308',
+  orange: '#F97316',
+  purple: '#A855F7',
+  pink: '#EC4899',
+  black: '#1F2937',
+  white: '#F9FAFB',
+  gray: '#6B7280',
+  grey: '#6B7280',
+  brown: '#92400E',
+  
+  // Extended colors
+  navy: '#1E3A5F',
+  beige: '#D4C4A8',
+  maroon: '#7F1D1D',
+  olive: '#556B2F',
+  teal: '#0D9488',
+  cyan: '#06B6D4',
+  coral: '#FF7F50',
+  salmon: '#FA8072',
+  khaki: '#C3B091',
+  indigo: '#4F46E5',
+  violet: '#8B5CF6',
+  magenta: '#D946EF',
+  gold: '#D97706',
+  silver: '#9CA3AF',
+  cream: '#FFFDD0',
+  ivory: '#FFFFF0',
+  tan: '#D2B48C',
+  turquoise: '#40E0D0',
+  lavender: '#E9D5FF',
+  mint: '#A7F3D0',
+  peach: '#FFDAB9',
+  rose: '#FB7185',
+  sky: '#38BDF8',
+  lime: '#84CC16',
+  aqua: '#00FFFF',
+  sand: '#C2B280',
+  wine: '#722F37',
+  mustard: '#FFDB58',
+  
+  // Bangla to English mappings
+  'লাল': '#EF4444',
+  'নীল': '#3B82F6',
+  'সবুজ': '#22C55E',
+  'হলুদ': '#EAB308',
+  'কমলা': '#F97316',
+  'বেগুনি': '#A855F7',
+  'গোলাপি': '#EC4899',
+  'কালো': '#1F2937',
+  'সাদা': '#F9FAFB',
+  'ধূসর': '#6B7280',
+  'বাদামি': '#92400E',
+}
+
+const getColorHex = (colorName: string): string | null => {
+  const normalized = colorName.toLowerCase().trim()
+  return colorNameToHex[normalized] || null
+}
+
+const isColorAttribute = computed(() => {
+  const label = props.label?.toLowerCase() || ''
+  return props.showColorSwatch || label.includes('color') || label.includes('রং') || label.includes('কালার')
 })
 
 const emit = defineEmits<{
@@ -182,11 +257,38 @@ const errorInputClasses =
             class="sr-only"
             @change="toggleOption(opt.value)"
           />
+          <!-- Color Swatch -->
+          <span
+            v-if="isColorAttribute && getColorHex(opt.label)"
+            class="h-4 w-4 rounded-full border border-gray-300 dark:border-gray-500 shadow-inner flex-shrink-0"
+            :style="{ backgroundColor: getColorHex(opt.label) }"
+            :title="opt.label"
+          />
           <span v-if="isOptionSelected(opt.value)" class="text-primary-500 dark:text-primary-400">✓</span>
           {{ opt.label }}
         </label>
       </div>
-      <p v-if="Array.isArray(modelValue) && (modelValue as string[]).length > 0" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+      
+      <!-- Selected colors preview -->
+      <div v-if="isColorAttribute && Array.isArray(modelValue) && (modelValue as string[]).length > 0" class="mt-3 flex items-center gap-2 border-t border-gray-200 pt-3 dark:border-gray-700">
+        <span class="text-xs text-gray-500 dark:text-gray-400">Selected:</span>
+        <div class="flex gap-1">
+          <span
+            v-for="selectedValue in (modelValue as string[])"
+            :key="selectedValue"
+            class="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs dark:bg-gray-700"
+          >
+            <span
+              v-if="getColorHex(options?.find(o => o.value === selectedValue)?.label || '')"
+              class="h-3 w-3 rounded-full border border-gray-300 dark:border-gray-500"
+              :style="{ backgroundColor: getColorHex(options?.find(o => o.value === selectedValue)?.label || '') }"
+            />
+            {{ options?.find(o => o.value === selectedValue)?.label || selectedValue }}
+          </span>
+        </div>
+      </div>
+      
+      <p v-else-if="Array.isArray(modelValue) && (modelValue as string[]).length > 0" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
         {{ (modelValue as string[]).length }} selected
       </p>
     </div>

@@ -33,18 +33,18 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
 }>()
 
-// Use vee-validate field
-const { value, errorMessage, meta } = useField<string>(
+// Use vee-validate field - NOT using syncVModel to avoid readonly issues
+const { value, errorMessage, meta, handleChange, setValue } = useField<string>(
   () => props.name,
   undefined,
   {
-    syncVModel: true,
+    initialValue: props.modelValue || '',
   }
 )
 
 // Initialize TipTap editor
 const editor = useEditor({
-  content: props.modelValue || value.value || '',
+  content: props.modelValue || '',
   editable: !props.disabled,
   extensions: [
     StarterKit.configure({
@@ -70,17 +70,34 @@ const editor = useEditor({
   },
   onUpdate: ({ editor: ed }) => {
     const html = ed.getHTML()
-    value.value = html
+    // Update vee-validate field and trigger validation
+    handleChange(html, true)
+    // Also emit for v-model sync
     emit('update:modelValue', html)
   },
 })
 
-// Watch for external changes to modelValue
+// Watch for external changes to modelValue (from parent setFieldValue)
 watch(
   () => props.modelValue,
   (newValue) => {
+    // Update vee-validate field value
+    if (newValue !== value.value) {
+      setValue(newValue || '')
+    }
+    // Update editor content
     if (editor.value && newValue !== editor.value.getHTML()) {
-      editor.value.commands.setContent(newValue || '', false)
+      editor.value.commands.setContent(newValue || '', { emitUpdate: false })
+    }
+  }
+)
+
+// Watch for vee-validate field value changes (e.g., form load)
+watch(
+  () => value.value,
+  (newValue) => {
+    if (editor.value && newValue !== editor.value.getHTML()) {
+      editor.value.commands.setContent(newValue || '', { emitUpdate: false })
     }
   }
 )
@@ -117,12 +134,15 @@ const characterCount = computed(() => editor.value?.storage.characterCount?.char
 </script>
 
 <template>
-  <div class="space-y-1">
+  <div class="space-y-1" :data-field-name="name">
     <!-- Label -->
     <label v-if="label" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
       {{ label }}
       <span v-if="required" class="text-danger-500">*</span>
     </label>
+
+    <!-- Hidden input for form validation targeting -->
+    <input type="hidden" :name="name" :value="value" />
 
     <!-- Editor Container -->
     <div

@@ -110,11 +110,12 @@ const updateVariant = (index: number, field: keyof ProductVariant, value: unknow
 // Delete variant with confirmation
 const deleteVariant = async (index: number) => {
   const variant = props.variants[index]
-  const confirmed = await confirm.danger({
+  const confirmed = await confirm.confirm({
     title: 'Delete Variant?',
     message: `Are you sure you want to delete "${variant.name}"? This action cannot be undone.`,
     confirmText: 'Delete',
     cancelText: 'Cancel',
+    variant: 'danger',
   })
   
   if (confirmed) {

@@ -90,7 +90,7 @@ export const useNotificationStore = defineStore('notification', () => {
       page.value++
     } catch (error: any) {
       if (DEV_MODE && error?.response?.status === 404) {
-        console.warn('[DEV] Notifications endpoint not implemented yet — polling paused')
+        // Endpoint not implemented - quietly pause polling
         endpointAvailable = false
         hasMore.value = false
         stopPolling()

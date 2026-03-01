@@ -81,11 +81,20 @@ const nonVariantTemplates = computed(() =>
 const variantAttributes = ref<VariantMatrixAttribute[]>([])
 const variants = ref<ProductVariant[]>([])
 
-// Images
-const images = ref<string[]>([])
+// Images - structured to store both preview URL and File object for upload
+interface ImageItem {
+  id?: number        // Backend image ID (exists only for saved images)
+  url: string        // Preview URL (base64 for new, HTTP URL for existing)
+  file?: File        // File object for new uploads (undefined for existing)
+  isNew: boolean     // true = needs upload, false = already on server
+}
+const images = ref<ImageItem[]>([])
+const deletedImageIds = ref<number[]>([])  // Track deleted existing images for edit mode
 const imageInput = ref<HTMLInputElement | null>(null)
 const variantImageInput = ref<HTMLInputElement | null>(null)
 const currentVariantIndex = ref<number | null>(null)
+// Variant image files for upload (keyed by variant index)
+const variantImageFiles = ref<Map<number, File>>(new Map())
 
 // Drag-and-drop image reorder
 const { state: dragState, handlers: dragHandlers, dragClasses, isDraggingIndex, isDropTarget } = useDragDrop(images, {
@@ -94,12 +103,22 @@ const { state: dragState, handlers: dragHandlers, dragClasses, isDraggingIndex, 
   },
 })
 
+// Helper to strip HTML tags for validation
+const stripHtml = (html: string): string => {
+  const tmp = document.createElement('div')
+  tmp.innerHTML = html
+  return tmp.textContent || tmp.innerText || ''
+}
+
 // Form schema
 const schema = toTypedSchema(
   z.object({
     name: z.string().min(3, 'Name must be at least 3 characters'),
     short_description: z.string().optional(),
-    description: z.string().min(10, 'Description must be at least 10 characters'),
+    description: z.string().refine(
+      (val) => stripHtml(val).trim().length >= 10,
+      { message: 'Description must be at least 10 characters' }
+    ),
     categoryId: z.string().min(1, 'Please select a category'),
     brand_id: z.number().optional().nullable(),
     price: z.number().min(1, 'Price must be greater than 0'),
@@ -107,14 +126,14 @@ const schema = toTypedSchema(
     sale_price: z.number().optional().nullable(),
     sale_start_date: z.string().optional().nullable(),
     sale_end_date: z.string().optional().nullable(),
-    sku: z.string().optional(),
-    stock: z.number().min(0, 'Stock cannot be negative'),
+    sku: z.string().optional().nullable(),
+    stock: z.number().min(0, 'Stock cannot be negative').optional().nullable(),
     low_stock_threshold: z.number().optional().nullable(),
     weight: z.number().optional(),
     dimensionLength: z.number().optional().nullable(),
     dimensionWidth: z.number().optional().nullable(),
     dimensionHeight: z.number().optional().nullable(),
-    visibility: z.enum(['visible', 'hidden', 'catalog_only']),
+    visibility: z.enum(['visible', 'hidden', 'catalog']),
     isActive: z.boolean(),
     publish_at: z.string().optional().nullable(),
     metaTitle: z.string().optional(),
@@ -122,7 +141,7 @@ const schema = toTypedSchema(
   })
 )
 
-const { handleSubmit, setValues, values, resetForm } = useForm({
+const { handleSubmit, setValues, setFieldValue, values, resetForm } = useForm({
   validationSchema: schema,
   initialValues: {
     name: '',
@@ -142,7 +161,7 @@ const { handleSubmit, setValues, values, resetForm } = useForm({
     dimensionLength: null as number | null,
     dimensionWidth: null as number | null,
     dimensionHeight: null as number | null,
-    visibility: 'visible' as 'visible' | 'hidden' | 'catalog_only',
+    visibility: 'visible' as 'visible' | 'hidden' | 'catalog',
     isActive: true,
     publish_at: null as string | null,
     metaTitle: '',
@@ -183,26 +202,47 @@ const profitMargin = computed(() => {
 })
 
 // ══════════════════════════════════════════════════════════════════════
-// Auto-generate SKU from product name
+// SKU Generation — Auto or Custom
 // ══════════════════════════════════════════════════════════════════════
+const skuMode = ref<'auto' | 'custom'>('auto') // Default: auto-generate
+
+const generateSku = (): string => {
+  const name = values.name || 'PROD'
+  // Take first 2-3 letters of each word (max 3 words), uppercase
+  const words = name.trim().toUpperCase().replace(/[^A-Z0-9\s]/gi, '').split(/\s+/).filter(Boolean).slice(0, 3)
+  const prefix = words.length > 0 ? words.map(w => w.substring(0, 3)).join('-') : 'PRD'
+  const suffix = String(Date.now()).slice(-4)
+  return `${prefix}-${suffix}`
+}
+
 const suggestedSku = computed(() => {
   const name = values.name || ''
-  if (name.length < 3) return ''
-  
-  // Generate SKU: First 3 letters of each word (max 3 words) + random number
-  const words = name.trim().toUpperCase().split(/\s+/).slice(0, 3)
-  const prefix = words.map(w => w.substring(0, 3)).join('-')
-  const suffix = String(Date.now()).slice(-4)
-  
-  return `${prefix}-${suffix}`
+  if (name.length < 2) return ''
+  return generateSku()
 })
 
 const applySuggestedSku = () => {
-  if (suggestedSku.value) {
-    values.sku = suggestedSku.value
-    toast.success('SKU applied')
-  }
+  const sku = generateSku()
+  setFieldValue('sku', sku)
+  toast.success(`SKU সেট হয়েছে: ${sku}`)
 }
+
+// Auto-apply SKU when mode is 'auto' and name changes
+watch(
+  () => values.name,
+  (newName) => {
+    if (skuMode.value === 'auto' && !isEditing.value && newName && newName.length >= 2) {
+      setFieldValue('sku', generateSku())
+    }
+  }
+)
+
+// When switching to auto mode, generate SKU immediately
+watch(skuMode, (mode) => {
+  if (mode === 'auto' && values.name && values.name.length >= 2) {
+    setFieldValue('sku', generateSku())
+  }
+})
 
 // ══════════════════════════════════════════════════════════════════════
 // Form Progress Indicator
@@ -290,11 +330,12 @@ onBeforeUnmount(() => {
 // Vue Router guard for unsaved changes
 onBeforeRouteLeave(async (to, from) => {
   if (formTouched.value && !isSavedSuccessfully.value) {
-    const confirmed = await confirm.warning({
+    const confirmed = await confirm.confirm({
       title: 'Unsaved Changes',
       message: 'You have unsaved changes. Are you sure you want to leave?',
       confirmText: 'Leave',
       cancelText: 'Stay',
+      variant: 'warning',
     })
     if (!confirmed) return false
   }
@@ -338,8 +379,13 @@ function loadDuplicateData() {
     // Set product type
     productType.value = data.productType || 'simple'
     
-    // Set images
-    images.value = data.images || []
+    // Set images (duplicated images come as ImageItem[] but without File objects)
+    // They're display-only references; actual upload will happen from new uploads
+    images.value = (data.images || []).map((img: any) => ({
+      id: img.id,
+      url: typeof img === 'string' ? img : img.url,
+      isNew: false,
+    }))
     
     // Set attributes (after templates load via watch)
     if (data.attributeValues?.length > 0) {
@@ -388,12 +434,17 @@ async function loadCategories() {
 }
 
 // Load attribute templates when category changes
+const isLoadingProduct = ref(false) // Flag to prevent watch from clearing data during product load
+
 watch(
   () => values.categoryId,
-  async (categoryId) => {
+  async (categoryId, oldCategoryId) => {
     if (!categoryId) {
       categoryTemplates.value = []
-      attributeValues.value = []
+      // Don't clear attribute values during edit load
+      if (!isLoadingProduct.value) {
+        attributeValues.value = []
+      }
       return
     }
     
@@ -402,7 +453,7 @@ watch(
       // Look up category slug from id (endpoint requires slug, not numeric id)
       const slug = categorySlugMap.value[categoryId]
       if (!slug) {
-        console.error('Category slug not found for id:', categoryId)
+        console.warn('[ProductForm] Category slug not found for id:', categoryId, 'Available:', Object.keys(categorySlugMap.value))
         categoryTemplates.value = []
         return
       }
@@ -410,8 +461,8 @@ watch(
       const templates = await vendorTemplateService.getCategoryTemplates(slug)
       categoryTemplates.value = templates
       
-      // Reset attribute values when category changes (for new products)
-      if (!isEditing.value) {
+      // Reset attribute values ONLY when user manually changes category on new product
+      if (!isEditing.value && !isLoadingProduct.value && oldCategoryId && oldCategoryId !== categoryId) {
         attributeValues.value = []
       }
     } catch (err: any) {
@@ -429,59 +480,227 @@ async function loadProduct() {
   if (!productSlug.value) return
   
   isLoading.value = true
+  isLoadingProduct.value = true // Prevent category watch from clearing data
   try {
-    const product = await productService.vendorShow(productSlug.value) as import('@/types').ProductDetail
+    const product = await productService.vendorShow(productSlug.value) as any
+    console.log('[ProductForm] Loaded product:', JSON.parse(JSON.stringify(product)))
+    
+    // Resolve category ID — handle both nested object & flat field
+    const categoryId = product.category?.id ?? product.categoryId ?? product.category_id ?? ''
+    console.log('[ProductForm] Category ID:', categoryId, 'type:', typeof categoryId)
+    
     setValues({
       name: product.name,
-      short_description: product.short_description || '',
+      short_description: product.shortDescription ?? product.short_description ?? '',
       description: product.description,
-      categoryId: String(product.category?.id ?? ''),
-      brand_id: product.brand_id ?? null,
+      categoryId: String(categoryId),
+      brand_id: product.brandId ?? product.brand_id ?? product.brand?.id ?? null,
       price: product.price,
-      cost_price: product.cost_price ?? null,
-      sale_price: product.sale_price ?? null,
-      sale_start_date: product.sale_start_date ?? null,
-      sale_end_date: product.sale_end_date ?? null,
+      cost_price: product.costPrice ?? product.cost_price ?? null,
+      sale_price: product.salePrice ?? product.sale_price ?? null,
+      sale_start_date: product.saleStartDate ?? product.sale_start_date ?? null,
+      sale_end_date: product.saleEndDate ?? product.sale_end_date ?? null,
       sku: product.sku,
-      stock: product.stock_quantity,
-      low_stock_threshold: product.low_stock_threshold ?? null,
+      stock: product.stockQuantity ?? product.stock_quantity ?? 0,
+      low_stock_threshold: product.lowStockThreshold ?? product.low_stock_threshold ?? null,
       weight: product.weight ?? undefined,
       dimensionLength: product.dimensions?.length ?? null,
       dimensionWidth: product.dimensions?.width ?? null,
       dimensionHeight: product.dimensions?.height ?? null,
-      visibility: product.visibility || 'visible',
-      isActive: product.is_active,
-      metaTitle: product.meta_title,
-      metaDescription: product.meta_description,
+      visibility: (product.visibility || 'visible') as 'visible' | 'hidden' | 'catalog',
+      isActive: product.isActive ?? product.is_active ?? true,
+      publish_at: product.scheduledPublishAt ?? product.scheduled_publish_at ?? product.publishAt ?? product.publish_at ?? null,
+      metaTitle: product.metaTitle ?? product.meta_title ?? '',
+      metaDescription: product.metaDescription ?? product.meta_description ?? '',
     })
-    images.value = product.images?.map(img => img.url) || []
+    images.value = product.images?.map((img: any) => ({
+      id: img.id,
+      url: img.url || img.imageUrl || img.image_url,
+      isNew: false,
+    })) || []
     
     // Load product type
     productType.value = product.type || 'simple'
     
+    // Set SKU mode based on existing SKU
+    if (product.sku) {
+      skuMode.value = 'custom' // Keep existing SKU as custom
+    }
+    
     // Load attributes
-    if (product.attributes?.length) {
-      attributeValues.value = product.attributes.map(attr => ({
-        template_id: attr.template_id,
+    const attrs = product.attributes || []
+    if (attrs.length > 0) {
+      attributeValues.value = attrs.map((attr: any) => ({
+        template_id: attr.templateId ?? attr.template_id,
         value: attr.value,
       }))
     }
     
     // Load variants
-    if (product.variants?.length) {
-      variants.value = product.variants
+    const productVariants = product.variants || []
+    if (productVariants.length > 0) {
+      variants.value = productVariants.map((v: any) => {
+        // Handle options from two possible formats:
+        // Detail format: options: [{template, template_id, value, option_id}]
+        // List format: no options, but has combination: {Color: "Red", Size: "S"}
+        let options = []
+        if (v.options?.length > 0) {
+          options = v.options.map((o: any) => ({
+            option_id: o.optionId ?? o.option_id ?? o.attribute_template_option_id ?? o.id,
+            template_name: o.template ?? o.templateName ?? o.template_name ?? '',
+            template_id: o.templateId ?? o.template_id ?? o.attribute_template_id ?? null,
+            option_value: o.optionValue ?? o.option_value ?? o.value ?? '',
+            option_label: o.optionLabel ?? o.option_label ?? o.label ?? o.value ?? '',
+          }))
+        }
+        
+        return {
+          id: v.id,
+          sku: v.sku,
+          name: v.name ?? v.combinationString ?? v.combination_string ?? '',
+          price: v.price,
+          sale_price: v.salePrice ?? v.sale_price ?? null,
+          sale_start_date: v.saleStartDate ?? v.sale_start_date ?? null,
+          sale_end_date: v.saleEndDate ?? v.sale_end_date ?? null,
+          effective_price: v.effectivePrice ?? v.effective_price ?? v.price,
+          is_sale_active: v.isSaleActive ?? v.is_sale_active ?? false,
+          stock_quantity: v.stockQuantity ?? v.stock_quantity ?? 0,
+          is_active: v.isActive ?? v.is_active ?? true,
+          weight: v.weight ?? null,
+          barcode: v.barcode ?? null,
+          image_url: v.imageUrl ?? v.image_url ?? null,
+          options,
+        }
+      })
+      console.log('[ProductForm] Loaded variants:', variants.value.length, variants.value)
     }
     
-    // Load variant config
-    if (product.variant_matrix?.attributes) {
-      variantAttributes.value = product.variant_matrix.attributes
+    // Load variant config / matrix
+    const varMatrix = product.variantMatrix ?? product.variant_matrix
+    const varConfig = product.variantConfig ?? product.variant_config
+    const varOptions = product.variantOptions ?? product.variant_options
+    
+    // Priority 1: variant_matrix.axes (detail endpoint with eager-loaded relations)
+    const matrixAxes = varMatrix?.axes ?? varMatrix?.attributes
+    if (matrixAxes?.length > 0) {
+      variantAttributes.value = matrixAxes.map((attr: any) => ({
+        id: attr.templateId ?? attr.template_id ?? attr.id,
+        name: attr.name,
+        options: attr.options?.map((o: any) => ({
+          id: o.optionId ?? o.option_id ?? o.id,
+          value: o.value ?? o.label ?? '',
+          label: o.label ?? o.value ?? '',
+        })) ?? [],
+      }))
+      console.log('[ProductForm] Loaded variant attributes from matrix axes:', variantAttributes.value)
     }
+    // Priority 2: variant_options (list endpoint format: [{template_id, name, options: [{id, value}]}])
+    else if (varOptions?.length > 0) {
+      variantAttributes.value = varOptions.map((vo: any) => ({
+        id: vo.templateId ?? vo.template_id,
+        name: vo.name,
+        options: vo.options?.map((o: any) => ({
+          id: o.id,
+          value: o.value ?? o.label ?? '',
+          label: o.label ?? o.value ?? '',
+        })) ?? [],
+      }))
+      console.log('[ProductForm] Loaded variant attributes from variant_options:', variantAttributes.value)
+    }
+    // Priority 3: variant_config (has template_id, name, options as string[])
+    else if (varConfig?.length > 0) {
+      // variant_config has options as string[] labels, not [{id, value}]
+      // Try to reconstruct from variants' options if available
+      variantAttributes.value = varConfig.map((vc: any) => {
+        const templateId = vc.templateId ?? vc.template_id
+        // Try to extract option IDs from loaded variants
+        const optionMap = new Map<number, string>()
+        if (productVariants.length > 0) {
+          for (const v of productVariants) {
+            const vOpts = v.options || v.templateOptionValues || v.template_option_values || []
+            for (const o of vOpts) {
+              const oTemplateId = o.templateId ?? o.template_id ?? o.attribute_template_id
+              if (oTemplateId === templateId) {
+                const optId = o.optionId ?? o.option_id ?? o.attribute_template_option_id ?? o.id
+                const optVal = o.value ?? o.optionValue ?? o.option_value ?? o.label ?? ''
+                if (optId) optionMap.set(optId, optVal)
+              }
+            }
+          }
+        }
+        
+        if (optionMap.size > 0) {
+          return {
+            id: templateId,
+            name: vc.name,
+            options: Array.from(optionMap.entries()).map(([id, value]) => ({ id, value, label: value })),
+          }
+        }
+        
+        // Last resort: use option string labels without IDs (won't work for variant generation but shows UI)
+        const optionLabels = vc.options || []
+        return {
+          id: templateId,
+          name: vc.name,
+          options: optionLabels.map((label: string, idx: number) => ({
+            id: vc.optionIds?.[idx] ?? vc.option_ids?.[idx] ?? 0,
+            value: label,
+            label: label,
+          })),
+        }
+      })
+      console.log('[ProductForm] Loaded variant attributes from config:', variantAttributes.value)
+    }
+    // Priority 4: Reconstruct from variants' options/combination data
+    else if (productVariants.length > 0 && productType.value === 'variable') {
+      const templateMap = new Map<number, { name: string, options: Map<number, string> }>()
+      for (const v of productVariants) {
+        const vOpts = v.options || v.templateOptionValues || v.template_option_values || []
+        for (const o of vOpts) {
+          const tId = o.templateId ?? o.template_id ?? o.attribute_template_id
+          const tName = o.template ?? o.templateName ?? o.template_name ?? ''
+          const optId = o.optionId ?? o.option_id ?? o.attribute_template_option_id ?? o.id
+          const optVal = o.value ?? o.optionValue ?? o.option_value ?? o.label ?? ''
+          if (!tId) continue
+          if (!templateMap.has(tId)) {
+            templateMap.set(tId, { name: tName, options: new Map() })
+          }
+          if (optId) {
+            templateMap.get(tId)!.options.set(optId, optVal)
+          }
+        }
+      }
+      if (templateMap.size > 0) {
+        variantAttributes.value = Array.from(templateMap.entries()).map(([id, data]) => ({
+          id,
+          name: data.name,
+          options: Array.from(data.options.entries()).map(([optId, value]) => ({
+            id: optId,
+            value,
+            label: value,
+          })),
+        }))
+        console.log('[ProductForm] Rebuilt variant attributes from variants options:', variantAttributes.value)
+      }
+    }
+    
+    console.log('[ProductForm] Edit load complete', {
+      categoryId: values.categoryId,
+      productType: productType.value,
+      variantsCount: variants.value.length,
+      variantAttributesCount: variantAttributes.value.length,
+      attributeValuesCount: attributeValues.value.length,
+    })
   } catch (err: any) {
     const message = err.response?.data?.message || 'Failed to load product'
     toast.error(message)
     console.error('Product Load API Error:', err)
   } finally {
     isLoading.value = false
+    // Delay clearing the flag to let category watch complete
+    setTimeout(() => {
+      isLoadingProduct.value = false
+    }, 1000)
   }
 }
 
@@ -492,10 +711,19 @@ function handleImageUpload(event: Event) {
 
   for (const file of Array.from(input.files)) {
     if (file.type.startsWith('image/')) {
+      // Check max 10 images
+      if (images.value.length >= 10) {
+        toast.warning('সর্বোচ্চ ১০টি ছবি আপলোড করা যায়')
+        break
+      }
       const reader = new FileReader()
       reader.onload = (e) => {
         if (e.target?.result) {
-          images.value.push(e.target.result as string)
+          images.value.push({
+            url: e.target.result as string,
+            file: file,
+            isNew: true,
+          })
         }
       }
       reader.readAsDataURL(file)
@@ -508,6 +736,11 @@ function handleImageUpload(event: Event) {
 
 // Remove image
 function removeImage(index: number) {
+  const removed = images.value[index]
+  // Track deleted existing images for edit mode
+  if (!removed.isNew && removed.id) {
+    deletedImageIds.value.push(removed.id)
+  }
   images.value.splice(index, 1)
 }
 
@@ -527,6 +760,8 @@ function handleVariantImageUpload(event: Event) {
     reader.onload = (e) => {
       if (e.target?.result && currentVariantIndex.value !== null) {
         updateVariant(currentVariantIndex.value, 'image_url', e.target.result as string)
+        // Store file for later upload
+        variantImageFiles.value.set(currentVariantIndex.value, file)
       }
     }
     reader.readAsDataURL(file)
@@ -590,11 +825,11 @@ function generateVariants() {
     sku: `${values.sku || 'SKU'}-${options.map((o) => o.value.substring(0, 2).toUpperCase()).join('-')}`,
     name: options.map((o) => o.value).join(' / '),
     price: values.price || 0,
-    sale_price: values.compareAtPrice || null,
+    sale_price: values.sale_price || null,
     sale_start_date: null,
     sale_end_date: null,
     is_sale_active: false,
-    effective_price: values.compareAtPrice || values.price || 0,
+    effective_price: values.sale_price || values.price || 0,
     stock_quantity: 0,
     is_in_stock: false,
     is_active: true,
@@ -612,23 +847,59 @@ function validateAttributes(): boolean {
   attributeErrors.value = {}
   let isValid = true
 
-  for (const template of categoryTemplates.value) {
-    if (template.is_required) {
-      const attrValue = attributeValues.value.find((a) => a.template_id === template.id)
-      const value = attrValue?.value
+  // Helper to check if template is required (handle both snake_case and camelCase)
+  const isRequired = (t: AttributeTemplate) => t.is_required || (t as any).isRequired
+  // Helper to check if template is variant-defining (handle both snake_case and camelCase)
+  const isVariantDefining = (t: AttributeTemplate) => t.is_variant_defining || (t as any).isVariantDefining
 
-      if (
-        value === undefined ||
-        value === null ||
-        value === '' ||
-        (Array.isArray(value) && value.length === 0)
-      ) {
-        attributeErrors.value[template.id] = `${template.name} আবশ্যক`
-        isValid = false
+  if (productType.value === 'simple') {
+    // Simple products: validate ALL required templates against attributeValues
+    for (const template of categoryTemplates.value) {
+      if (isRequired(template)) {
+        const attrValue = attributeValues.value.find((a) => a.template_id === template.id)
+        const value = attrValue?.value
+
+        if (
+          value === undefined ||
+          value === null ||
+          value === '' ||
+          (Array.isArray(value) && value.length === 0)
+        ) {
+          attributeErrors.value[template.id] = `${template.name} আবশ্যক`
+          isValid = false
+        }
+      }
+    }
+  } else {
+    // Variable products: ONLY validate variant-defining attributes (must have options selected)
+    // Non-variant attributes are optional for variable products
+    const variantDefiningTemplates = categoryTemplates.value.filter(t => isVariantDefining(t))
+    
+    for (const template of variantDefiningTemplates) {
+      if (isRequired(template)) {
+        // Check variantAttributes (from VariantBuilder)
+        const variantAttr = variantAttributes.value.find(a => a.id === template.id)
+        // Also check attributeValues (from ProductAttributes multiselect)
+        const attrValue = attributeValues.value.find(a => a.template_id === template.id)
+        const attrValueArr = Array.isArray(attrValue?.value) ? attrValue.value : []
+        
+        const hasVariantOptions = variantAttr && variantAttr.options.length > 0
+        const hasAttrValues = attrValueArr.length > 0
+
+        if (!hasVariantOptions && !hasAttrValues) {
+          attributeErrors.value[template.id] = `${template.name} আবশ্যক — অন্তত একটি অপশন নির্বাচন করুন`
+          isValid = false
+        }
       }
     }
   }
 
+  console.log('[ProductForm] validateAttributes result:', { 
+    isValid, 
+    productType: productType.value,
+    errors: { ...attributeErrors.value },
+    templateCount: categoryTemplates.value.length,
+  })
   return isValid
 }
 
@@ -636,11 +907,13 @@ function validateAttributes(): boolean {
 let saveAsDraft = false
 
 function submitAsDraft() {
+  console.log('[ProductForm] submitAsDraft called')
   saveAsDraft = true
   onSubmit()
 }
 
 function submitAndPublish() {
+  console.log('[ProductForm] submitAndPublish called')
   saveAsDraft = false
   onSubmit()
 }
@@ -676,21 +949,31 @@ function duplicateProduct() {
   router.push({ name: 'vendor-products-new' })
 }
 
-const onSubmit = handleSubmit(async (formValues) => {
-  // Validate attributes
-  if (!validateAttributes()) {
-    toast.error('সব আবশ্যক অ্যাট্রিবিউট পূরণ করুন')
-    return
-  }
+const onSubmit = handleSubmit(
+  async (formValues) => {
+    console.log('[ProductForm] Submit started', { formValues, productType: productType.value })
+    
+    // Validate attributes
+    if (!validateAttributes()) {
+      console.log('[ProductForm] Attribute validation failed')
+      toast.error('সব আবশ্যক অ্যাট্রিবিউট পূরণ করুন')
+      return
+    }
 
-  // For variable products, check if variants exist
-  if (productType.value === 'variable' && variants.value.length === 0) {
-    toast.error('ভেরিয়েবল প্রোডাক্টের জন্য ভেরিয়েন্ট তৈরি করুন')
-    return
-  }
+    // For variable products, check if variants exist
+    if (productType.value === 'variable' && variants.value.length === 0) {
+      console.log('[ProductForm] No variants for variable product')
+      toast.error('ভেরিয়েবল প্রোডাক্টের জন্য ভেরিয়েন্ট তৈরি করুন')
+      return
+    }
+    
+    console.log('[ProductForm] Validation passed, starting save...')
 
   isSaving.value = true
   try {
+    // Auto-generate SKU if empty
+    const sku = formValues.sku || generateSku()
+    
     const data: Record<string, any> = {
       name: formValues.name,
       short_description: formValues.short_description || undefined,
@@ -702,8 +985,8 @@ const onSubmit = handleSubmit(async (formValues) => {
       sale_price: formValues.sale_price || undefined,
       sale_start_date: formValues.sale_start_date || undefined,
       sale_end_date: formValues.sale_end_date || undefined,
-      sku: formValues.sku || '',
-      stock_quantity: formValues.stock,
+      sku: sku,
+      stock_quantity: productType.value === 'simple' ? (formValues.stock ?? 0) : undefined,
       low_stock_threshold: formValues.low_stock_threshold || undefined,
       weight: formValues.weight,
       dimensions: (formValues.dimensionLength || formValues.dimensionWidth || formValues.dimensionHeight)
@@ -746,22 +1029,115 @@ const onSubmit = handleSubmit(async (formValues) => {
       data.status = 'draft'
     }
 
+    let savedProduct: any
+
     if (isEditing.value) {
-      await productService.vendorUpdate(productSlug.value!, data)
-      toast.success('Product updated successfully')
+      savedProduct = await productService.vendorUpdate(productSlug.value!, data)
+      
+      // Step 2a: Delete removed images
+      if (deletedImageIds.value.length > 0) {
+        console.log('[ProductForm] Deleting images:', deletedImageIds.value)
+        for (const imageId of deletedImageIds.value) {
+          try {
+            await productService.vendorDeleteImage(productSlug.value!, imageId)
+          } catch (err) {
+            console.warn(`[ProductForm] Failed to delete image ${imageId}:`, err)
+          }
+        }
+      }
+
+      // Step 2b: Upload new images
+      const newImageFiles = images.value.filter(img => img.isNew && img.file).map(img => img.file!)
+      if (newImageFiles.length > 0) {
+        console.log('[ProductForm] Uploading', newImageFiles.length, 'new images for update')
+        try {
+          await productService.vendorUploadImages(productSlug.value!, newImageFiles)
+        } catch (err) {
+          console.error('[ProductForm] Image upload failed:', err)
+          toast.warning('প্রোডাক্ট আপডেট হয়েছে কিন্তু কিছু ছবি আপলোড ব্যর্থ')
+        }
+      }
+
+      // Step 2c: Reorder images if order changed (existing images)
+      const existingImageIds = images.value.filter(img => !img.isNew && img.id).map(img => img.id!)
+      if (existingImageIds.length > 1) {
+        try {
+          await productService.vendorReorderImages(productSlug.value!, existingImageIds)
+        } catch (err) {
+          console.warn('[ProductForm] Image reorder failed:', err)
+        }
+      }
+
+      toast.success('প্রোডাক্ট আপডেট সফল হয়েছে')
     } else {
-      await productService.vendorCreate(data as import('@/services/product.service').ProductFormData)
-      toast.success('Product created successfully')
+      savedProduct = await productService.vendorCreate(data as import('@/services/product.service').ProductFormData)
+      
+      // Step 2: Upload images after product creation
+      const productIdentifier = savedProduct?.slug || savedProduct?.id
+      const newImageFiles = images.value.filter(img => img.isNew && img.file).map(img => img.file!)
+      
+      if (productIdentifier && newImageFiles.length > 0) {
+        console.log('[ProductForm] Uploading', newImageFiles.length, 'images for new product:', productIdentifier)
+        try {
+          await productService.vendorUploadImages(productIdentifier, newImageFiles)
+          console.log('[ProductForm] Image upload successful')
+        } catch (err) {
+          console.error('[ProductForm] Image upload failed:', err)
+          toast.warning('প্রোডাক্ট তৈরি হয়েছে কিন্তু ছবি আপলোড ব্যর্থ। প্রোডাক্ট এডিট করে আবার চেষ্টা করুন।')
+        }
+      }
+
+      toast.success('প্রোডাক্ট তৈরি সফল হয়েছে')
     }
     
     isSavedSuccessfully.value = true
     router.push('/vendor/products')
-  } catch (error) {
-    toast.error(isEditing.value ? 'Failed to update product' : 'Failed to create product')
+  } catch (error: any) {
+    // Handle backend validation errors (422)
+    const response = error?.response
+    if (response?.status === 422 && response?.data) {
+      const data = response.data
+      const backendErrors = data.errors || data.data?.errors || {}
+      const errorMessages: string[] = []
+      
+      // Collect all field error messages
+      for (const [field, messages] of Object.entries(backendErrors)) {
+        const fieldErrors = Array.isArray(messages) ? messages : [messages]
+        fieldErrors.forEach((msg: string) => errorMessages.push(msg))
+      }
+      
+      if (errorMessages.length > 0) {
+        // Show combined error message in a single toast so it's visible long enough
+        const combinedMsg = errorMessages.join('\n• ')
+        toast.error(`⚠️ ভ্যালিডেশন ত্রুটি:\n• ${combinedMsg}`, { timeout: 10000 })
+      } else {
+        // Fallback to general message
+        const message = data.message || (isEditing.value ? 'প্রোডাক্ট আপডেট ব্যর্থ' : 'প্রোডাক্ট তৈরি ব্যর্থ')
+        toast.error(message, { timeout: 10000 })
+      }
+    } else {
+      const message = error?.response?.data?.message || (isEditing.value ? 'প্রোডাক্ট আপডেট ব্যর্থ' : 'প্রোডাক্ট তৈরি ব্যর্থ')
+      toast.error(message, { timeout: 8000 })
+    }
+    console.error('[ProductForm] Save error:', error?.response?.data || error)
   } finally {
     isSaving.value = false
   }
-})
+},
+  // On validation error, scroll to first error field
+  ({ errors }) => {
+    console.log('[ProductForm] Validation errors:', errors)
+    const firstErrorField = Object.keys(errors)[0]
+    if (firstErrorField) {
+      console.log('[ProductForm] Scrolling to first error field:', firstErrorField)
+      const element = document.querySelector(`[name="${firstErrorField}"]`)
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }
+    toast.error('Please fix validation errors')
+  }
+)
 
 // Cancel
 function cancel() {
@@ -770,8 +1146,9 @@ function cancel() {
 </script>
 
 <template>
-  <PageLoader v-if="isLoading" />
-  <form v-else class="space-y-6" @submit.prevent="onSubmit">
+  <div>
+    <PageLoader v-if="isLoading" />
+    <form v-else class="space-y-6" @submit.prevent="onSubmit">
     <!-- Sticky Header with Progress -->
     <div class="sticky top-0 z-20 -mx-6 -mt-6 mb-6 border-b border-gray-200 bg-white/95 px-6 py-4 backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
       <div class="flex items-center justify-between">
@@ -859,7 +1236,8 @@ function cancel() {
             />
 
             <RichTextEditor
-              v-model="values.description"
+              :modelValue="values.description"
+              @update:modelValue="setFieldValue('description', $event)"
               label="বিস্তারিত বর্ণনা / Description"
               name="description"
               placeholder="পণ্যের বিস্তারিত বর্ণনা লিখুন..."
@@ -1136,7 +1514,7 @@ function cancel() {
                 ]"
               >
                 <img
-                  :src="image"
+                  :src="image.url"
                   :alt="`Product image ${index + 1}`"
                   class="h-full w-full object-cover pointer-events-none"
                   loading="lazy"
@@ -1281,50 +1659,104 @@ function cancel() {
           </p>
         </BaseCard>
 
-        <!-- Inventory (only for simple products) -->
-        <BaseCard v-if="productType === 'simple'" title="Inventory">
-          <div class="grid gap-4 sm:grid-cols-2">
-            <!-- SKU with Auto-generate -->
-            <div class="space-y-1">
-              <FormInput
-                v-model="values.sku"
-                label="SKU"
-                name="sku"
-                placeholder="Stock Keeping Unit"
-              />
-              <button
-                v-if="suggestedSku && !values.sku"
-                type="button"
-                class="text-xs text-primary-600 hover:text-primary-700 hover:underline dark:text-primary-400"
-                @click="applySuggestedSku"
-              >
-                💡 Suggest: {{ suggestedSku }}
-              </button>
+        <!-- Inventory & SKU -->
+        <BaseCard title="ইনভেন্টরি / Inventory">
+          <div class="space-y-4">
+            <!-- SKU Mode Toggle -->
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                SKU (Stock Keeping Unit) <span class="text-danger-500">*</span>
+              </label>
+              <div class="flex items-center gap-3">
+                <button
+                  type="button"
+                  :class="[
+                    'rounded-lg border px-3 py-1.5 text-xs font-medium transition-all',
+                    skuMode === 'auto'
+                      ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-900/30 dark:text-primary-300'
+                      : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                  ]"
+                  @click="skuMode = 'auto'"
+                >
+                  🔄 অটো জেনারেট
+                </button>
+                <button
+                  type="button"
+                  :class="[
+                    'rounded-lg border px-3 py-1.5 text-xs font-medium transition-all',
+                    skuMode === 'custom'
+                      ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-900/30 dark:text-primary-300'
+                      : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                  ]"
+                  @click="skuMode = 'custom'"
+                >
+                  ✏️ কাস্টম SKU
+                </button>
+              </div>
+
+              <!-- Auto mode: show generated SKU with regenerate button -->
+              <div v-if="skuMode === 'auto'" class="flex items-center gap-2">
+                <div class="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-mono text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                  {{ values.sku || 'প্রোডাক্টের নাম দিন...' }}
+                </div>
+                <button
+                  type="button"
+                  class="rounded-lg border border-primary-300 bg-primary-50 px-3 py-2 text-xs font-medium text-primary-700 hover:bg-primary-100 dark:border-primary-600 dark:bg-primary-900/30 dark:text-primary-300"
+                  @click="applySuggestedSku"
+                  :disabled="!values.name || values.name.length < 2"
+                >
+                  🔄 রিজেনারেট
+                </button>
+              </div>
+
+              <!-- Custom mode: editable input -->
+              <div v-else>
+                <FormInput
+                  v-model="values.sku"
+                  name="sku"
+                  placeholder="আপনার কাস্টম SKU লিখুন (যেমন: SHIRT-BLK-001)"
+                />
+              </div>
+
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ skuMode === 'auto' 
+                  ? '💡 প্রোডাক্টের নাম থেকে অটো জেনারেট হবে। ভেরিয়েন্ট SKU আলাদা তৈরি হবে।' 
+                  : '💡 ইউনিক SKU দিন। ভেরিয়েন্ট SKU এর বেজ হিসেবে ব্যবহার হবে।' 
+                }}
+              </p>
             </div>
 
-            <FormInput
-              v-model.number="values.stock"
-              label="Stock Quantity"
-              name="stock"
-              type="number"
-              :min="0"
-              required
-            />
+            <!-- Stock & Weight (only for simple products) -->
+            <div v-if="productType === 'simple'" class="grid gap-4 sm:grid-cols-2">
+              <FormInput
+                v-model.number="values.stock"
+                label="স্টক সংখ্যা / Stock Quantity"
+                name="stock"
+                type="number"
+                :min="0"
+                required
+              />
 
-            <FormInput
-              v-model.number="values.low_stock_threshold"
-              label="Low Stock Threshold"
-              name="low_stock_threshold"
-              type="number"
-              :min="0"
-              hint="Alert when stock falls below this level"
-            />
+              <FormInput
+                v-model.number="values.low_stock_threshold"
+                label="লো স্টক থ্রেশহোল্ড"
+                name="low_stock_threshold"
+                type="number"
+                :min="0"
+                hint="স্টক এর নিচে গেলে অ্যালার্ট পাবেন"
+              />
+            </div>
+
+            <div v-if="productType === 'variable'" class="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+              📦 ভেরিয়েবল প্রোডাক্টের স্টক প্রতিটি ভেরিয়েন্টেই আলাদাভাবে সেট করা হয়।
+            </div>
           </div>
 
+          <!-- Weight & Dimensions -->
           <div class="mt-4">
             <FormInput
               v-model.number="values.weight"
-              label="Weight (kg)"
+              label="ওজন / Weight (kg)"
               name="weight"
               type="number"
               :min="0"
@@ -1334,11 +1766,11 @@ function cancel() {
 
           <!-- Dimensions -->
           <div class="mt-4">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Dimensions (cm)</label>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">মাত্রা / Dimensions (cm)</label>
             <div class="grid grid-cols-3 gap-3">
               <FormInput
                 v-model.number="values.dimensionLength"
-                label="Length"
+                label="দৈর্ঘ্য"
                 name="dimensionLength"
                 type="number"
                 :min="0"
@@ -1347,7 +1779,7 @@ function cancel() {
               />
               <FormInput
                 v-model.number="values.dimensionWidth"
-                label="Width"
+                label="প্রস্থ"
                 name="dimensionWidth"
                 type="number"
                 :min="0"
@@ -1356,7 +1788,7 @@ function cancel() {
               />
               <FormInput
                 v-model.number="values.dimensionHeight"
-                label="Height"
+                label="উচ্চতা"
                 name="dimensionHeight"
                 type="number"
                 :min="0"
@@ -1453,25 +1885,31 @@ function cancel() {
                   type="checkbox"
                   :checked="!!values.publish_at"
                   class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                  @change="(e) => values.publish_at = (e.target as HTMLInputElement).checked ? new Date().toISOString().slice(0, 16) : null"
+                  @change="(e) => setFieldValue('publish_at', (e.target as HTMLInputElement).checked ? new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16) : null)"
                 />
-                Schedule Publishing
+                <span>⏰ Schedule Publishing</span>
               </label>
+              <p class="mt-1 ml-6 text-xs text-gray-500 dark:text-gray-400">
+                পরে প্রকাশ করতে তারিখ ও সময় সেট করুন
+              </p>
               
-              <div v-if="values.publish_at" class="mt-3 space-y-2">
+              <div v-if="values.publish_at" class="mt-3 ml-6 space-y-2">
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  প্রকাশের তারিখ ও সময়
+                </label>
                 <input
                   type="datetime-local"
                   :value="values.publish_at"
                   :min="new Date().toISOString().slice(0, 16)"
                   class="block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                  @input="(e) => values.publish_at = (e.target as HTMLInputElement).value"
+                  @input="(e) => setFieldValue('publish_at', (e.target as HTMLInputElement).value)"
                 />
                 <p v-if="values.publish_at && new Date(values.publish_at) > new Date()" class="flex items-center gap-1 text-xs text-primary-600 dark:text-primary-400">
                   <span class="h-2 w-2 animate-pulse rounded-full bg-primary-500"></span>
-                  Will publish on {{ new Date(values.publish_at).toLocaleString('en-BD', { dateStyle: 'medium', timeStyle: 'short' }) }}
+                  ✅ {{ new Date(values.publish_at).toLocaleString('bn-BD', { dateStyle: 'long', timeStyle: 'short' }) }} তে প্রকাশ হবে
                 </p>
                 <p v-else-if="values.publish_at" class="text-xs text-warning-600 dark:text-warning-400">
-                  ⚠️ Selected time is in the past
+                  ⚠️ নির্বাচিত সময় অতীতে - ভবিষ্যতের সময় নির্বাচন করুন
                 </p>
               </div>
             </div>
@@ -1486,7 +1924,7 @@ function cancel() {
             label="Visibility"
             :options="[
               { value: 'visible', label: 'Visible (Search & Catalog)' },
-              { value: 'catalog_only', label: 'Catalog Only' },
+              { value: 'catalog', label: 'Catalog Only' },
               { value: 'hidden', label: 'Hidden' },
             ]"
           />
@@ -1562,7 +2000,7 @@ function cancel() {
                   <div class="aspect-square overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-700">
                     <img
                       v-if="images.length > 0"
-                      :src="images[0]"
+                      :src="images[0].url"
                       :alt="values.name"
                       class="h-full w-full object-cover"
                     />
@@ -1578,7 +2016,7 @@ function cancel() {
                       :key="idx"
                       class="aspect-square overflow-hidden rounded-lg border-2 border-gray-200 dark:border-gray-600"
                     >
-                      <img :src="img" :alt="`Image ${idx + 1}`" class="h-full w-full object-cover" />
+                      <img :src="img.url" :alt="`Image ${idx + 1}`" class="h-full w-full object-cover" />
                     </div>
                   </div>
                 </div>
@@ -1652,15 +2090,15 @@ function cancel() {
 
                   <!-- Variants preview -->
                   <div v-if="productType === 'variable' && variantAttributes.length > 0" class="space-y-3">
-                    <div v-for="attr in variantAttributes" :key="attr.templateId" class="space-y-2">
+                    <div v-for="attr in variantAttributes" :key="attr.id" class="space-y-2">
                       <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ attr.name }}:</p>
                       <div class="flex flex-wrap gap-2">
                         <span
-                          v-for="val in attr.selectedValues"
-                          :key="val"
+                          v-for="opt in attr.options"
+                          :key="opt.id"
                           class="rounded-md border border-gray-300 px-3 py-1 text-sm hover:border-primary-500 dark:border-gray-600"
                         >
-                          {{ val }}
+                          {{ opt.label }}
                         </span>
                       </div>
                     </div>
@@ -1715,4 +2153,5 @@ function cancel() {
       </div>
     </Transition>
   </Teleport>
+  </div>
 </template>

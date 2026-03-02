@@ -1,11 +1,15 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<!-- Activity Log — System activity log viewer                         -->
+<!-- Activity Log — System activity log viewer (Dynamic)               -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useBreadcrumbStore } from '@/stores'
 import { useDate } from '@/composables/useDate'
+import { usePagination } from '@/composables/usePagination'
+import { useDebounce } from '@/composables/useDebounce'
+import { activityService } from '@/services'
+import type { ActivityEntry, ActivityStats, ActivityFilters } from '@/types/activity'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import FormInput from '@/components/form/FormInput.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
@@ -23,43 +27,37 @@ import {
   PencilSquareIcon,
   PlusCircleIcon,
   ArrowRightOnRectangleIcon,
+  ArrowPathIcon,
+  TagIcon,
+  ClockIcon,
 } from '@heroicons/vue/24/outline'
 
 const breadcrumbStore = useBreadcrumbStore()
 const { formatDate } = useDate()
 
+// State
 const searchQuery = ref('')
 const actionFilter = ref('all')
 const userFilter = ref('all')
 const dateFilter = ref('last_7_days')
 const isLoading = ref(false)
+const isStatsLoading = ref(false)
 
-interface ActivityEntry {
-  id: number
-  user: string
-  user_role: string
-  action: string
-  action_type: 'create' | 'update' | 'delete' | 'login' | 'settings' | 'payout'
-  resource: string
-  resource_type: string
-  ip_address: string
-  timestamp: string
-  details: string
-}
+const activities = ref<ActivityEntry[]>([])
+const stats = ref<ActivityStats>({
+  created_today: 0,
+  updated_today: 0,
+  deleted_today: 0,
+  logins_today: 0,
+})
 
-const activities = ref<ActivityEntry[]>([
-  { id: 1, user: 'Admin User', user_role: 'admin', action: 'Updated product', action_type: 'update', resource: 'Wireless Bluetooth Earbuds', resource_type: 'product', ip_address: '192.168.1.1', timestamp: '2026-02-24T14:32:00', details: 'Changed price from ৳2000 to ৳2500' },
-  { id: 2, user: 'TechMart', user_role: 'vendor', action: 'Created product', action_type: 'create', resource: 'USB-C Hub 7-in-1', resource_type: 'product', ip_address: '103.45.67.89', timestamp: '2026-02-24T13:15:00', details: 'New product submitted for review' },
-  { id: 3, user: 'Admin User', user_role: 'admin', action: 'Approved vendor', action_type: 'update', resource: 'FoodFresh Market', resource_type: 'vendor', ip_address: '192.168.1.1', timestamp: '2026-02-24T12:45:00', details: 'Vendor application approved' },
-  { id: 4, user: 'FashionHub', user_role: 'vendor', action: 'Logged in', action_type: 'login', resource: '', resource_type: 'auth', ip_address: '103.22.33.44', timestamp: '2026-02-24T11:20:00', details: 'Successful login from Dhaka, BD' },
-  { id: 5, user: 'Admin User', user_role: 'admin', action: 'Updated settings', action_type: 'settings', resource: 'Commission Rate', resource_type: 'settings', ip_address: '192.168.1.1', timestamp: '2026-02-24T10:05:00', details: 'Default commission changed from 8% to 10%' },
-  { id: 6, user: 'Admin User', user_role: 'admin', action: 'Processed payout', action_type: 'payout', resource: 'PAY-2026-0145', resource_type: 'payout', ip_address: '192.168.1.1', timestamp: '2026-02-24T09:30:00', details: 'Payout of ৳45,000 to TechMart' },
-  { id: 7, user: 'KidZone', user_role: 'vendor', action: 'Deleted product', action_type: 'delete', resource: 'Baby Socks Set', resource_type: 'product', ip_address: '103.55.66.77', timestamp: '2026-02-23T16:45:00', details: 'Product permanently removed' },
-  { id: 8, user: 'Admin User', user_role: 'admin', action: 'Created category', action_type: 'create', resource: 'Smart Home', resource_type: 'category', ip_address: '192.168.1.1', timestamp: '2026-02-23T15:20:00', details: 'New category under Electronics' },
-  { id: 9, user: 'SportGear', user_role: 'vendor', action: 'Updated product', action_type: 'update', resource: 'Running Shoes Ultra', resource_type: 'product', ip_address: '103.88.99.10', timestamp: '2026-02-23T14:10:00', details: 'Updated stock from 30 to 45' },
-  { id: 10, user: 'Admin User', user_role: 'admin', action: 'Suspended vendor', action_type: 'update', resource: 'GadgetStore', resource_type: 'vendor', ip_address: '192.168.1.1', timestamp: '2026-02-23T11:00:00', details: 'Suspended for policy violation' },
-])
+// Pagination
+const { currentPage, perPage, total, totalPages, updatePagination, goToPage } = usePagination()
 
+// Debounced search
+const debouncedSearch = useDebounce(searchQuery, 400)
+
+// Table columns
 const columns = [
   { key: 'timestamp', label: 'Time', sortable: true },
   { key: 'user', label: 'User' },
@@ -69,6 +67,7 @@ const columns = [
   { key: 'details', label: 'Details' },
 ]
 
+// Icon mapping
 function getActionIcon(type: string) {
   const map: Record<string, typeof CubeIcon> = {
     create: PlusCircleIcon,
@@ -101,16 +100,93 @@ function getResourceIcon(type: string) {
     settings: Cog6ToothIcon,
     auth: ShieldCheckIcon,
     payout: CurrencyDollarIcon,
-    category: CubeIcon,
+    category: TagIcon,
+    user: UserCircleIcon,
   }
   return map[type] ?? CubeIcon
 }
 
+// Computed filters
+const filters = computed<ActivityFilters>(() => ({
+  action: actionFilter.value !== 'all' ? actionFilter.value : undefined,
+  user_type: userFilter.value !== 'all' ? userFilter.value : undefined,
+  date_range: dateFilter.value as ActivityFilters['date_range'],
+  search: debouncedSearch.value || undefined,
+  per_page: perPage.value,
+  page: currentPage.value,
+}))
+
+// Load activities
+async function loadActivities() {
+  isLoading.value = true
+  try {
+    const response = await activityService.getActivities(filters.value)
+    activities.value = response.data
+    if (response.meta) {
+      updatePagination(response.meta.current_page, response.meta.per_page, response.meta.total)
+    }
+  } catch (error) {
+    console.error('Failed to load activities:', error)
+    activities.value = []
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// Load stats
+async function loadStats() {
+  isStatsLoading.value = true
+  try {
+    stats.value = await activityService.getStats()
+  } catch (error) {
+    console.error('Failed to load stats:', error)
+  } finally {
+    isStatsLoading.value = false
+  }
+}
+
+// Handle pagination
+function handlePageChange(page: number) {
+  goToPage(page)
+  loadActivities()
+}
+
+// Export logs
+async function handleExport() {
+  try {
+    const blob = await activityService.exportLogs(filters.value)
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `activity-log-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    window.URL.revokeObjectURL(url)
+  } catch (error) {
+    console.error('Export failed:', error)
+  }
+}
+
+// Refresh data
+function refresh() {
+  loadStats()
+  loadActivities()
+}
+
+// Watch filter changes
+watch([actionFilter, userFilter, dateFilter, debouncedSearch], () => {
+  goToPage(1)
+  loadActivities()
+})
+
+// Initialize
 onMounted(() => {
   breadcrumbStore.setPageInfo('Activity Log', [
     { label: 'System' },
     { label: 'Activity Log' },
   ], 'System-wide activity log and audit trail')
+
+  loadStats()
+  loadActivities()
 })
 </script>
 
@@ -122,61 +198,95 @@ onMounted(() => {
         <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Activity Log</h2>
         <p class="text-sm text-gray-500 dark:text-gray-400">View all system activities and audit trail</p>
       </div>
-      <button
-        type="button"
-        class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-      >
-        <ArrowDownTrayIcon class="h-4 w-4" />
-        Export Log
-      </button>
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          @click="refresh"
+        >
+          <ArrowPathIcon class="h-4 w-4" :class="{ 'animate-spin': isLoading }" />
+          Refresh
+        </button>
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          @click="handleExport"
+        >
+          <ArrowDownTrayIcon class="h-4 w-4" />
+          Export Log
+        </button>
+      </div>
     </div>
 
-    <!-- Summary cards -->
+    <!-- Summary cards with improved design -->
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <BaseCard class="!p-4">
-        <div class="flex items-center gap-3">
-          <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50 dark:bg-primary-900/30">
-            <PlusCircleIcon class="h-5 w-5 text-primary-600 dark:text-primary-400" />
+      <!-- Created Today -->
+      <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 p-5 shadow-sm ring-1 ring-emerald-100 transition-all hover:shadow-md dark:from-emerald-900/20 dark:to-teal-900/20 dark:ring-emerald-800/30">
+        <div class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-emerald-100/50 blur-2xl transition-all group-hover:scale-150 dark:bg-emerald-800/20" />
+        <div class="relative flex items-center gap-4">
+          <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 ring-1 ring-emerald-500/20 dark:bg-emerald-500/20 dark:ring-emerald-500/30">
+            <PlusCircleIcon class="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
           </div>
           <div>
-            <p class="text-2xl font-bold text-gray-900 dark:text-white">45</p>
-            <p class="text-xs text-gray-500 dark:text-gray-400">Created today</p>
+            <p class="text-3xl font-bold text-gray-900 dark:text-white">
+              <span v-if="isStatsLoading" class="inline-block h-8 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+              <span v-else>{{ stats.created_today }}</span>
+            </p>
+            <p class="text-sm font-medium text-emerald-700 dark:text-emerald-400">Created today</p>
           </div>
         </div>
-      </BaseCard>
-      <BaseCard class="!p-4">
-        <div class="flex items-center gap-3">
-          <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-info-50 dark:bg-info-900/30">
-            <PencilSquareIcon class="h-5 w-5 text-info-600 dark:text-info-400" />
+      </div>
+
+      <!-- Updated Today -->
+      <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 p-5 shadow-sm ring-1 ring-blue-100 transition-all hover:shadow-md dark:from-blue-900/20 dark:to-indigo-900/20 dark:ring-blue-800/30">
+        <div class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-blue-100/50 blur-2xl transition-all group-hover:scale-150 dark:bg-blue-800/20" />
+        <div class="relative flex items-center gap-4">
+          <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 ring-1 ring-blue-500/20 dark:bg-blue-500/20 dark:ring-blue-500/30">
+            <PencilSquareIcon class="h-6 w-6 text-blue-600 dark:text-blue-400" />
           </div>
           <div>
-            <p class="text-2xl font-bold text-gray-900 dark:text-white">128</p>
-            <p class="text-xs text-gray-500 dark:text-gray-400">Updated today</p>
+            <p class="text-3xl font-bold text-gray-900 dark:text-white">
+              <span v-if="isStatsLoading" class="inline-block h-8 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+              <span v-else>{{ stats.updated_today }}</span>
+            </p>
+            <p class="text-sm font-medium text-blue-700 dark:text-blue-400">Updated today</p>
           </div>
         </div>
-      </BaseCard>
-      <BaseCard class="!p-4">
-        <div class="flex items-center gap-3">
-          <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-danger-50 dark:bg-danger-900/30">
-            <TrashIcon class="h-5 w-5 text-danger-600 dark:text-danger-400" />
+      </div>
+
+      <!-- Deleted Today -->
+      <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-rose-50 to-pink-50 p-5 shadow-sm ring-1 ring-rose-100 transition-all hover:shadow-md dark:from-rose-900/20 dark:to-pink-900/20 dark:ring-rose-800/30">
+        <div class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-rose-100/50 blur-2xl transition-all group-hover:scale-150 dark:bg-rose-800/20" />
+        <div class="relative flex items-center gap-4">
+          <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-rose-500/10 ring-1 ring-rose-500/20 dark:bg-rose-500/20 dark:ring-rose-500/30">
+            <TrashIcon class="h-6 w-6 text-rose-600 dark:text-rose-400" />
           </div>
           <div>
-            <p class="text-2xl font-bold text-gray-900 dark:text-white">7</p>
-            <p class="text-xs text-gray-500 dark:text-gray-400">Deleted today</p>
+            <p class="text-3xl font-bold text-gray-900 dark:text-white">
+              <span v-if="isStatsLoading" class="inline-block h-8 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+              <span v-else>{{ stats.deleted_today }}</span>
+            </p>
+            <p class="text-sm font-medium text-rose-700 dark:text-rose-400">Deleted today</p>
           </div>
         </div>
-      </BaseCard>
-      <BaseCard class="!p-4">
-        <div class="flex items-center gap-3">
-          <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-success-50 dark:bg-success-900/30">
-            <ArrowRightOnRectangleIcon class="h-5 w-5 text-success-600 dark:text-success-400" />
+      </div>
+
+      <!-- Logins Today -->
+      <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-violet-50 to-purple-50 p-5 shadow-sm ring-1 ring-violet-100 transition-all hover:shadow-md dark:from-violet-900/20 dark:to-purple-900/20 dark:ring-violet-800/30">
+        <div class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-violet-100/50 blur-2xl transition-all group-hover:scale-150 dark:bg-violet-800/20" />
+        <div class="relative flex items-center gap-4">
+          <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 ring-1 ring-violet-500/20 dark:bg-violet-500/20 dark:ring-violet-500/30">
+            <ArrowRightOnRectangleIcon class="h-6 w-6 text-violet-600 dark:text-violet-400" />
           </div>
           <div>
-            <p class="text-2xl font-bold text-gray-900 dark:text-white">34</p>
-            <p class="text-xs text-gray-500 dark:text-gray-400">Logins today</p>
+            <p class="text-3xl font-bold text-gray-900 dark:text-white">
+              <span v-if="isStatsLoading" class="inline-block h-8 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+              <span v-else>{{ stats.logins_today }}</span>
+            </p>
+            <p class="text-sm font-medium text-violet-700 dark:text-violet-400">Logins today</p>
           </div>
         </div>
-      </BaseCard>
+      </div>
     </div>
 
     <!-- Filters & Table -->
@@ -194,11 +304,10 @@ onMounted(() => {
           v-model="actionFilter"
           :options="[
             { label: 'All Actions', value: 'all' },
-            { label: 'Create', value: 'create' },
-            { label: 'Update', value: 'update' },
-            { label: 'Delete', value: 'delete' },
+            { label: 'Create', value: 'created' },
+            { label: 'Update', value: 'updated' },
+            { label: 'Delete', value: 'deleted' },
             { label: 'Login', value: 'login' },
-            { label: 'Settings', value: 'settings' },
           ]"
           class="w-36"
         />
@@ -222,13 +331,27 @@ onMounted(() => {
         />
       </div>
 
+      <!-- Empty State -->
+      <div v-if="!isLoading && activities.length === 0" class="flex flex-col items-center justify-center py-16">
+        <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
+          <ClockIcon class="h-8 w-8 text-gray-400" />
+        </div>
+        <h3 class="mb-1 text-lg font-semibold text-gray-900 dark:text-white">No activity logs found</h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+          Activity logs will appear here as users perform actions in the system.
+        </p>
+      </div>
+
+      <!-- Data Table -->
       <DataTable
+        v-else
         :columns="columns"
         :data="activities"
         :loading="isLoading"
-        :total="activities.length"
-        :current-page="1"
-        :per-page="20"
+        :total="total"
+        :current-page="currentPage"
+        :per-page="perPage"
+        @page-change="handlePageChange"
       >
         <template #cell-timestamp="{ row }">
           <span class="whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
@@ -240,10 +363,12 @@ onMounted(() => {
           <div class="flex items-center gap-2">
             <span class="font-medium text-gray-900 dark:text-white">{{ row.user }}</span>
             <span
-              :class="row.user_role === 'admin' ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'"
+              :class="row.user_role === 'admin' || row.user_role === 'super_admin' 
+                ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400' 
+                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'"
               class="rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase"
             >
-              {{ row.user_role }}
+              {{ row.user_role === 'super_admin' ? 'admin' : row.user_role }}
             </span>
           </div>
         </template>

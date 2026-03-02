@@ -85,12 +85,16 @@ const stats = computed(() => {
 const resources = computed(() => {
   if (!dashboard.value) return []
   const m = dashboard.value.metrics
-  return [
+  const items = [
     { name: 'CPU', used: m.cpu, total: 100, unit: '%', status: m.cpu > 80 ? 'danger' : m.cpu > 60 ? 'warning' : 'healthy' },
     { name: 'Memory', used: m.memory_used, total: m.memory_total, unit: 'B', status: m.memory > 80 ? 'danger' : m.memory > 60 ? 'warning' : 'healthy' },
     { name: 'Disk', used: m.disk_used, total: m.disk_total, unit: 'B', status: m.disk > 80 ? 'danger' : m.disk > 60 ? 'warning' : 'healthy' },
-    { name: 'Swap', used: m.swap_used, total: m.swap_total, unit: 'B', status: m.swap > 80 ? 'danger' : m.swap > 60 ? 'warning' : 'healthy' },
   ]
+  // Only show swap if there's actually swap configured
+  if (m.swap_total > 0) {
+    items.push({ name: 'Swap', used: m.swap_used, total: m.swap_total, unit: 'B', status: m.swap > 80 ? 'danger' : m.swap > 60 ? 'warning' : 'healthy' })
+  }
+  return items
 })
 
 // Services
@@ -101,17 +105,17 @@ const activeIncidents = computed<HealthIncident[]>(() => dashboard.value?.active
 const recentIncidents = computed<HealthIncident[]>(() => dashboard.value?.recent_incidents ?? [])
 
 // Chart data
-const perfLabels = computed(() => cpuChartData.value?.points.map(p => formatTime(p.timestamp)) ?? [])
+const perfLabels = computed(() => cpuChartData.value?.points?.map(p => formatTime(p.timestamp)) ?? [])
 const perfDatasets = computed(() => {
   const datasets = []
-  if (cpuChartData.value) {
+  if (cpuChartData.value?.points?.length) {
     datasets.push({
       label: 'CPU %',
       data: cpuChartData.value.points.map(p => p.value),
       fill: false,
     })
   }
-  if (memoryChartData.value) {
+  if (memoryChartData.value?.points?.length) {
     datasets.push({
       label: 'Memory %',
       data: memoryChartData.value.points.map(p => p.value),
@@ -309,8 +313,8 @@ onUnmounted(() => {
               </span>
             </div>
             <AppProgressBar
-              :value="Math.round((resource.used / resource.total) * 100)"
-              :color="getProgressColor(Math.round((resource.used / resource.total) * 100))"
+              :value="resource.total > 0 ? Math.round((resource.used / resource.total) * 100) : 0"
+              :color="getProgressColor(resource.total > 0 ? Math.round((resource.used / resource.total) * 100) : 0)"
               size="md"
               :show-label="true"
             />

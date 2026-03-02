@@ -3,7 +3,7 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, watch, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
 import { productService, categoryService } from '@/services'
@@ -145,10 +145,27 @@ const schema = toTypedSchema(
     publish_at: z.string().optional().nullable(),
     metaTitle: z.string().optional(),
     metaDescription: z.string().optional(),
+  }).superRefine((data, ctx) => {
+    // Sale price must be less than regular price
+    if (data.sale_price != null && data.price > 0 && data.sale_price >= data.price) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Sale price must be less than the regular price',
+        path: ['sale_price'],
+      })
+    }
+    // Sale end date must be after sale start date
+    if (data.sale_start_date && data.sale_end_date && data.sale_end_date <= data.sale_start_date) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Sale end date must be after sale start date',
+        path: ['sale_end_date'],
+      })
+    }
   })
 )
 
-const { handleSubmit, setValues, setFieldValue, values, resetForm } = useForm({
+const { handleSubmit, setValues, setFieldValue, setFieldError, setErrors, values, resetForm } = useForm({
   validationSchema: schema,
   initialValues: {
     name: '',
@@ -1197,22 +1214,96 @@ const onSubmit = handleSubmit(
     if (response?.status === 422 && response?.data) {
       const data = response.data
       const backendErrors = data.errors || data.data?.errors || {}
+
+      // Map backend snake_case field names to form field names
+      const fieldNameMap: Record<string, string> = {
+        name: 'name',
+        short_description: 'short_description',
+        description: 'description',
+        category_id: 'categoryId',
+        brand_id: 'brand_id',
+        price: 'price',
+        cost_price: 'cost_price',
+        sale_price: 'sale_price',
+        sale_start_date: 'sale_start_date',
+        sale_end_date: 'sale_end_date',
+        sku: 'sku',
+        stock_quantity: 'stock',
+        stock: 'stock',
+        low_stock_threshold: 'low_stock_threshold',
+        weight: 'weight',
+        dimension_length: 'dimensionLength',
+        dimension_width: 'dimensionWidth',
+        dimension_height: 'dimensionHeight',
+        visibility: 'visibility',
+        is_active: 'isActive',
+        publish_at: 'publish_at',
+        meta_title: 'metaTitle',
+        meta_description: 'metaDescription',
+      }
+
       const errorMessages: string[] = []
-      
-      // Collect all field error messages
-      for (const [field, messages] of Object.entries(backendErrors)) {
+      let firstErrorField: string | null = null
+
+      // Map backend errors to inline form fields + collect messages
+      for (const [backendField, messages] of Object.entries(backendErrors)) {
         const fieldErrors = Array.isArray(messages) ? messages : [messages]
+        const formField = fieldNameMap[backendField] || backendField
+
+        // Set inline error on the form field
+        const firstMsg = fieldErrors[0] as string
+        if (firstMsg) {
+          setFieldError(formField as any, firstMsg)
+          if (!firstErrorField) firstErrorField = formField
+        }
+
         fieldErrors.forEach((msg: string) => errorMessages.push(msg))
       }
-      
+
+      // If backend returned only a general message (no errors object),
+      // try to identify and assign to the relevant field
+      if (errorMessages.length === 0 && data.message) {
+        const msg = (data.message as string).toLowerCase()
+        // Match common validation messages to fields
+        if (msg.includes('sale price') || msg.includes('sale_price')) {
+          setFieldError('sale_price', data.message as string)
+          firstErrorField = 'sale_price'
+        } else if (msg.includes('regular price') || msg.includes('price')) {
+          setFieldError('price', data.message as string)
+          firstErrorField = 'price'
+        } else if (msg.includes('stock')) {
+          setFieldError('stock', data.message as string)
+          firstErrorField = 'stock'
+        } else if (msg.includes('category')) {
+          setFieldError('categoryId', data.message as string)
+          firstErrorField = 'categoryId'
+        } else if (msg.includes('sku')) {
+          setFieldError('sku', data.message as string)
+          firstErrorField = 'sku'
+        }
+        errorMessages.push(data.message as string)
+      }
+
+      // Show a clean toast summary
       if (errorMessages.length > 0) {
-        // Show combined error message in a single toast so it's visible long enough
-        const combinedMsg = errorMessages.join('\n• ')
-        toast.error(`⚠️ ভ্যালিডেশন ত্রুটি:\n• ${combinedMsg}`, { timeout: 10000 })
+        const count = errorMessages.length
+        const summary = count === 1
+          ? errorMessages[0]
+          : `${count}টি ভ্যালিডেশন ত্রুটি পাওয়া গেছে। ফর্মে ত্রুটিগুলো দেখুন।`
+        toast.error(summary, { timeout: 8000 })
       } else {
-        // Fallback to general message
         const message = data.message || (isEditing.value ? 'প্রোডাক্ট আপডেট ব্যর্থ' : 'প্রোডাক্ট তৈরি ব্যর্থ')
-        toast.error(message, { timeout: 10000 })
+        toast.error(message as string, { timeout: 8000 })
+      }
+
+      // Scroll to the first error field
+      if (firstErrorField) {
+        nextTick(() => {
+          const element = document.querySelector(`[name="${firstErrorField}"]`)
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          }
+        })
       }
     } else {
       const message = error?.response?.data?.message || (isEditing.value ? 'প্রোডাক্ট আপডেট ব্যর্থ' : 'প্রোডাক্ট তৈরি ব্যর্থ')
@@ -1225,14 +1316,22 @@ const onSubmit = handleSubmit(
 },
   // On validation error, scroll to first error field
   ({ errors }) => {
-    const firstErrorField = Object.keys(errors)[0]
-    if (firstErrorField) {
-      const element = document.querySelector(`[name="${firstErrorField}"]`)
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      }
+    const errorKeys = Object.keys(errors)
+    if (errorKeys.length > 0) {
+      const firstErrorField = errorKeys[0]
+      nextTick(() => {
+        const element = document.querySelector(`[name="${firstErrorField}"]`)
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      })
     }
-    toast.error('Please fix validation errors')
+    const count = errorKeys.length
+    toast.error(
+      count === 1
+        ? `ফর্মে ১টি ত্রুটি আছে। অনুগ্রহ করে ঠিক করুন।`
+        : `ফর্মে ${count}টি ত্রুটি আছে। অনুগ্রহ করে ঠিক করুন।`
+    )
   }
 )
 
@@ -1831,7 +1930,7 @@ function cancel() {
               </p>
             </div>
 
-            <!-- Stock & Weight (only for simple products) -->
+            <!-- Stock & Threshold (simple product: editable stock, variable: variant summary) -->
             <div v-if="productType === 'simple'" class="grid gap-4 sm:grid-cols-2">
               <FormInput
                 v-model.number="values.stock"
@@ -1852,8 +1951,32 @@ function cancel() {
               />
             </div>
 
-            <div v-if="productType === 'variable'" class="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
-              📦 ভেরিয়েবল প্রোডাক্টের স্টক প্রতিটি ভেরিয়েন্টেই আলাদাভাবে সেট করা হয়।
+            <div v-if="productType === 'variable'" class="space-y-3">
+              <div class="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    স্টক সংখ্যা / Stock Quantity
+                  </label>
+                  <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    {{ variants.length > 0 
+                      ? `${variants.reduce((sum, v) => sum + (Number(v.stock_quantity) || 0), 0)} (${variants.filter(v => Number(v.stock_quantity) > 0).length}/${variants.length} ভেরিয়েন্টে স্টক আছে)`
+                      : '0 — ভেরিয়েন্ট তৈরি করুন' 
+                    }}
+                  </div>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    📦 ভেরিয়েবল প্রোডাক্টের স্টক প্রতিটি ভেরিয়েন্টেই আলাদাভাবে সেট করা হয়।
+                  </p>
+                </div>
+
+                <FormInput
+                  v-model.number="values.low_stock_threshold"
+                  label="লো স্টক থ্রেশহোল্ড"
+                  name="low_stock_threshold"
+                  type="number"
+                  :min="0"
+                  hint="মোট স্টক এর নিচে গেলে অ্যালার্ট পাবেন"
+                />
+              </div>
             </div>
           </div>
 

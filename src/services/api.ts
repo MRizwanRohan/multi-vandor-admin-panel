@@ -3,10 +3,19 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import axios, { type AxiosInstance, type AxiosError, type InternalAxiosRequestConfig } from 'axios'
-import { useToast } from 'vue-toastification'
+import { useToast, type ToastInterface } from 'vue-toastification'
 import { getItem, removeItem, StorageKeys } from '@/utils/storage'
 import { keysToCamel, keysToSnake } from '@/utils/caseTransform'
 import router from '@/router'
+
+// Lazily initialized toast to avoid calling useToast() before plugin is ready
+let _toast: ToastInterface | null = null
+function getToast(): ToastInterface {
+  if (!_toast) {
+    _toast = useToast()
+  }
+  return _toast
+}
 
 /**
  * Detect current role prefix from the URL path.
@@ -76,8 +85,9 @@ api.interceptors.response.use(
     return response
   },
   async (error: AxiosError) => {
-    const toast = useToast()
+    const toast = getToast()
     const originalRequest = error.config
+    const requestUrl = originalRequest?.url || ''
 
     // Handle different error codes
     if (error.response) {
@@ -86,21 +96,25 @@ api.interceptors.response.use(
 
       switch (status) {
         case 401:
-          // Unauthorized - clear auth and redirect to login
+          // Clear auth and redirect to login
           removeItem(StorageKeys.TOKEN)
           removeItem(StorageKeys.USER)
           router.push('/login')
-          toast.error('Session expired. Please login again.')
+          // Don't show toast for silent auth checks (e.g., initAuth on page reload)
+          if (!requestUrl.includes('/auth/me') && !requestUrl.includes('/auth/logout')) {
+            toast.error('Session expired. Please login again.')
+          }
           break
 
         case 403:
-          // Forbidden
           toast.error('You do not have permission to perform this action.')
           break
 
         case 404:
-          // Not found
-          toast.error('The requested resource was not found.')
+          // Don't show 404 toast for auth-related endpoints
+          if (!requestUrl.includes('/auth/')) {
+            toast.error('The requested resource was not found.')
+          }
           break
 
         case 422:
@@ -108,7 +122,6 @@ api.interceptors.response.use(
           break
 
         case 429: {
-          // Too many requests — parse Retry-After header
           const retryAfter = error.response?.headers?.['retry-after']
           const seconds = retryAfter ? Number(retryAfter) || 60 : 60
           toast.error(`Too many requests. Please wait ${seconds} seconds before trying again.`)
@@ -118,17 +131,15 @@ api.interceptors.response.use(
         case 500:
         case 502:
         case 503:
-          // Server error
           toast.error('Server error. Please try again later.')
           break
 
-        default:
-          // Generic error
+        default: {
           const message = (data?.message as string) || 'An error occurred'
           toast.error(message)
+        }
       }
     } else if (error.request) {
-      // Network error
       toast.error('Network error. Please check your connection.')
     }
 

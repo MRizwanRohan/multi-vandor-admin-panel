@@ -4,7 +4,7 @@
 
 import api from './api'
 import { getRolePrefix } from './api'
-import type { Setting, SettingGroup } from '@/types'
+import type { Setting, SettingAudit } from '@/types'
 
 const prefix = () => `${getRolePrefix()}/settings`
 
@@ -18,54 +18,113 @@ export const settingsService = {
   },
 
   /**
+   * Get all settings grouped by group (returns object keyed by group)
+   */
+  async getGrouped(): Promise<{ groups: string[]; settings: Record<string, Setting[]> }> {
+    const response = await api.get<{
+      data: { groups: string[]; settings: Record<string, Setting[]> }
+    }>(`${prefix()}?grouped=true`)
+    return response.data.data
+  },
+
+  /**
    * Get settings by group
    */
-  async getByGroup(group: SettingGroup): Promise<Setting[]> {
-    const response = await api.get<{ data: Setting[] }>(`${prefix()}/group/${group}`)
+  async getByGroup(group: string): Promise<Setting[]> {
+    const response = await api.get<{ data: Setting[] }>(`${prefix()}?group=${group}`)
     return response.data.data
   },
 
   /**
-   * Get single setting by key
+   * Get available groups
    */
-  async getByKey(key: string): Promise<Setting> {
-    const response = await api.get<{ data: Setting }>(`${prefix()}/${key}`)
+  async getGroups(): Promise<string[]> {
+    const response = await api.get<{ data: string[] }>(`${prefix()}/groups`)
     return response.data.data
   },
 
   /**
-   * Update setting
+   * Get single setting by ID
    */
-  async update(key: string, value: unknown): Promise<Setting> {
-    const response = await api.put<{ data: Setting }>(`${prefix()}/${key}`, { value })
+  async getById(id: number): Promise<Setting> {
+    const response = await api.get<{ data: Setting }>(`${prefix()}/${id}`)
     return response.data.data
   },
 
   /**
-   * Bulk update settings
+   * Create new setting
    */
-  async bulkUpdate(settings: { key: string; value: unknown }[]): Promise<Setting[]> {
-    const response = await api.post<{ data: Setting[] }>(`${prefix()}/bulk`, { settings })
+  async create(data: Partial<Setting>): Promise<Setting> {
+    const response = await api.post<{ data: Setting }>(prefix(), data)
     return response.data.data
   },
 
   /**
-   * Upload file setting (logo, favicon, etc.)
+   * Update setting by ID
    */
-  async uploadFile(key: string, file: File): Promise<Setting> {
-    const formData = new FormData()
-    formData.append('file', file)
-    const response = await api.post<{ data: Setting }>(`${prefix()}/${key}/upload`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+  async update(id: number, data: Partial<Setting>): Promise<Setting> {
+    const response = await api.put<{ data: Setting }>(`${prefix()}/${id}`, data)
     return response.data.data
   },
 
   /**
-   * Reset settings to default
+   * Update setting value by group.key
    */
-  async resetToDefault(group?: SettingGroup): Promise<void> {
-    await api.post(`${prefix()}/reset`, { group })
+  async updateValue(group: string, key: string, value: unknown): Promise<Setting> {
+    const response = await api.put<{ data: Setting }>(`${prefix()}/${group}/${key}`, { value })
+    return response.data.data
+  },
+
+  /**
+   * Bulk update settings (format: {"group.key": value, ...})
+   */
+  async bulkUpdate(settings: Record<string, unknown>): Promise<Setting[]> {
+    const response = await api.put<{ data: Setting[] }>(`${prefix()}/bulk`, { settings })
+    return response.data.data
+  },
+
+  /**
+   * Bulk update settings for a group (convenience method)
+   * Converts {key: value} to {"group.key": value} format
+   */
+  async bulkUpdateGroup(group: string, values: Record<string, unknown>): Promise<Setting[]> {
+    const settings: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(values)) {
+      settings[`${group}.${key}`] = value
+    }
+    return this.bulkUpdate(settings)
+  },
+
+  /**
+   * Delete setting by ID
+   */
+  async delete(id: number): Promise<void> {
+    await api.delete(`${prefix()}/${id}`)
+  },
+
+  /**
+   * Get setting audit logs
+   */
+  async getAudits(id: number, limit = 20): Promise<SettingAudit[]> {
+    const response = await api.get<{ data: SettingAudit[] }>(`${prefix()}/${id}/audits?limit=${limit}`)
+    return response.data.data
+  },
+
+  /**
+   * Export settings
+   */
+  async exportSettings(group?: string): Promise<Setting[]> {
+    const url = group ? `${prefix()}/export?group=${group}` : `${prefix()}/export`
+    const response = await api.get<{ data: Setting[] }>(url)
+    return response.data.data
+  },
+
+  /**
+   * Import settings
+   */
+  async importSettings(settings: Partial<Setting>[]): Promise<Setting[]> {
+    const response = await api.post<{ data: Setting[] }>(`${prefix()}/import`, { settings })
+    return response.data.data
   },
 
   /**
@@ -73,24 +132,6 @@ export const settingsService = {
    */
   async getPublic(): Promise<Record<string, unknown>> {
     const response = await api.get<{ data: Record<string, unknown> }>(`${prefix()}/public`)
-    return response.data.data
-  },
-
-  // ─────────────────────────────────────────────────────────────────
-  // Group Update Operations
-  // ─────────────────────────────────────────────────────────────────
-
-  /**
-   * Update settings by group (batch update for a section)
-   */
-  async updateByGroup(
-    group: SettingGroup,
-    settings: Record<string, unknown>
-  ): Promise<Setting[]> {
-    const response = await api.put<{ data: Setting[] }>(
-      `${prefix()}/group/${group}`,
-      { settings }
-    )
     return response.data.data
   },
 

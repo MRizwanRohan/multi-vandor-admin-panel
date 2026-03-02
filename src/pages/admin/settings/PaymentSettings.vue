@@ -1,273 +1,141 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<!-- Payment Settings — Payment gateway configuration -->
+<!-- Payment Settings — Payment gateway configuration (Dynamic from API) -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { settingsService } from '@/services'
 import { useToast } from '@/composables'
+import type { Setting } from '@/types'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
-import FormInput from '@/components/form/FormInput.vue'
-import FormSelect from '@/components/form/FormSelect.vue'
-import FormSwitch from '@/components/form/FormSwitch.vue'
+import DynamicSettingsForm from '@/components/domain/DynamicSettingsForm.vue'
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/vue/24/outline'
 
 const toast = useToast()
+const GROUP = 'payment'
 
-// Payment settings
-const paymentSettings = ref({
-  cod_enabled: true,
-  online_payment_enabled: true,
-  stripe_enabled: false,
-  stripe_public_key: '',
-  stripe_secret_key: '',
-  paypal_enabled: false,
-  paypal_client_id: '',
-  paypal_secret: '',
-  paypal_mode: 'sandbox',
-  sslcommerz_enabled: true,
-  sslcommerz_store_id: '',
-  sslcommerz_store_password: '',
-  sslcommerz_mode: 'sandbox',
-  bkash_enabled: false,
-  bkash_app_key: '',
-  bkash_app_secret: '',
-  bkash_username: '',
-  bkash_password: '',
-  bkash_mode: 'sandbox',
+// State
+const settings = ref<Setting[]>([])
+const formValues = ref<Record<string, unknown>>({})
+const isLoading = ref(true)
+const isSaving = ref(false)
+const error = ref('')
+
+// Initialize form values from settings
+function initFormValues(settingsList: Setting[]) {
+  const values: Record<string, unknown> = {}
+  for (const s of settingsList) {
+    values[s.key] = s.value ?? s.default_value
+  }
+  formValues.value = values
+}
+
+// Payment method status for overview
+const paymentMethods = computed(() => {
+  const getValue = (key: string) => {
+    const val = formValues.value[key]
+    return val === true || val === '1' || val === 1
+  }
+  return [
+    { name: 'Cash on Delivery', key: 'cod_enabled', enabled: getValue('cod_enabled') },
+    { name: 'Stripe', key: 'stripe_enabled', enabled: getValue('stripe_enabled') },
+    { name: 'SSLCommerz', key: 'sslcommerz_enabled', enabled: getValue('sslcommerz_enabled') },
+    { name: 'bKash', key: 'bkash_enabled', enabled: getValue('bkash_enabled') },
+  ].filter((m) => settings.value.some((s) => s.key === m.key))
 })
 
-// Mode options
-const modeOptions = [
-  { value: 'sandbox', label: 'Sandbox (Test)' },
-  { value: 'live', label: 'Live (Production)' },
-]
-
-// Loading state
-const isSaving = ref(false)
-const isLoading = ref(true)
-
 // Fetch settings
-onMounted(async () => {
+async function fetchSettings() {
+  isLoading.value = true
+  error.value = ''
   try {
-    const data = await settingsService.getSettings()
-    if (data.payment) {
-      paymentSettings.value = { ...paymentSettings.value, ...data.payment }
-    }
-  } catch (error) {
-    // Use default values
+    const data = await settingsService.getByGroup(GROUP)
+    settings.value = data
+    initFormValues(data)
+  } catch (err: any) {
+    error.value = err.response?.data?.message || 'Failed to load settings'
+    toast.error(error.value)
   } finally {
     isLoading.value = false
   }
-})
+}
 
 // Save settings
 async function saveSettings() {
   isSaving.value = true
   try {
-    await settingsService.updateSettings('payment', paymentSettings.value)
+    await settingsService.bulkUpdateGroup(GROUP, formValues.value)
     toast.success('Payment settings saved successfully')
-  } catch (error) {
-    toast.error('Failed to save settings')
+  } catch (err: any) {
+    const message = err.response?.data?.message || 'Failed to save settings'
+    toast.error(message)
   } finally {
     isSaving.value = false
   }
 }
+
+onMounted(() => {
+  fetchSettings()
+})
 </script>
 
 <template>
-  <div v-if="!isLoading" class="space-y-6">
+  <!-- Loading state -->
+  <div v-if="isLoading" class="flex items-center justify-center py-12">
+    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+  </div>
+
+  <!-- Error state -->
+  <BaseCard v-else-if="error" class="text-center py-8">
+    <p class="text-red-600 dark:text-red-400 mb-4">{{ error }}</p>
+    <BaseButton variant="secondary" size="sm" @click="fetchSettings">
+      Retry
+    </BaseButton>
+  </BaseCard>
+
+  <div v-else class="space-y-6">
     <!-- Payment Methods Overview -->
-    <BaseCard>
+    <BaseCard v-if="paymentMethods.length > 0">
       <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-        Payment Methods
+        Payment Methods Overview
       </h3>
       
       <div class="space-y-3">
-        <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-          <span class="font-medium">Cash on Delivery</span>
-          <BaseBadge :color="paymentSettings.cod_enabled ? 'green' : 'gray'" size="sm">
-            <CheckCircleIcon v-if="paymentSettings.cod_enabled" class="h-4 w-4 mr-1" />
+        <div
+          v-for="method in paymentMethods"
+          :key="method.key"
+          class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
+        >
+          <span class="font-medium">{{ method.name }}</span>
+          <BaseBadge :color="method.enabled ? 'green' : 'gray'" size="sm">
+            <CheckCircleIcon v-if="method.enabled" class="h-4 w-4 mr-1" />
             <XCircleIcon v-else class="h-4 w-4 mr-1" />
-            {{ paymentSettings.cod_enabled ? 'Enabled' : 'Disabled' }}
-          </BaseBadge>
-        </div>
-        <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-          <span class="font-medium">Stripe</span>
-          <BaseBadge :color="paymentSettings.stripe_enabled ? 'green' : 'gray'" size="sm">
-            <CheckCircleIcon v-if="paymentSettings.stripe_enabled" class="h-4 w-4 mr-1" />
-            <XCircleIcon v-else class="h-4 w-4 mr-1" />
-            {{ paymentSettings.stripe_enabled ? 'Enabled' : 'Disabled' }}
-          </BaseBadge>
-        </div>
-        <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-          <span class="font-medium">SSLCommerz</span>
-          <BaseBadge :color="paymentSettings.sslcommerz_enabled ? 'green' : 'gray'" size="sm">
-            <CheckCircleIcon v-if="paymentSettings.sslcommerz_enabled" class="h-4 w-4 mr-1" />
-            <XCircleIcon v-else class="h-4 w-4 mr-1" />
-            {{ paymentSettings.sslcommerz_enabled ? 'Enabled' : 'Disabled' }}
-          </BaseBadge>
-        </div>
-        <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-          <span class="font-medium">bKash</span>
-          <BaseBadge :color="paymentSettings.bkash_enabled ? 'green' : 'gray'" size="sm">
-            <CheckCircleIcon v-if="paymentSettings.bkash_enabled" class="h-4 w-4 mr-1" />
-            <XCircleIcon v-else class="h-4 w-4 mr-1" />
-            {{ paymentSettings.bkash_enabled ? 'Enabled' : 'Disabled' }}
+            {{ method.enabled ? 'Enabled' : 'Disabled' }}
           </BaseBadge>
         </div>
       </div>
     </BaseCard>
 
-    <!-- Cash on Delivery -->
-    <BaseCard>
-      <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-        Cash on Delivery
+    <!-- Settings Form -->
+    <BaseCard class="space-y-6">
+      <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+        Payment Configuration
       </h3>
-      
-      <FormSwitch
-        v-model="paymentSettings.cod_enabled"
-        name="cod_enabled"
-        label="Enable Cash on Delivery"
-        description="Allow customers to pay when they receive their order"
-      />
-    </BaseCard>
 
-    <!-- Stripe -->
-    <BaseCard>
-      <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-        Stripe Payment Gateway
-      </h3>
-      
-      <FormSwitch
-        v-model="paymentSettings.stripe_enabled"
-        name="stripe_enabled"
-        label="Enable Stripe"
-        description="Accept credit/debit card payments via Stripe"
-        class="mb-4"
+      <DynamicSettingsForm
+        v-model="formValues"
+        :settings="settings"
+        :disabled="isSaving"
       />
 
-      <div v-if="paymentSettings.stripe_enabled" class="space-y-4">
-        <FormInput
-          v-model="paymentSettings.stripe_public_key"
-          label="Publishable Key"
-          name="stripe_public_key"
-          placeholder="pk_test_..."
-        />
-        
-        <FormInput
-          v-model="paymentSettings.stripe_secret_key"
-          label="Secret Key"
-          name="stripe_secret_key"
-          type="password"
-          placeholder="sk_test_..."
-        />
+      <!-- Save button -->
+      <div class="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
+        <BaseButton variant="primary" :loading="isSaving" @click="saveSettings">
+          Save Changes
+        </BaseButton>
       </div>
     </BaseCard>
-
-    <!-- SSLCommerz -->
-    <BaseCard>
-      <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-        SSLCommerz Payment Gateway
-      </h3>
-      
-      <FormSwitch
-        v-model="paymentSettings.sslcommerz_enabled"
-        name="sslcommerz_enabled"
-        label="Enable SSLCommerz"
-        description="Popular payment gateway in Bangladesh"
-        class="mb-4"
-      />
-
-      <div v-if="paymentSettings.sslcommerz_enabled" class="space-y-4">
-        <FormSelect
-          v-model="paymentSettings.sslcommerz_mode"
-          label="Mode"
-          name="sslcommerz_mode"
-          :options="modeOptions"
-        />
-
-        <FormInput
-          v-model="paymentSettings.sslcommerz_store_id"
-          label="Store ID"
-          name="sslcommerz_store_id"
-        />
-        
-        <FormInput
-          v-model="paymentSettings.sslcommerz_store_password"
-          label="Store Password"
-          name="sslcommerz_store_password"
-          type="password"
-        />
-      </div>
-    </BaseCard>
-
-    <!-- bKash -->
-    <BaseCard>
-      <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-        bKash Mobile Banking
-      </h3>
-      
-      <FormSwitch
-        v-model="paymentSettings.bkash_enabled"
-        name="bkash_enabled"
-        label="Enable bKash"
-        description="Accept payments via bKash mobile wallet"
-        class="mb-4"
-      />
-
-      <div v-if="paymentSettings.bkash_enabled" class="space-y-4">
-        <FormSelect
-          v-model="paymentSettings.bkash_mode"
-          label="Mode"
-          name="bkash_mode"
-          :options="modeOptions"
-        />
-
-        <div class="grid gap-4 sm:grid-cols-2">
-          <FormInput
-            v-model="paymentSettings.bkash_app_key"
-            label="App Key"
-            name="bkash_app_key"
-          />
-          
-          <FormInput
-            v-model="paymentSettings.bkash_app_secret"
-            label="App Secret"
-            name="bkash_app_secret"
-            type="password"
-          />
-        </div>
-
-        <div class="grid gap-4 sm:grid-cols-2">
-          <FormInput
-            v-model="paymentSettings.bkash_username"
-            label="Username"
-            name="bkash_username"
-          />
-          
-          <FormInput
-            v-model="paymentSettings.bkash_password"
-            label="Password"
-            name="bkash_password"
-            type="password"
-          />
-        </div>
-      </div>
-    </BaseCard>
-
-    <!-- Save button -->
-    <div class="flex justify-end">
-      <BaseButton variant="primary" :loading="isSaving" @click="saveSettings">
-        Save Changes
-      </BaseButton>
-    </div>
-  </div>
-
-  <!-- Loading state -->
-  <div v-else class="flex items-center justify-center py-12">
-    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
   </div>
 </template>

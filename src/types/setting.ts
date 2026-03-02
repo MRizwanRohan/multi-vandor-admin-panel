@@ -3,17 +3,29 @@
 // ═══════════════════════════════════════════════════════════════════
 
 export type SettingType = 
+  | 'string'
+  | 'integer'
+  | 'float' 
+  | 'boolean' 
+  | 'json'
+  | 'array'
+
+export type SettingInputType = 
   | 'text' 
   | 'textarea' 
   | 'number' 
-  | 'boolean' 
+  | 'checkbox' 
+  | 'switch'
+  | 'toggle'
   | 'select' 
   | 'multiselect' 
-  | 'json' 
+  | 'radio'
+  | 'file'
   | 'image' 
   | 'color' 
   | 'email' 
   | 'url' 
+  | 'password'
   | 'date' 
   | 'time' 
   | 'datetime'
@@ -32,19 +44,35 @@ export type SettingGroup =
 
 export interface Setting {
   id: number
+  group: string
   key: string
-  value: string | number | boolean | object | null
   display_name: string
   description: string | null
+  value: string | number | boolean | object | null
+  default_value: string | number | boolean | object | null
   type: SettingType
-  group: SettingGroup
-  options: SettingOption[] | null
-  validation_rules: SettingValidationRules | null
+  input_type: SettingInputType
+  options: (string | SettingOption)[] | null
+  validation_rules: string[] | null
+  sort_order: number
   is_public: boolean
-  is_encrypted: boolean
-  display_order: number
+  is_active: boolean
+  updated_by: number | null
+  updated_by_user?: { id: number; name: string } | null
   created_at: string
   updated_at: string
+}
+
+export interface SettingAudit {
+  id: number
+  setting_id: number
+  user_id: number | null
+  old_value: unknown
+  new_value: unknown
+  ip_address: string | null
+  user_agent: string | null
+  created_at: string
+  user?: { id: number; name: string } | null
 }
 
 export interface SettingOption {

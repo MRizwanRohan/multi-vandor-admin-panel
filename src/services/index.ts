@@ -17,3 +17,4 @@ export { payoutService, type PayoutFilters, type PayoutStats, type BankAccount, 
 export { uploadService, type UploadedFile, type UploadProgress, type UploadOptions, type ChunkedUploadSession } from './upload.service'
 export { notificationService, type NotificationFilters } from './notification.service'
 export { shippingService, type ShippingZone, type ShippingMethod, type ShippingRegion, type ShippingClass, type ShippingRate, type ShippingCalculation } from './shipping.service'
+export { healthService } from './health.service'

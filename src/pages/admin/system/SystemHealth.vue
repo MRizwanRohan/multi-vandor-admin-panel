@@ -3,8 +3,10 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useBreadcrumbStore } from '@/stores'
+import { healthService } from '@/services'
+import type { HealthDashboard, ServiceHealth, HealthIncident, MetricsChartData } from '@/types/health'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import StatCard from '@/components/ui/StatCard.vue'
 import AppProgressBar from '@/components/ui/AppProgressBar.vue'
@@ -20,45 +22,104 @@ import {
   XCircleIcon,
   ArrowPathIcon,
 } from '@heroicons/vue/24/outline'
+import { useToast } from '@/composables'
 
 const breadcrumbStore = useBreadcrumbStore()
-const isLoading = ref(false)
+const toast = useToast()
+const isLoading = ref(true)
+const isRefreshing = ref(false)
+let refreshInterval: ReturnType<typeof setInterval> | null = null
 
-const stats = [
-  { title: 'Uptime', value: '99.97%', icon: ClockIcon, change: 0.02, trend: 'up' as const, changeLabel: 'vs last month', color: 'success' as const },
-  { title: 'CPU Usage', value: '42%', icon: CpuChipIcon, change: -5, trend: 'down' as const, changeLabel: 'vs avg', color: 'primary' as const },
-  { title: 'Memory Usage', value: '68%', icon: ServerIcon, change: 3, trend: 'up' as const, changeLabel: 'vs avg', color: 'warning' as const },
-  { title: 'Disk Usage', value: '54%', icon: CircleStackIcon, change: 2, trend: 'up' as const, changeLabel: 'this week', color: 'info' as const },
-]
+// Data from API
+const dashboard = ref<HealthDashboard | null>(null)
+const cpuChartData = ref<MetricsChartData | null>(null)
+const memoryChartData = ref<MetricsChartData | null>(null)
 
-// Resource gauges
-const resources = ref([
-  { name: 'CPU', used: 42, total: 100, unit: '%', status: 'healthy' },
-  { name: 'Memory', used: 5.4, total: 8, unit: 'GB', status: 'warning' },
-  { name: 'Disk', used: 108, total: 200, unit: 'GB', status: 'healthy' },
-  { name: 'Swap', used: 0.5, total: 4, unit: 'GB', status: 'healthy' },
-])
+// Computed stats
+const stats = computed(() => {
+  if (!dashboard.value) return []
+  const m = dashboard.value.metrics
+  const s = dashboard.value.summary
 
-// Performance chart
-const perfLabels = ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00']
-const perfDatasets = [
-  { label: 'CPU %', data: [25, 22, 18, 20, 35, 55, 60, 42, 48, 38, 30, 28], fill: false },
-  { label: 'Memory %', data: [62, 60, 58, 59, 65, 72, 75, 68, 70, 66, 63, 61], fill: false },
-]
+  return [
+    {
+      title: 'Uptime',
+      value: `${dashboard.value.uptime.percentage.toFixed(2)}%`,
+      icon: ClockIcon,
+      change: 0,
+      trend: 'up' as const,
+      changeLabel: dashboard.value.uptime.formatted,
+      color: 'success' as const,
+    },
+    {
+      title: 'CPU Usage',
+      value: `${Math.round(m.cpu)}%`,
+      icon: CpuChipIcon,
+      change: 0,
+      trend: 'down' as const,
+      changeLabel: 'current',
+      color: m.cpu > 80 ? ('danger' as const) : m.cpu > 60 ? ('warning' as const) : ('primary' as const),
+    },
+    {
+      title: 'Memory Usage',
+      value: `${Math.round(m.memory)}%`,
+      icon: ServerIcon,
+      change: 0,
+      trend: 'up' as const,
+      changeLabel: `${formatBytes(m.memory_used)} / ${formatBytes(m.memory_total)}`,
+      color: m.memory > 80 ? ('danger' as const) : m.memory > 60 ? ('warning' as const) : ('primary' as const),
+    },
+    {
+      title: 'Services',
+      value: `${s.operational}/${s.total_services}`,
+      icon: CircleStackIcon,
+      change: s.degraded + s.down,
+      trend: s.degraded + s.down > 0 ? ('down' as const) : ('up' as const),
+      changeLabel: s.degraded + s.down > 0 ? `${s.degraded + s.down} issues` : 'all healthy',
+      color: s.down > 0 ? ('danger' as const) : s.degraded > 0 ? ('warning' as const) : ('success' as const),
+    },
+  ]
+})
 
-// Services health
-const services = ref([
-  { name: 'Web Server (Nginx)', status: 'operational', uptime: '45d 12h 34m', response_time: '12ms', last_check: '2026-02-24T14:30:00' },
-  { name: 'Application Server', status: 'operational', uptime: '45d 12h 34m', response_time: '45ms', last_check: '2026-02-24T14:30:00' },
-  { name: 'Database (PostgreSQL)', status: 'operational', uptime: '45d 12h 34m', response_time: '8ms', last_check: '2026-02-24T14:30:00' },
-  { name: 'Redis Cache', status: 'operational', uptime: '30d 8h 12m', response_time: '2ms', last_check: '2026-02-24T14:30:00' },
-  { name: 'Search Engine (Meilisearch)', status: 'degraded', uptime: '15d 4h 56m', response_time: '156ms', last_check: '2026-02-24T14:30:00' },
-  { name: 'Email Service (SMTP)', status: 'operational', uptime: '45d 12h 34m', response_time: '89ms', last_check: '2026-02-24T14:30:00' },
-  { name: 'File Storage (S3)', status: 'operational', uptime: '90d 0h 0m', response_time: '34ms', last_check: '2026-02-24T14:30:00' },
-  { name: 'Queue Worker', status: 'operational', uptime: '7d 2h 15m', response_time: '5ms', last_check: '2026-02-24T14:30:00' },
-  { name: 'Payment Gateway', status: 'operational', uptime: '90d 0h 0m', response_time: '210ms', last_check: '2026-02-24T14:30:00' },
-  { name: 'SMS Service', status: 'down', uptime: '0d 0h 0m', response_time: '—', last_check: '2026-02-24T12:15:00' },
-])
+// Resource utilization
+const resources = computed(() => {
+  if (!dashboard.value) return []
+  const m = dashboard.value.metrics
+  return [
+    { name: 'CPU', used: m.cpu, total: 100, unit: '%', status: m.cpu > 80 ? 'danger' : m.cpu > 60 ? 'warning' : 'healthy' },
+    { name: 'Memory', used: m.memory_used, total: m.memory_total, unit: 'B', status: m.memory > 80 ? 'danger' : m.memory > 60 ? 'warning' : 'healthy' },
+    { name: 'Disk', used: m.disk_used, total: m.disk_total, unit: 'B', status: m.disk > 80 ? 'danger' : m.disk > 60 ? 'warning' : 'healthy' },
+    { name: 'Swap', used: m.swap_used, total: m.swap_total, unit: 'B', status: m.swap > 80 ? 'danger' : m.swap > 60 ? 'warning' : 'healthy' },
+  ]
+})
+
+// Services
+const services = computed<ServiceHealth[]>(() => dashboard.value?.services ?? [])
+
+// Incidents
+const activeIncidents = computed<HealthIncident[]>(() => dashboard.value?.active_incidents ?? [])
+const recentIncidents = computed<HealthIncident[]>(() => dashboard.value?.recent_incidents ?? [])
+
+// Chart data
+const perfLabels = computed(() => cpuChartData.value?.points.map(p => formatTime(p.timestamp)) ?? [])
+const perfDatasets = computed(() => {
+  const datasets = []
+  if (cpuChartData.value) {
+    datasets.push({
+      label: 'CPU %',
+      data: cpuChartData.value.points.map(p => p.value),
+      fill: false,
+    })
+  }
+  if (memoryChartData.value) {
+    datasets.push({
+      label: 'Memory %',
+      data: memoryChartData.value.points.map(p => p.value),
+      fill: false,
+    })
+  }
+  return datasets
+})
 
 const serviceColumns = [
   { key: 'name', label: 'Service' },
@@ -67,13 +128,23 @@ const serviceColumns = [
   { key: 'response_time', label: 'Response Time', align: 'right' as const },
 ]
 
-// Recent incidents
-const incidents = ref([
-  { id: 1, title: 'SMS Service Down', severity: 'critical', started: '2026-02-24T12:15:00', resolved: null, description: 'SMS gateway provider experiencing outage' },
-  { id: 2, title: 'Search Engine High Latency', severity: 'warning', started: '2026-02-24T10:00:00', resolved: null, description: 'Meilisearch response times elevated above threshold' },
-  { id: 3, title: 'Database Connection Spike', severity: 'warning', started: '2026-02-23T08:30:00', resolved: '2026-02-23T09:15:00', description: 'Connection pool reached 90% capacity during peak' },
-  { id: 4, title: 'Redis Cache Restart', severity: 'info', started: '2026-02-20T03:00:00', resolved: '2026-02-20T03:02:00', description: 'Scheduled maintenance restart' },
-])
+// Helpers
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+}
+
+function formatResourceValue(used: number, unit: string): string {
+  if (unit === 'B') return formatBytes(used)
+  return `${used}${unit}`
+}
+
+function formatTime(timestamp: string): string {
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+}
 
 function getStatusIcon(status: string) {
   if (status === 'operational') return CheckCircleIcon
@@ -105,11 +176,74 @@ function getSeverityClasses(severity: string): string {
   return 'bg-info-50 text-info-700 dark:bg-info-900/30 dark:text-info-400'
 }
 
+// Data loading
+async function loadDashboard() {
+  try {
+    dashboard.value = await healthService.getDashboard()
+  } catch (error) {
+    console.error('Failed to load health dashboard:', error)
+    toast.error('Failed to load health data')
+  }
+}
+
+async function loadCharts() {
+  try {
+    const [cpu, memory] = await Promise.all([
+      healthService.getMetricsChart({ metric: 'cpu', hours: 24, interval: '1 hour' }),
+      healthService.getMetricsChart({ metric: 'memory', hours: 24, interval: '1 hour' }),
+    ])
+    cpuChartData.value = cpu
+    memoryChartData.value = memory
+  } catch (error) {
+    console.error('Failed to load metrics charts:', error)
+  }
+}
+
+async function loadAll() {
+  isLoading.value = true
+  await Promise.all([loadDashboard(), loadCharts()])
+  isLoading.value = false
+}
+
+async function refresh() {
+  isRefreshing.value = true
+  await loadDashboard()
+  isRefreshing.value = false
+  toast.success('Health data refreshed')
+}
+
+async function runHealthCheck() {
+  try {
+    isRefreshing.value = true
+    const result = await healthService.runHealthCheck()
+    toast.success(`Health check completed: ${result.services_checked} services checked`)
+    await loadDashboard()
+  } catch (error) {
+    console.error('Failed to run health check:', error)
+    toast.error('Failed to run health check')
+  } finally {
+    isRefreshing.value = false
+  }
+}
+
 onMounted(() => {
   breadcrumbStore.setPageInfo('System Health', [
     { label: 'System' },
     { label: 'Health' },
   ], 'Server health monitoring and service status')
+
+  loadAll()
+
+  // Auto-refresh every 30 seconds
+  refreshInterval = setInterval(() => {
+    loadDashboard()
+  }, 30000)
+})
+
+onUnmounted(() => {
+  if (refreshInterval) {
+    clearInterval(refreshInterval)
+  }
 })
 </script>
 
@@ -121,153 +255,210 @@ onMounted(() => {
         <h2 class="text-lg font-semibold text-gray-900 dark:text-white">System Health</h2>
         <p class="text-sm text-gray-500 dark:text-gray-400">Real-time server health and service status</p>
       </div>
-      <button
-        type="button"
-        class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-      >
-        <ArrowPathIcon class="h-4 w-4" />
-        Refresh
-      </button>
-    </div>
-
-    <!-- Stats -->
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <StatCard
-        v-for="stat in stats"
-        :key="stat.title"
-        :title="stat.title"
-        :value="stat.value"
-        :icon="stat.icon"
-        :change="stat.change"
-        :trend="stat.trend"
-        :change-label="stat.changeLabel"
-        :color="stat.color"
-      />
-    </div>
-
-    <!-- Resource Utilization -->
-    <BaseCard>
-      <h3 class="mb-4 text-base font-semibold text-gray-900 dark:text-white">Resource Utilization</h3>
-      <div class="grid gap-6 sm:grid-cols-2">
-        <div v-for="resource in resources" :key="resource.name" class="space-y-2">
-          <div class="flex items-center justify-between">
-            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ resource.name }}</span>
-            <span class="text-sm text-gray-500 dark:text-gray-400">
-              {{ resource.used }}{{ resource.unit }} / {{ resource.total }}{{ resource.unit }}
-            </span>
-          </div>
-          <AppProgressBar
-            :value="Math.round((resource.used / resource.total) * 100)"
-            :color="getProgressColor(Math.round((resource.used / resource.total) * 100))"
-            size="md"
-            :show-label="true"
-          />
-        </div>
-      </div>
-    </BaseCard>
-
-    <!-- Performance Chart -->
-    <BaseCard>
-      <h3 class="mb-4 text-base font-semibold text-gray-900 dark:text-white">Performance (24h)</h3>
-      <LineChart
-        :labels="perfLabels"
-        :datasets="perfDatasets"
-        :height="280"
-        :show-legend="true"
-      />
-    </BaseCard>
-
-    <!-- Services Status -->
-    <BaseCard>
-      <div class="mb-4 flex items-center justify-between">
-        <h3 class="text-base font-semibold text-gray-900 dark:text-white">Services Status</h3>
-        <div class="flex items-center gap-4 text-xs">
-          <span class="flex items-center gap-1">
-            <span class="h-2 w-2 rounded-full bg-success-500" />
-            Operational
-          </span>
-          <span class="flex items-center gap-1">
-            <span class="h-2 w-2 rounded-full bg-warning-500" />
-            Degraded
-          </span>
-          <span class="flex items-center gap-1">
-            <span class="h-2 w-2 rounded-full bg-danger-500" />
-            Down
-          </span>
-        </div>
-      </div>
-
-      <DataTable
-        :columns="serviceColumns"
-        :data="services"
-        :loading="isLoading"
-        :total="services.length"
-        :current-page="1"
-        :per-page="20"
-      >
-        <template #cell-name="{ row }">
-          <div class="flex items-center gap-2">
-            <component :is="getStatusIcon(row.status)" :class="getStatusColor(row.status)" class="h-4 w-4" />
-            <span class="font-medium text-gray-900 dark:text-white">{{ row.name }}</span>
-          </div>
-        </template>
-
-        <template #cell-status="{ row }">
-          <span
-            :class="getStatusBg(row.status)"
-            class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize"
-          >
-            {{ row.status }}
-          </span>
-        </template>
-
-        <template #cell-uptime="{ row }">
-          <span class="text-sm text-gray-600 dark:text-gray-400">{{ row.uptime }}</span>
-        </template>
-
-        <template #cell-response_time="{ row }">
-          <span class="font-mono text-sm text-gray-700 dark:text-gray-300">{{ row.response_time }}</span>
-        </template>
-      </DataTable>
-    </BaseCard>
-
-    <!-- Recent Incidents -->
-    <BaseCard>
-      <h3 class="mb-4 text-base font-semibold text-gray-900 dark:text-white">Recent Incidents</h3>
-      <div class="space-y-3">
-        <div
-          v-for="incident in incidents"
-          :key="incident.id"
-          class="flex items-start gap-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700"
+      <div class="flex gap-2">
+        <button
+          type="button"
+          :disabled="isRefreshing"
+          @click="runHealthCheck"
+          class="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 disabled:opacity-50"
         >
-          <component
-            :is="incident.severity === 'critical' ? XCircleIcon : incident.severity === 'warning' ? ExclamationTriangleIcon : CheckCircleIcon"
-            :class="incident.severity === 'critical' ? 'text-danger-500' : incident.severity === 'warning' ? 'text-warning-500' : 'text-info-500'"
-            class="mt-0.5 h-5 w-5 shrink-0"
-          />
-          <div class="flex-1">
-            <div class="flex items-center gap-2">
-              <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ incident.title }}</h4>
-              <span :class="getSeverityClasses(incident.severity)" class="rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase">
-                {{ incident.severity }}
-              </span>
-              <span
-                v-if="!incident.resolved"
-                class="rounded-full bg-danger-50 px-1.5 py-0.5 text-[10px] font-medium text-danger-700 dark:bg-danger-900/30 dark:text-danger-400"
-              >
-                ONGOING
-              </span>
-              <span
-                v-else
-                class="rounded-full bg-success-50 px-1.5 py-0.5 text-[10px] font-medium text-success-700 dark:bg-success-900/30 dark:text-success-400"
-              >
-                RESOLVED
+          Run Check
+        </button>
+        <button
+          type="button"
+          :disabled="isRefreshing"
+          @click="refresh"
+          class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+        >
+          <ArrowPathIcon :class="['h-4 w-4', isRefreshing && 'animate-spin']" />
+          Refresh
+        </button>
+      </div>
+    </div>
+
+    <!-- Loading state -->
+    <div v-if="isLoading" class="flex items-center justify-center py-12">
+      <ArrowPathIcon class="h-8 w-8 animate-spin text-primary-500" />
+    </div>
+
+    <template v-else-if="dashboard">
+      <!-- Stats -->
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          v-for="stat in stats"
+          :key="stat.title"
+          :title="stat.title"
+          :value="stat.value"
+          :icon="stat.icon"
+          :change="stat.change"
+          :trend="stat.trend"
+          :change-label="stat.changeLabel"
+          :color="stat.color"
+        />
+      </div>
+
+      <!-- Resource Utilization -->
+      <BaseCard>
+        <h3 class="mb-4 text-base font-semibold text-gray-900 dark:text-white">Resource Utilization</h3>
+        <div class="grid gap-6 sm:grid-cols-2">
+          <div v-for="resource in resources" :key="resource.name" class="space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ resource.name }}</span>
+              <span class="text-sm text-gray-500 dark:text-gray-400">
+                {{ formatResourceValue(resource.used, resource.unit) }} / {{ formatResourceValue(resource.total, resource.unit) }}
               </span>
             </div>
-            <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">{{ incident.description }}</p>
+            <AppProgressBar
+              :value="Math.round((resource.used / resource.total) * 100)"
+              :color="getProgressColor(Math.round((resource.used / resource.total) * 100))"
+              size="md"
+              :show-label="true"
+            />
           </div>
         </div>
-      </div>
-    </BaseCard>
+      </BaseCard>
+
+      <!-- Performance Chart -->
+      <BaseCard v-if="perfDatasets.length > 0">
+        <h3 class="mb-4 text-base font-semibold text-gray-900 dark:text-white">Performance (24h)</h3>
+        <LineChart
+          :labels="perfLabels"
+          :datasets="perfDatasets"
+          :height="280"
+          :show-legend="true"
+        />
+      </BaseCard>
+
+      <!-- Services Status -->
+      <BaseCard>
+        <div class="mb-4 flex items-center justify-between">
+          <h3 class="text-base font-semibold text-gray-900 dark:text-white">Services Status</h3>
+          <div class="flex items-center gap-4 text-xs">
+            <span class="flex items-center gap-1">
+              <span class="h-2 w-2 rounded-full bg-success-500" />
+              Operational
+            </span>
+            <span class="flex items-center gap-1">
+              <span class="h-2 w-2 rounded-full bg-warning-500" />
+              Degraded
+            </span>
+            <span class="flex items-center gap-1">
+              <span class="h-2 w-2 rounded-full bg-danger-500" />
+              Down
+            </span>
+          </div>
+        </div>
+
+        <DataTable
+          :columns="serviceColumns"
+          :data="services"
+          :loading="isRefreshing"
+          :total="services.length"
+          :current-page="1"
+          :per-page="20"
+        >
+          <template #cell-name="{ row }">
+            <div class="flex items-center gap-2">
+              <component :is="getStatusIcon(row.status)" :class="getStatusColor(row.status)" class="h-4 w-4" />
+              <span class="font-medium text-gray-900 dark:text-white">{{ row.name }}</span>
+            </div>
+          </template>
+
+          <template #cell-status="{ row }">
+            <span
+              :class="getStatusBg(row.status)"
+              class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize"
+            >
+              {{ row.status }}
+            </span>
+          </template>
+
+          <template #cell-uptime="{ row }">
+            <span class="text-sm text-gray-600 dark:text-gray-400">{{ row.uptime ?? '—' }}</span>
+          </template>
+
+          <template #cell-response_time="{ row }">
+            <span class="font-mono text-sm text-gray-700 dark:text-gray-300">
+              {{ row.response_time ? `${row.response_time}ms` : '—' }}
+            </span>
+          </template>
+        </DataTable>
+      </BaseCard>
+
+      <!-- Active Incidents -->
+      <BaseCard v-if="activeIncidents.length > 0">
+        <h3 class="mb-4 text-base font-semibold text-gray-900 dark:text-white">
+          Active Incidents
+          <span class="ml-2 rounded-full bg-danger-100 px-2 py-0.5 text-xs font-medium text-danger-700 dark:bg-danger-900/30 dark:text-danger-400">
+            {{ activeIncidents.length }}
+          </span>
+        </h3>
+        <div class="space-y-3">
+          <div
+            v-for="incident in activeIncidents"
+            :key="incident.id"
+            class="flex items-start gap-3 rounded-lg border border-danger-200 bg-danger-50/50 p-3 dark:border-danger-800 dark:bg-danger-900/20"
+          >
+            <component
+              :is="incident.severity === 'critical' ? XCircleIcon : ExclamationTriangleIcon"
+              :class="incident.severity === 'critical' ? 'text-danger-500' : 'text-warning-500'"
+              class="mt-0.5 h-5 w-5 shrink-0"
+            />
+            <div class="flex-1">
+              <div class="flex items-center gap-2">
+                <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ incident.title }}</h4>
+                <span :class="getSeverityClasses(incident.severity)" class="rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase">
+                  {{ incident.severity }}
+                </span>
+                <span class="rounded-full bg-danger-100 px-1.5 py-0.5 text-[10px] font-medium text-danger-700 dark:bg-danger-900/50 dark:text-danger-400">
+                  {{ incident.status.toUpperCase() }}
+                </span>
+              </div>
+              <p class="mt-0.5 text-sm text-gray-600 dark:text-gray-400">{{ incident.description }}</p>
+              <p class="mt-1 text-xs text-gray-500">
+                Started: {{ new Date(incident.started_at).toLocaleString() }}
+                <template v-if="incident.service_name"> • {{ incident.service_name }}</template>
+              </p>
+            </div>
+          </div>
+        </div>
+      </BaseCard>
+
+      <!-- Recent Incidents -->
+      <BaseCard>
+        <h3 class="mb-4 text-base font-semibold text-gray-900 dark:text-white">Recent Incidents</h3>
+        <div v-if="recentIncidents.length === 0" class="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+          No recent incidents
+        </div>
+        <div v-else class="space-y-3">
+          <div
+            v-for="incident in recentIncidents"
+            :key="incident.id"
+            class="flex items-start gap-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700"
+          >
+            <component
+              :is="incident.severity === 'critical' ? XCircleIcon : incident.severity === 'warning' ? ExclamationTriangleIcon : CheckCircleIcon"
+              :class="incident.severity === 'critical' ? 'text-danger-500' : incident.severity === 'warning' ? 'text-warning-500' : 'text-info-500'"
+              class="mt-0.5 h-5 w-5 shrink-0"
+            />
+            <div class="flex-1">
+              <div class="flex items-center gap-2">
+                <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ incident.title }}</h4>
+                <span :class="getSeverityClasses(incident.severity)" class="rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase">
+                  {{ incident.severity }}
+                </span>
+                <span
+                  v-if="incident.status === 'resolved'"
+                  class="rounded-full bg-success-50 px-1.5 py-0.5 text-[10px] font-medium text-success-700 dark:bg-success-900/30 dark:text-success-400"
+                >
+                  RESOLVED
+                </span>
+              </div>
+              <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">{{ incident.description }}</p>
+            </div>
+          </div>
+        </div>
+      </BaseCard>
+    </template>
   </div>
 </template>

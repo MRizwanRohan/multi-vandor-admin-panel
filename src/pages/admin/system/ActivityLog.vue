@@ -7,7 +7,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useBreadcrumbStore } from '@/stores'
 import { useDate } from '@/composables/useDate'
 import { usePagination } from '@/composables/usePagination'
-import { useDebounce } from '@/composables/useDebounce'
+import { useDebouncedRef } from '@/composables/useDebounce'
 import { activityService } from '@/services'
 import type { ActivityEntry, ActivityStats, ActivityFilters } from '@/types/activity'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -36,7 +36,7 @@ const breadcrumbStore = useBreadcrumbStore()
 const { formatDate } = useDate()
 
 // State
-const searchQuery = ref('')
+const { value: searchQuery, debouncedValue: debouncedSearch } = useDebouncedRef('', 400)
 const actionFilter = ref('all')
 const userFilter = ref('all')
 const dateFilter = ref('last_7_days')
@@ -52,10 +52,7 @@ const stats = ref<ActivityStats>({
 })
 
 // Pagination
-const { currentPage, perPage, total, totalPages, updatePagination, goToPage } = usePagination()
-
-// Debounced search
-const debouncedSearch = useDebounce(searchQuery, 400)
+const { currentPage, perPage, total, lastPage, setMeta, goToPage } = usePagination({ syncWithUrl: false })
 
 // Table columns
 const columns = [
@@ -123,7 +120,7 @@ async function loadActivities() {
     const response = await activityService.getActivities(filters.value)
     activities.value = response.data
     if (response.meta) {
-      updatePagination(response.meta.current_page, response.meta.per_page, response.meta.total)
+      setMeta(response.meta)
     }
   } catch (error) {
     console.error('Failed to load activities:', error)

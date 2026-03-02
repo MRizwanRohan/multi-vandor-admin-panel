@@ -3,7 +3,7 @@
 // Matches backend API: /api/v1/notifications/*
 // ═══════════════════════════════════════════════════════════════════
 
-import api, { getRolePrefix } from './api'
+import api from './api'
 import type {
   Notification,
   NotificationFilters,
@@ -56,7 +56,11 @@ export type { NotificationFilters }
 // Service
 // ─────────────────────────────────────────────────────────────────
 
-const prefix = () => `${getRolePrefix()}/notifications`
+// Notifications API is role-agnostic (not under /admin or /vendor)
+const NOTIFICATIONS_PATH = '/notifications'
+
+// Admin-only broadcast endpoints
+const ADMIN_NOTIFICATIONS_PATH = '/admin/notifications'
 
 export const notificationService = {
   // ───────────────────────────────────────────────────────────────
@@ -67,7 +71,7 @@ export const notificationService = {
    * GET /notifications — Paginated notification list
    */
   async getAll(params?: NotificationFilters): Promise<NotificationListResponse> {
-    const response = await api.get<NotificationListResponse>(prefix(), { params })
+    const response = await api.get<NotificationListResponse>(NOTIFICATIONS_PATH, { params })
     return response.data
   },
 
@@ -75,7 +79,7 @@ export const notificationService = {
    * GET /notifications/unread-count — Lightweight badge count
    */
   async getUnreadCount(): Promise<number> {
-    const response = await api.get<UnreadCountResponse>(`${prefix()}/unread-count`)
+    const response = await api.get<UnreadCountResponse>(`${NOTIFICATIONS_PATH}/unread-count`)
     return response.data.data.unread_count
   },
 
@@ -83,14 +87,14 @@ export const notificationService = {
    * PUT /notifications/{id}/read — Mark single notification as read
    */
   async markAsRead(id: string): Promise<void> {
-    await api.put(`${prefix()}/${id}/read`)
+    await api.put(`${NOTIFICATIONS_PATH}/${id}/read`)
   },
 
   /**
    * PUT /notifications/mark-all-read — Mark all as read
    */
   async markAllAsRead(): Promise<number> {
-    const response = await api.put<MarkAllReadResponse>(`${prefix()}/mark-all-read`)
+    const response = await api.put<MarkAllReadResponse>(`${NOTIFICATIONS_PATH}/mark-all-read`)
     return response.data.data.marked_count
   },
 
@@ -98,14 +102,14 @@ export const notificationService = {
    * DELETE /notifications/{id} — Delete single notification
    */
   async delete(id: string): Promise<void> {
-    await api.delete(`${prefix()}/${id}`)
+    await api.delete(`${NOTIFICATIONS_PATH}/${id}`)
   },
 
   /**
    * DELETE /notifications/clear-all — Clear all notifications
    */
   async clearAll(): Promise<number> {
-    const response = await api.delete<ClearAllResponse>(`${prefix()}/clear-all`)
+    const response = await api.delete<ClearAllResponse>(`${NOTIFICATIONS_PATH}/clear-all`)
     return response.data.data.deleted_count
   },
 
@@ -117,7 +121,7 @@ export const notificationService = {
    * GET /notifications/preferences — Get notification preferences
    */
   async getPreferences(): Promise<NotificationPreferences> {
-    const response = await api.get<PreferencesResponse>(`${prefix()}/preferences`)
+    const response = await api.get<PreferencesResponse>(`${NOTIFICATIONS_PATH}/preferences`)
     return response.data.data
   },
 
@@ -125,7 +129,7 @@ export const notificationService = {
    * PUT /notifications/preferences — Update notification preferences
    */
   async updatePreferences(payload: UpdateNotificationPreferencesPayload): Promise<void> {
-    await api.put(`${prefix()}/preferences`, payload)
+    await api.put(`${NOTIFICATIONS_PATH}/preferences`, payload)
   },
 
   // ───────────────────────────────────────────────────────────────

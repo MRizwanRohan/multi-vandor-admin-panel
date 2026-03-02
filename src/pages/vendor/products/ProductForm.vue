@@ -1031,7 +1031,7 @@ function duplicateProduct() {
   
   toast.info('Product data copied. You are now creating a new product.')
   isSavedSuccessfully.value = true // Prevent unsaved warning
-  router.push({ name: 'vendor-products-new' })
+  router.push({ name: 'vendor-product-create' })
 }
 
 const onSubmit = handleSubmit(

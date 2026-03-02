@@ -165,6 +165,8 @@ const {
   defineField,
   isSubmitting,
   setValues,
+  setFieldError,
+  setErrors,
 } = useForm({
   validationSchema: productSchema,
   initialValues: {
@@ -368,11 +370,12 @@ function generateVariants() {
     stock_quantity: 0,
     is_in_stock: false,
     is_active: true,
+    has_orders: false,
     weight: null,
     image_url: null,
     barcode: null,
     options,
-  }))
+  } as any))
 
   toast.success(`Generated ${variants.value.length} variants`)
 }
@@ -516,13 +519,40 @@ const onSubmit = handleSubmit(async (values) => {
       await productService.adminUpdate(productSlug.value!, productData as any)
       toast.success('Product updated successfully')
     } else {
-      await productService.adminUpdate('', productData as any)
-      toast.success('Product created successfully')
+      // Admin can't create products — only vendors can. Redirect.
+      toast.error('Admin cannot create products. Products are created by vendors.')
+      router.push('/admin/products')
+      return
     }
     
     router.push('/admin/products')
-  } catch (error) {
-    toast.error(isEditMode.value ? 'Failed to update product' : 'Failed to create product')
+  } catch (error: any) {
+    // Map backend 422 errors to form fields
+    if (error.response?.status === 422 && error.response?.data?.errors) {
+      const backendErrors = error.response.data.errors
+      const fieldNameMap: Record<string, string> = {
+        name: 'name', sku: 'sku', price: 'price', sale_price: 'sale_price',
+        cost_price: 'cost_price', stock_quantity: 'stock_quantity',
+        category_id: 'category_id', description: 'description',
+        short_description: 'short_description', weight: 'weight',
+        visibility: 'visibility', status: 'status',
+        meta_title: 'meta_title', meta_description: 'meta_description',
+        low_stock_threshold: 'low_stock_threshold',
+        sale_start_date: 'sale_start_date', sale_end_date: 'sale_end_date',
+      }
+      const mappedErrors: Record<string, string> = {}
+      for (const [backendField, messages] of Object.entries(backendErrors)) {
+        const formField = fieldNameMap[backendField] || backendField
+        const msg = Array.isArray(messages) ? messages[0] : messages
+        mappedErrors[formField] = msg as string
+      }
+      setErrors(mappedErrors)
+      // Show toast summary
+      const errorCount = Object.keys(mappedErrors).length
+      toast.error(`Please fix ${errorCount} validation error${errorCount > 1 ? 's' : ''}`)
+    } else {
+      toast.error(error.response?.data?.message || (isEditMode.value ? 'Failed to update product' : 'Failed to create product'))
+    }
   }
 })
 </script>

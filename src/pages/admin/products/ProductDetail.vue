@@ -170,6 +170,10 @@ const profitMargin = computed(() => {
             <BaseBadge :variant="getStatusVariant(product.status)" class="capitalize">
               {{ product.status }}
             </BaseBadge>
+            <BaseBadge :variant="product.type === 'variable' ? 'info' : 'secondary'" size="sm" class="capitalize">
+              {{ product.type || 'simple' }}
+            </BaseBadge>
+            <StarSolidIcon v-if="product.is_featured" class="h-5 w-5 text-yellow-500" title="Featured" />
           </div>
           <p class="text-sm text-gray-500 dark:text-gray-400">
             SKU: {{ product.sku }}
@@ -322,10 +326,15 @@ const profitMargin = computed(() => {
                   </td>
                   <td class="px-4 py-3 text-sm text-gray-500">{{ variant.sku }}</td>
                   <td class="px-4 py-3 text-sm text-gray-900 dark:text-white text-right">
-                    {{ currency.formatCurrency(variant.price) }}
-                    <span v-if="variant.sale_price" class="text-xs text-gray-400 line-through ml-1">
+                    <template v-if="variant.sale_price && variant.sale_price < variant.price">
                       {{ currency.formatCurrency(variant.sale_price) }}
-                    </span>
+                      <span class="text-xs text-gray-400 line-through ml-1">
+                        {{ currency.formatCurrency(variant.price) }}
+                      </span>
+                    </template>
+                    <template v-else>
+                      {{ currency.formatCurrency(variant.price) }}
+                    </template>
                   </td>
                   <td class="px-4 py-3 text-center">
                     <span :class="variant.stock_quantity > 0 ? 'text-green-600' : 'text-red-600'" class="font-medium text-sm">
@@ -429,16 +438,18 @@ const profitMargin = computed(() => {
           </h3>
           <div class="space-y-3">
             <div class="flex items-center justify-between">
-              <span class="text-gray-500 dark:text-gray-400">Stock</span>
+              <span class="text-gray-500 dark:text-gray-400">
+                {{ product.type === 'variable' ? 'Total Stock (all variants)' : 'Stock' }}
+              </span>
               <span
                 class="font-bold"
                 :class="[
-                  product.stock_quantity === 0 ? 'text-danger-600 dark:text-danger-400' :
-                  product.stock_quantity <= (product.low_stock_threshold || 10) ? 'text-warning-600 dark:text-warning-400' :
+                  (product.type === 'variable' ? (product as any).total_stock : product.stock_quantity) === 0 ? 'text-danger-600 dark:text-danger-400' :
+                  (product.type === 'variable' ? (product as any).total_stock : product.stock_quantity) <= (product.low_stock_threshold || 10) ? 'text-warning-600 dark:text-warning-400' :
                   'text-gray-900 dark:text-white'
                 ]"
               >
-                {{ product.stock_quantity }} units
+                {{ product.type === 'variable' ? ((product as any).total_stock ?? 0) : product.stock_quantity }} units
               </span>
             </div>
             <div v-if="product.low_stock_threshold" class="flex items-center justify-between">
@@ -447,7 +458,42 @@ const profitMargin = computed(() => {
                 {{ product.low_stock_threshold }} units
               </span>
             </div>
+            <div v-if="product.type === 'variable' && product.variants?.length" class="flex items-center justify-between">
+              <span class="text-gray-500 dark:text-gray-400">Variant Count</span>
+              <span class="text-gray-900 dark:text-white">
+                {{ product.variants.length }}
+              </span>
+            </div>
           </div>
+        </BaseCard>
+
+        <!-- Weight & Dimensions -->
+        <BaseCard v-if="product.weight || (product as any).dimensions">
+          <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+            Shipping
+          </h3>
+          <div class="space-y-3">
+            <div v-if="product.weight" class="flex items-center justify-between">
+              <span class="text-gray-500 dark:text-gray-400">Weight</span>
+              <span class="text-gray-900 dark:text-white">{{ product.weight }} kg</span>
+            </div>
+            <div v-if="(product as any).dimensions" class="flex items-center justify-between">
+              <span class="text-gray-500 dark:text-gray-400">Dimensions (L×W×H)</span>
+              <span class="text-gray-900 dark:text-white">
+                {{ (product as any).dimensions.length }} × {{ (product as any).dimensions.width }} × {{ (product as any).dimensions.height }} cm
+              </span>
+            </div>
+          </div>
+        </BaseCard>
+
+        <!-- Brand -->
+        <BaseCard v-if="(product as any).brand">
+          <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+            Brand
+          </h3>
+          <p class="font-medium text-gray-900 dark:text-white">
+            {{ (product as any).brand.name }}
+          </p>
         </BaseCard>
 
         <!-- Category -->
@@ -483,9 +529,33 @@ const profitMargin = computed(() => {
         <!-- Timestamps -->
         <BaseCard>
           <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
-            Timestamps
+            Details
           </h3>
           <div class="space-y-3 text-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-gray-500 dark:text-gray-400">Visibility</span>
+              <BaseBadge variant="secondary" size="sm" class="capitalize">
+                {{ product.visibility || 'visible' }}
+              </BaseBadge>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-gray-500 dark:text-gray-400">Active</span>
+              <BaseBadge :variant="product.is_active ? 'success' : 'secondary'" size="sm">
+                {{ product.is_active ? 'Yes' : 'No' }}
+              </BaseBadge>
+            </div>
+            <div v-if="(product as any).scheduled_publish_at" class="flex items-center justify-between">
+              <span class="text-gray-500 dark:text-gray-400">Scheduled</span>
+              <span class="text-gray-900 dark:text-white">
+                {{ date.format((product as any).scheduled_publish_at, 'MMM D, YYYY HH:mm') }}
+              </span>
+            </div>
+            <div v-if="(product as any).published_at" class="flex items-center justify-between">
+              <span class="text-gray-500 dark:text-gray-400">Published</span>
+              <span class="text-gray-900 dark:text-white">
+                {{ date.format((product as any).published_at, 'MMM D, YYYY') }}
+              </span>
+            </div>
             <div class="flex items-center justify-between">
               <span class="text-gray-500 dark:text-gray-400">Created</span>
               <span class="text-gray-900 dark:text-white">
@@ -497,6 +567,14 @@ const profitMargin = computed(() => {
               <span class="text-gray-900 dark:text-white">
                 {{ date.format(product.updated_at, 'MMM D, YYYY') }}
               </span>
+            </div>
+            <div v-if="(product as any).rating_average" class="flex items-center justify-between">
+              <span class="text-gray-500 dark:text-gray-400">Rating</span>
+              <div class="flex items-center gap-1">
+                <StarSolidIcon class="h-4 w-4 text-yellow-500" />
+                <span class="text-gray-900 dark:text-white">{{ (product as any).rating_average }}</span>
+                <span class="text-gray-400">({{ (product as any).review_count || 0 }})</span>
+              </div>
             </div>
           </div>
         </BaseCard>

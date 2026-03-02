@@ -121,11 +121,13 @@ function getStatusColor(status: string): 'green' | 'yellow' | 'red' | 'blue' | '
 // Get stock status
 const stockStatus = computed(() => {
   if (!product.value) return { label: 'Unknown', color: 'gray' as const }
-  if (product.value.stock_quantity <= 0) return { label: 'Out of Stock', color: 'red' as const }
-  if (product.value.stock_quantity <= (product.value.low_stock_threshold || 10)) {
-    return { label: 'Low Stock', color: 'yellow' as const }
+  const isVariable = product.value.type === 'variable'
+  const stock = isVariable ? ((product.value as any).total_stock ?? product.value.stock_quantity) : product.value.stock_quantity
+  if (stock <= 0) return { label: 'Out of Stock', color: 'red' as const }
+  if (stock <= (product.value.low_stock_threshold || 10)) {
+    return { label: isVariable ? `Low Stock (${stock} across variants)` : 'Low Stock', color: 'yellow' as const }
   }
-  return { label: 'In Stock', color: 'green' as const }
+  return { label: isVariable ? `In Stock (${stock} across variants)` : 'In Stock', color: 'green' as const }
 })
 
 // Render stars
@@ -155,7 +157,7 @@ async function handleSubmitForReview() {
     message: `Submit "${product.value.name}" for admin review? You won't be able to edit it until it's reviewed.`,
     confirmText: 'Submit',
     cancelText: 'Cancel',
-    variant: 'primary',
+    variant: 'info',
   })
   if (confirmed) {
     try {
@@ -356,7 +358,7 @@ async function handleSchedule() {
                     {{ stockStatus.label }}
                   </BaseBadge>
                   <span class="text-gray-600 dark:text-gray-400">
-                    {{ product.stock_quantity }} units available
+                    {{ product.type === 'variable' ? ((product as any).total_stock ?? product.stock_quantity) : product.stock_quantity }} units available
                   </span>
                 </div>
 

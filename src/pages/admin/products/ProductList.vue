@@ -71,6 +71,12 @@ const selectedProducts = ref<Product[]>([])
 const searchQuery = ref('')
 const statusFilter = ref('')
 const categoryFilter = ref('')
+const vendorFilter = ref('')
+const featuredFilterValue = ref('')
+const priceMin = ref('')
+const priceMax = ref('')
+const inStockFilter = ref('')
+const showAdvancedFilters = ref(false)
 
 const statusOptions = [
   { value: '', label: 'All Status' },
@@ -80,11 +86,16 @@ const statusOptions = [
   { value: 'rejected', label: 'Rejected' },
 ]
 
-const featuredFilter = ref('')
 const featuredOptions = [
   { value: '', label: 'All Products' },
   { value: '1', label: 'Featured Only' },
   { value: '0', label: 'Not Featured' },
+]
+
+const stockOptions = [
+  { value: '', label: 'All Stock' },
+  { value: '1', label: 'In Stock' },
+  { value: '0', label: 'Out of Stock' },
 ]
 
 // Status tabs
@@ -100,6 +111,7 @@ const statusTabs = [
 const columns: TableColumn[] = [
   { key: 'name', label: 'Product', sortable: true },
   { key: 'sku', label: 'SKU', sortable: true },
+  { key: 'type', label: 'Type', sortable: true, align: 'center' },
   { key: 'price', label: 'Price', sortable: true, align: 'right' },
   { key: 'stock', label: 'Stock', sortable: true, align: 'center' },
   { key: 'status', label: 'Status', sortable: true, align: 'center' },
@@ -114,10 +126,15 @@ async function fetchProducts() {
     const response = await productService.adminList({
       page: pagination.currentPage.value,
       per_page: pagination.perPage.value,
-      search: searchQuery.value,
+      search: searchQuery.value || undefined,
       status: statusFilter.value || undefined,
       category_id: categoryFilter.value ? Number(categoryFilter.value) : undefined,
-    })
+      vendor_id: vendorFilter.value ? Number(vendorFilter.value) : undefined,
+      is_featured: featuredFilterValue.value !== '' ? featuredFilterValue.value : undefined,
+      price_min: priceMin.value ? Number(priceMin.value) : undefined,
+      price_max: priceMax.value ? Number(priceMax.value) : undefined,
+      in_stock: inStockFilter.value !== '' ? inStockFilter.value : undefined,
+    } as any)
     products.value = response.data
     pagination.totalItems.value = response.meta.total
   } catch (err: any) {
@@ -136,7 +153,7 @@ const debouncedFetch = useDebounce(() => {
   fetchProducts()
 }, 300)
 
-watch([searchQuery, statusFilter, categoryFilter], () => {
+watch([searchQuery, statusFilter, categoryFilter, vendorFilter, featuredFilterValue, priceMin, priceMax, inStockFilter], () => {
   debouncedFetch()
 })
 
@@ -196,7 +213,7 @@ async function deleteProduct(product: Product) {
 
   if (confirmed) {
     try {
-      await productService.adminDelete(product.id)
+      await productService.adminDelete(product.slug)
       toast.success('Product deleted successfully')
       fetchProducts()
     } catch (error) {
@@ -316,15 +333,20 @@ function getStatusVariant(status: string): 'success' | 'warning' | 'secondary' |
   return variants[status] || 'secondary'
 }
 
-// Stock status
+// Stock status — uses total_stock (sum of variant stock for variable products)
 function getStockStatus(product: Product): { text: string; class: string } {
-  if (product.stock_quantity === 0) {
+  const stock = (product as any).total_stock ?? product.stock_quantity ?? 0
+  const hasVariants = (product as any).has_variants || ((product as any).variant_count ?? 0) > 0
+
+  if (stock === 0) {
     return { text: 'Out of Stock', class: 'text-danger-600 dark:text-danger-400' }
   }
-  if (product.stock_quantity <= 10) {
-    return { text: `Low: ${product.stock_quantity}`, class: 'text-warning-600 dark:text-warning-400' }
+  if (stock <= 10) {
+    const label = hasVariants ? `Low: ${stock} (variants)` : `Low: ${stock}`
+    return { text: label, class: 'text-warning-600 dark:text-warning-400' }
   }
-  return { text: product.stock_quantity.toString(), class: 'text-gray-900 dark:text-white' }
+  const label = hasVariants ? `${stock} (variants)` : stock.toString()
+  return { text: label, class: 'text-gray-900 dark:text-white' }
 }
 </script>
 
@@ -352,6 +374,10 @@ function getStockStatus(product: Product): { text: string; class: string } {
       </div>
 
       <div class="flex items-center gap-2">
+        <BaseButton variant="secondary" size="sm" @click="showAdvancedFilters = !showAdvancedFilters">
+          <FunnelIcon class="mr-2 h-4 w-4" />
+          {{ showAdvancedFilters ? 'Hide Filters' : 'Filters' }}
+        </BaseButton>
         <BaseButton variant="secondary" size="sm" @click="handleImport">
           <ArrowUpTrayIcon class="mr-2 h-4 w-4" />
           Import
@@ -360,10 +386,38 @@ function getStockStatus(product: Product): { text: string; class: string } {
           <ArrowDownTrayIcon class="mr-2 h-4 w-4" />
           Export
         </BaseButton>
-        <BaseButton variant="primary" to="/admin/products/create">
-          <PlusIcon class="mr-2 h-4 w-4" />
-          Add Product
-        </BaseButton>
+      </div>
+    </div>
+
+    <!-- Advanced Filters -->
+    <div v-if="showAdvancedFilters" class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <FormSelect
+          v-model="featuredFilterValue"
+          name="featured"
+          label="Featured"
+          :options="featuredOptions"
+        />
+        <FormSelect
+          v-model="inStockFilter"
+          name="in_stock"
+          label="Stock"
+          :options="stockOptions"
+        />
+        <FormInput
+          v-model="priceMin"
+          name="price_min"
+          label="Min Price"
+          type="number"
+          placeholder="0"
+        />
+        <FormInput
+          v-model="priceMax"
+          name="price_max"
+          label="Max Price"
+          type="number"
+          placeholder="999999"
+        />
       </div>
     </div>
 
@@ -430,8 +484,8 @@ function getStockStatus(product: Product): { text: string; class: string } {
           <div class="flex items-center gap-3">
             <div class="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-700">
               <img
-                v-if="row.primary_image"
-                :src="row.primary_image"
+                v-if="row.thumbnail"
+                :src="row.thumbnail"
                 :alt="row.name"
                 class="h-full w-full object-cover"
                 loading="lazy"
@@ -443,10 +497,19 @@ function getStockStatus(product: Product): { text: string; class: string } {
               </div>
             </div>
             <div>
-              <p class="font-medium text-gray-900 dark:text-white">{{ row.name }}</p>
+              <div class="flex items-center gap-1.5">
+                <p class="font-medium text-gray-900 dark:text-white">{{ row.name }}</p>
+                <StarSolidIcon v-if="row.is_featured" class="h-4 w-4 text-yellow-500 shrink-0" title="Featured" />
+              </div>
               <p class="text-sm text-gray-500 dark:text-gray-400">SKU: {{ row.sku }}</p>
             </div>
           </div>
+        </template>
+
+        <template #cell-type="{ row }">
+          <BaseBadge :variant="row.type === 'variable' ? 'info' : 'secondary'" size="sm" class="capitalize">
+            {{ row.type || 'simple' }}
+          </BaseBadge>
         </template>
 
         <template #cell-price="{ row }">
@@ -539,9 +602,7 @@ function getStockStatus(product: Product): { text: string; class: string } {
         <template #empty>
           <EmptyState
             title="No products found"
-            description="Get started by adding your first product."
-            action-text="Add Product"
-            action-to="/admin/products/create"
+            description="No products match your current filters."
           />
         </template>
       </DataTable>

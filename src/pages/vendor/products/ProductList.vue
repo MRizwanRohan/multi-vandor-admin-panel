@@ -72,6 +72,7 @@ const statusTabs = [
 const columns: TableColumn[] = [
   { key: 'name', label: 'Product', sortable: true },
   { key: 'sku', label: 'SKU', sortable: true },
+  { key: 'type', label: 'Type', sortable: true, align: 'center' },
   { key: 'price', label: 'Price', sortable: true, align: 'right' },
   { key: 'stock', label: 'Stock', sortable: true, align: 'center' },
   { key: 'status', label: 'Status', sortable: true, align: 'center' },
@@ -125,7 +126,7 @@ async function handleSubmitForReview(product: Product) {
     message: `Submit "${product.name}" for admin review? You won't be able to edit it until it's reviewed.`,
     confirmText: 'Submit',
     cancelText: 'Cancel',
-    variant: 'primary',
+    variant: 'info',
   })
   if (confirmed) {
     try {
@@ -293,6 +294,12 @@ function getStockStatus(product: Product): { text: string; class: string } {
               <p class="text-sm text-gray-500 dark:text-gray-400">SKU: {{ row.sku }}</p>
             </div>
           </div>
+        </template>
+
+        <template #cell-type="{ row }">
+          <BaseBadge :variant="row.type === 'variable' ? 'info' : 'secondary'" size="sm" class="capitalize">
+            {{ row.type || 'simple' }}
+          </BaseBadge>
         </template>
 
         <template #cell-price="{ row }">

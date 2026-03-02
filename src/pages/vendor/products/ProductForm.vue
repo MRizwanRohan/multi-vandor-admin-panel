@@ -117,6 +117,24 @@ const stripHtml = (html: string): string => {
   return tmp.textContent || tmp.innerText || ''
 }
 
+// Helper to normalize date strings to datetime-local format (YYYY-MM-DDTHH:mm)
+function toDatetimeLocal(dateStr: string | null | undefined): string | null {
+  if (!dateStr) return null
+  try {
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return null
+    // Format as YYYY-MM-DDTHH:mm (local time)
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    const hours = String(d.getHours()).padStart(2, '0')
+    const minutes = String(d.getMinutes()).padStart(2, '0')
+    return `${year}-${month}-${day}T${hours}:${minutes}`
+  } catch {
+    return null
+  }
+}
+
 // Form schema
 const schema = toTypedSchema(
   z.object({
@@ -545,8 +563,8 @@ async function loadProduct() {
       price: product.price,
       cost_price: product.costPrice ?? product.cost_price ?? null,
       sale_price: product.salePrice ?? product.sale_price ?? null,
-      sale_start_date: product.saleStartDate ?? product.sale_start_date ?? null,
-      sale_end_date: product.saleEndDate ?? product.sale_end_date ?? null,
+      sale_start_date: toDatetimeLocal(product.saleStartDate ?? product.sale_start_date),
+      sale_end_date: toDatetimeLocal(product.saleEndDate ?? product.sale_end_date),
       sku: product.sku,
       stock: product.stockQuantity ?? product.stock_quantity ?? 0,
       low_stock_threshold: product.lowStockThreshold ?? product.low_stock_threshold ?? null,
@@ -556,7 +574,7 @@ async function loadProduct() {
       dimensionHeight: product.dimensions?.height ?? null,
       visibility: (product.visibility || 'visible') as 'visible' | 'hidden' | 'catalog',
       isActive: product.isActive ?? product.is_active ?? true,
-      publish_at: product.scheduledPublishAt ?? product.scheduled_publish_at ?? product.publishAt ?? product.publish_at ?? null,
+      publish_at: toDatetimeLocal(product.scheduledPublishAt ?? product.scheduled_publish_at ?? product.publishAt ?? product.publish_at),
       metaTitle: product.metaTitle ?? product.meta_title ?? '',
       metaDescription: product.metaDescription ?? product.meta_description ?? '',
     })
@@ -1096,6 +1114,7 @@ const onSubmit = handleSubmit(
         : undefined,
       visibility: formValues.visibility,
       is_active: formValues.isActive,
+      scheduled_publish_at: formValues.publish_at || undefined,
       brand_id: formValues.brand_id || undefined,
       meta_title: formValues.metaTitle,
       meta_description: formValues.metaDescription,

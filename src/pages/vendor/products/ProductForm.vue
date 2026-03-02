@@ -81,6 +81,12 @@ const nonVariantTemplates = computed(() =>
 const variantAttributes = ref<VariantMatrixAttribute[]>([])
 const variants = ref<ProductVariant[]>([])
 
+// ── Image upload constants (must match backend validation) ──
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+const ALLOWED_IMAGE_EXTENSIONS = '.jpg,.jpeg,.png,.webp,.gif'
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024  // 5 MB per file
+const MAX_IMAGES = 10
+
 // Images - structured to store both preview URL and File object for upload
 interface ImageItem {
   id?: number        // Backend image ID (exists only for saved images)
@@ -90,6 +96,7 @@ interface ImageItem {
 }
 const images = ref<ImageItem[]>([])
 const deletedImageIds = ref<number[]>([])  // Track deleted existing images for edit mode
+const isUploadingImages = ref(false)  // Upload progress state
 const imageInput = ref<HTMLInputElement | null>(null)
 const variantImageInput = ref<HTMLInputElement | null>(null)
 const currentVariantIndex = ref<number | null>(null)
@@ -453,7 +460,6 @@ watch(
       // Look up category slug from id (endpoint requires slug, not numeric id)
       const slug = categorySlugMap.value[categoryId]
       if (!slug) {
-        console.warn('[ProductForm] Category slug not found for id:', categoryId, 'Available:', Object.keys(categorySlugMap.value))
         categoryTemplates.value = []
         return
       }
@@ -464,6 +470,32 @@ watch(
       // Reset attribute values ONLY when user manually changes category on new product
       if (!isEditing.value && !isLoadingProduct.value && oldCategoryId && oldCategoryId !== categoryId) {
         attributeValues.value = []
+      }
+      
+      // Seed attributeValues with variant-defining selections from loaded variants
+      // This ensures the multiselects show which options are currently selected in edit mode
+      if (isLoadingProduct.value && productType.value === 'variable' && variantAttributes.value.length > 0) {
+        const variantDefTemplates = templates.filter((t: any) => t.is_variant_defining || t.isVariantDefining)
+        for (const template of variantDefTemplates) {
+          const varAttr = variantAttributes.value.find(va => va.id === template.id)
+          if (!varAttr || varAttr.options.length === 0) continue
+          
+          // Map variant attribute option IDs to template option values
+          const selectedValues: string[] = []
+          for (const selectedOpt of varAttr.options) {
+            // Find matching template option by ID
+            const templateOpt = template.options?.find((to: any) => to.id === selectedOpt.id)
+            if (templateOpt) {
+              selectedValues.push(templateOpt.value)
+            }
+          }
+          
+          if (selectedValues.length > 0) {
+            // Merge with existing attributeValues (don't overwrite non-variant attrs)
+            const existing = attributeValues.value.filter(av => av.template_id !== template.id)
+            attributeValues.value = [...existing, { template_id: template.id, value: selectedValues }]
+          }
+        }
       }
     } catch (err: any) {
       console.error('Failed to load templates:', err)
@@ -483,11 +515,9 @@ async function loadProduct() {
   isLoadingProduct.value = true // Prevent category watch from clearing data
   try {
     const product = await productService.vendorShow(productSlug.value) as any
-    console.log('[ProductForm] Loaded product:', JSON.parse(JSON.stringify(product)))
     
     // Resolve category ID — handle both nested object & flat field
     const categoryId = product.category?.id ?? product.categoryId ?? product.category_id ?? ''
-    console.log('[ProductForm] Category ID:', categoryId, 'type:', typeof categoryId)
     
     setValues({
       name: product.name,
@@ -547,10 +577,10 @@ async function loadProduct() {
         if (v.options?.length > 0) {
           options = v.options.map((o: any) => ({
             option_id: o.optionId ?? o.option_id ?? o.attribute_template_option_id ?? o.id,
-            template_name: o.template ?? o.templateName ?? o.template_name ?? '',
+            template: o.template ?? o.templateName ?? o.template_name ?? '',
             template_id: o.templateId ?? o.template_id ?? o.attribute_template_id ?? null,
-            option_value: o.optionValue ?? o.option_value ?? o.value ?? '',
-            option_label: o.optionLabel ?? o.option_label ?? o.label ?? o.value ?? '',
+            value: o.value ?? o.optionValue ?? o.option_value ?? '',
+            label: o.label ?? o.optionLabel ?? o.option_label ?? o.value ?? '',
           }))
         }
         
@@ -569,10 +599,10 @@ async function loadProduct() {
           weight: v.weight ?? null,
           barcode: v.barcode ?? null,
           image_url: v.imageUrl ?? v.image_url ?? null,
+          has_orders: v.hasOrders ?? v.has_orders ?? false,
           options,
         }
       })
-      console.log('[ProductForm] Loaded variants:', variants.value.length, variants.value)
     }
     
     // Load variant config / matrix
@@ -592,7 +622,6 @@ async function loadProduct() {
           label: o.label ?? o.value ?? '',
         })) ?? [],
       }))
-      console.log('[ProductForm] Loaded variant attributes from matrix axes:', variantAttributes.value)
     }
     // Priority 2: variant_options (list endpoint format: [{template_id, name, options: [{id, value}]}])
     else if (varOptions?.length > 0) {
@@ -605,7 +634,6 @@ async function loadProduct() {
           label: o.label ?? o.value ?? '',
         })) ?? [],
       }))
-      console.log('[ProductForm] Loaded variant attributes from variant_options:', variantAttributes.value)
     }
     // Priority 3: variant_config (has template_id, name, options as string[])
     else if (varConfig?.length > 0) {
@@ -649,7 +677,6 @@ async function loadProduct() {
           })),
         }
       })
-      console.log('[ProductForm] Loaded variant attributes from config:', variantAttributes.value)
     }
     // Priority 4: Reconstruct from variants' options/combination data
     else if (productVariants.length > 0 && productType.value === 'variable') {
@@ -680,17 +707,9 @@ async function loadProduct() {
             label: value,
           })),
         }))
-        console.log('[ProductForm] Rebuilt variant attributes from variants options:', variantAttributes.value)
       }
     }
     
-    console.log('[ProductForm] Edit load complete', {
-      categoryId: values.categoryId,
-      productType: productType.value,
-      variantsCount: variants.value.length,
-      variantAttributesCount: variantAttributes.value.length,
-      attributeValuesCount: attributeValues.value.length,
-    })
   } catch (err: any) {
     const message = err.response?.data?.message || 'Failed to load product'
     toast.error(message)
@@ -704,30 +723,51 @@ async function loadProduct() {
   }
 }
 
-// Handle image upload
+// Handle image upload with validation
 function handleImageUpload(event: Event) {
   const input = event.target as HTMLInputElement
   if (!input.files?.length) return
 
-  for (const file of Array.from(input.files)) {
-    if (file.type.startsWith('image/')) {
-      // Check max 10 images
-      if (images.value.length >= 10) {
-        toast.warning('সর্বোচ্চ ১০টি ছবি আপলোড করা যায়')
-        break
-      }
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        if (e.target?.result) {
-          images.value.push({
-            url: e.target.result as string,
-            file: file,
-            isNew: true,
-          })
-        }
-      }
-      reader.readAsDataURL(file)
+  const remainingSlots = MAX_IMAGES - images.value.length
+  if (remainingSlots <= 0) {
+    toast.warning(`সর্বোচ্চ ${MAX_IMAGES}টি ছবি আপলোড করা যায়`)
+    input.value = ''
+    return
+  }
+
+  // Take only as many files as remaining slots allow
+  const files = Array.from(input.files).slice(0, remainingSlots)
+  if (input.files.length > remainingSlots) {
+    toast.info(`${remainingSlots}টি স্লট বাকি আছে, ${remainingSlots}টি ছবি নেওয়া হয়েছে`)
+  }
+
+  let rejected = 0
+  for (const file of files) {
+    // Validate file type
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      toast.error(`"${file.name}" — শুধু JPG, PNG, WebP, GIF ফরম্যাট সাপোর্টেড`)
+      rejected++
+      continue
     }
+    // Validate file size
+    if (file.size > MAX_IMAGE_SIZE) {
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(1)
+      toast.error(`"${file.name}" (${sizeMB}MB) — ফাইল সাইজ ৫MB এর বেশি হতে পারবে না`)
+      rejected++
+      continue
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      if (e.target?.result) {
+        images.value.push({
+          url: e.target.result as string,
+          file: file,
+          isNew: true,
+        })
+      }
+    }
+    reader.readAsDataURL(file)
   }
 
   // Reset input
@@ -755,17 +795,31 @@ function handleVariantImageUpload(event: Event) {
   if (!input.files?.length || currentVariantIndex.value === null) return
 
   const file = input.files[0]
-  if (file.type.startsWith('image/')) {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      if (e.target?.result && currentVariantIndex.value !== null) {
-        updateVariant(currentVariantIndex.value, 'image_url', e.target.result as string)
-        // Store file for later upload
-        variantImageFiles.value.set(currentVariantIndex.value, file)
-      }
-    }
-    reader.readAsDataURL(file)
+
+  // Validate file type
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    toast.error('শুধু JPG, PNG, WebP, GIF ফরম্যাট সাপোর্টেড')
+    input.value = ''
+    currentVariantIndex.value = null
+    return
   }
+  // Validate file size
+  if (file.size > MAX_IMAGE_SIZE) {
+    toast.error('ফাইল সাইজ ৫MB এর বেশি হতে পারবে না')
+    input.value = ''
+    currentVariantIndex.value = null
+    return
+  }
+
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    if (e.target?.result && currentVariantIndex.value !== null) {
+      updateVariant(currentVariantIndex.value, 'image_url', e.target.result as string)
+      // Store file for later upload
+      variantImageFiles.value.set(currentVariantIndex.value, file)
+    }
+  }
+  reader.readAsDataURL(file)
 
   // Reset
   input.value = ''
@@ -785,6 +839,7 @@ function handleVariantAttributesChange(attrs: VariantMatrixAttribute[]) {
 }
 
 // Generate variant combinations from selected attributes
+// Preserves existing variant data (price, stock, sale_price) when regenerating
 function generateVariants() {
   if (variantAttributes.value.length === 0) {
     toast.error('প্রথমে ভেরিয়েন্ট অ্যাট্রিবিউট নির্বাচন করুন')
@@ -820,26 +875,64 @@ function generateVariants() {
 
   const combinations = generateCombinations(variantAttributes.value, 0, [])
 
-  variants.value = combinations.map((options, i) => ({
-    id: 0,
-    sku: `${values.sku || 'SKU'}-${options.map((o) => o.value.substring(0, 2).toUpperCase()).join('-')}`,
-    name: options.map((o) => o.value).join(' / '),
-    price: values.price || 0,
-    sale_price: values.sale_price || null,
-    sale_start_date: null,
-    sale_end_date: null,
-    is_sale_active: false,
-    effective_price: values.sale_price || values.price || 0,
-    stock_quantity: 0,
-    is_in_stock: false,
-    is_active: true,
-    weight: null,
-    image_url: null,
-    barcode: null,
-    options,
-  }))
+  // Build fingerprint → existing variant lookup for data preservation
+  // Fingerprint format: sorted "templateId:optionId|templateId:optionId"
+  const existingByFingerprint = new Map<string, ProductVariant>()
+  for (const v of variants.value) {
+    const optionsList = v.options || []
+    if (optionsList.length === 0) continue
+    const fp = [...optionsList]
+      .sort((a, b) => (a.template_id ?? a.option_id) - (b.template_id ?? b.option_id))
+      .map(o => `${o.template_id}:${o.option_id}`)
+      .join('|')
+    existingByFingerprint.set(fp, v)
+  }
 
-  toast.success(`${variants.value.length}টি ভেরিয়েন্ট তৈরি হয়েছে`)
+  variants.value = combinations.map((options) => {
+    // Build fingerprint for this combination
+    const fp = [...options]
+      .sort((a, b) => a.template_id - b.template_id)
+      .map(o => `${o.template_id}:${o.option_id}`)
+      .join('|')
+
+    // Reuse existing variant data if available (preserves id, price, stock, sale_price)
+    const existing = existingByFingerprint.get(fp)
+    if (existing) {
+      return {
+        ...existing,
+        name: options.map((o) => o.value).join(' / '),
+        options,
+      }
+    }
+
+    // New variant — use defaults
+    return {
+      id: 0,
+      sku: `${values.sku || 'SKU'}-${options.map((o) => o.value.substring(0, 2).toUpperCase()).join('-')}`,
+      name: options.map((o) => o.value).join(' / '),
+      price: values.price || 0,
+      sale_price: values.sale_price || null,
+      sale_start_date: null,
+      sale_end_date: null,
+      is_sale_active: false,
+      effective_price: values.sale_price || values.price || 0,
+      stock_quantity: 0,
+      is_in_stock: false,
+      is_active: true,
+      weight: null,
+      image_url: null,
+      barcode: null,
+      has_orders: false,
+      options,
+    }
+  })
+
+  const matchedCount = variants.value.filter(v => v.id && v.id > 0).length
+  if (matchedCount > 0) {
+    toast.success(`${variants.value.length}টি ভেরিয়েন্ট তৈরি হয়েছে (${matchedCount}টি পুরনো ডেটা সংরক্ষিত)`)
+  } else {
+    toast.success(`${variants.value.length}টি ভেরিয়েন্ট তৈরি হয়েছে`)
+  }
 }
 
 // Validate required attributes
@@ -894,12 +987,6 @@ function validateAttributes(): boolean {
     }
   }
 
-  console.log('[ProductForm] validateAttributes result:', { 
-    isValid, 
-    productType: productType.value,
-    errors: { ...attributeErrors.value },
-    templateCount: categoryTemplates.value.length,
-  })
   return isValid
 }
 
@@ -907,13 +994,11 @@ function validateAttributes(): boolean {
 let saveAsDraft = false
 
 function submitAsDraft() {
-  console.log('[ProductForm] submitAsDraft called')
   saveAsDraft = true
   onSubmit()
 }
 
 function submitAndPublish() {
-  console.log('[ProductForm] submitAndPublish called')
   saveAsDraft = false
   onSubmit()
 }
@@ -951,23 +1036,19 @@ function duplicateProduct() {
 
 const onSubmit = handleSubmit(
   async (formValues) => {
-    console.log('[ProductForm] Submit started', { formValues, productType: productType.value })
     
     // Validate attributes
     if (!validateAttributes()) {
-      console.log('[ProductForm] Attribute validation failed')
       toast.error('সব আবশ্যক অ্যাট্রিবিউট পূরণ করুন')
       return
     }
 
     // For variable products, check if variants exist
     if (productType.value === 'variable' && variants.value.length === 0) {
-      console.log('[ProductForm] No variants for variable product')
       toast.error('ভেরিয়েবল প্রোডাক্টের জন্য ভেরিয়েন্ট তৈরি করুন')
       return
     }
     
-    console.log('[ProductForm] Validation passed, starting save...')
 
   isSaving.value = true
   try {
@@ -1004,16 +1085,17 @@ const onSubmit = handleSubmit(
       attribute_values: attributeValues.value.length > 0 ? attributeValues.value : undefined,
       variants: productType.value === 'variable' 
         ? variants.value.map(v => ({
+            id: v.id || undefined,  // Include variant ID for existing variants (update)
             sku: v.sku,
-            price: v.price,
-            sale_price: v.sale_price,
+            price: Number(v.price) || 0,
+            sale_price: v.sale_price != null ? Number(v.sale_price) : null,
             sale_start_date: v.sale_start_date || undefined,
             sale_end_date: v.sale_end_date || undefined,
-            stock_quantity: v.stock_quantity,
+            stock_quantity: Number(v.stock_quantity) || 0,
             is_active: v.is_active,
             weight: v.weight,
             barcode: v.barcode,
-            option_ids: v.options?.map(o => o.option_id),
+            option_ids: v.options?.map((o: any) => o.option_id),
           }))
         : undefined,
       variant_config: productType.value === 'variable' && variantAttributes.value.length > 0
@@ -1034,38 +1116,53 @@ const onSubmit = handleSubmit(
     if (isEditing.value) {
       savedProduct = await productService.vendorUpdate(productSlug.value!, data)
       
-      // Step 2a: Delete removed images
-      if (deletedImageIds.value.length > 0) {
-        console.log('[ProductForm] Deleting images:', deletedImageIds.value)
-        for (const imageId of deletedImageIds.value) {
+      // Step 2: Handle images (delete → upload → reorder)
+      isUploadingImages.value = true
+      try {
+        // Step 2a: Delete removed images
+        if (deletedImageIds.value.length > 0) {
+          for (const imageId of deletedImageIds.value) {
+            try {
+              await productService.vendorDeleteImage(productSlug.value!, imageId)
+            } catch (err) {
+            }
+          }
+          deletedImageIds.value = []
+        }
+
+        // Step 2b: Upload new images
+        const newImageFiles = images.value.filter(img => img.isNew && img.file).map(img => img.file!)
+        let uploadedImages: import('@/types').ProductImage[] = []
+        if (newImageFiles.length > 0) {
           try {
-            await productService.vendorDeleteImage(productSlug.value!, imageId)
-          } catch (err) {
-            console.warn(`[ProductForm] Failed to delete image ${imageId}:`, err)
+            uploadedImages = await productService.vendorUploadImages(productSlug.value!, newImageFiles)
+          } catch (err: any) {
+            console.error('[ProductForm] Image upload failed:', err)
+            const errMsg = err?.response?.data?.message || 'ছবি আপলোড ব্যর্থ'
+            toast.warning(`প্রোডাক্ট আপডেট হয়েছে কিন্তু ${errMsg}`)
           }
         }
-      }
 
-      // Step 2b: Upload new images
-      const newImageFiles = images.value.filter(img => img.isNew && img.file).map(img => img.file!)
-      if (newImageFiles.length > 0) {
-        console.log('[ProductForm] Uploading', newImageFiles.length, 'new images for update')
-        try {
-          await productService.vendorUploadImages(productSlug.value!, newImageFiles)
-        } catch (err) {
-          console.error('[ProductForm] Image upload failed:', err)
-          toast.warning('প্রোডাক্ট আপডেট হয়েছে কিন্তু কিছু ছবি আপলোড ব্যর্থ')
+        // Step 2c: Reorder ALL images (existing + newly uploaded) to match UI order
+        const allImageIds: number[] = []
+        let newIndex = 0
+        for (const img of images.value) {
+          if (!img.isNew && img.id) {
+            allImageIds.push(img.id)
+          } else if (img.isNew && newIndex < uploadedImages.length) {
+            // Map newly uploaded images in order
+            allImageIds.push(uploadedImages[newIndex].id)
+            newIndex++
+          }
         }
-      }
-
-      // Step 2c: Reorder images if order changed (existing images)
-      const existingImageIds = images.value.filter(img => !img.isNew && img.id).map(img => img.id!)
-      if (existingImageIds.length > 1) {
-        try {
-          await productService.vendorReorderImages(productSlug.value!, existingImageIds)
-        } catch (err) {
-          console.warn('[ProductForm] Image reorder failed:', err)
+        if (allImageIds.length > 1) {
+          try {
+            await productService.vendorReorderImages(productSlug.value!, allImageIds)
+          } catch (err) {
+          }
         }
+      } finally {
+        isUploadingImages.value = false
       }
 
       toast.success('প্রোডাক্ট আপডেট সফল হয়েছে')
@@ -1077,13 +1174,15 @@ const onSubmit = handleSubmit(
       const newImageFiles = images.value.filter(img => img.isNew && img.file).map(img => img.file!)
       
       if (productIdentifier && newImageFiles.length > 0) {
-        console.log('[ProductForm] Uploading', newImageFiles.length, 'images for new product:', productIdentifier)
+        isUploadingImages.value = true
         try {
           await productService.vendorUploadImages(productIdentifier, newImageFiles)
-          console.log('[ProductForm] Image upload successful')
-        } catch (err) {
+        } catch (err: any) {
           console.error('[ProductForm] Image upload failed:', err)
-          toast.warning('প্রোডাক্ট তৈরি হয়েছে কিন্তু ছবি আপলোড ব্যর্থ। প্রোডাক্ট এডিট করে আবার চেষ্টা করুন।')
+          const errMsg = err?.response?.data?.message || 'ছবি আপলোড ব্যর্থ'
+          toast.warning(`প্রোডাক্ট তৈরি হয়েছে কিন্তু ${errMsg}। প্রোডাক্ট এডিট করে আবার চেষ্টা করুন।`)
+        } finally {
+          isUploadingImages.value = false
         }
       }
 
@@ -1126,10 +1225,8 @@ const onSubmit = handleSubmit(
 },
   // On validation error, scroll to first error field
   ({ errors }) => {
-    console.log('[ProductForm] Validation errors:', errors)
     const firstErrorField = Object.keys(errors)[0]
     if (firstErrorField) {
-      console.log('[ProductForm] Scrolling to first error field:', firstErrorField)
       const element = document.querySelector(`[name="${firstErrorField}"]`)
       if (element) {
         element.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -1203,11 +1300,11 @@ function cancel() {
           <BaseButton type="button" variant="ghost" size="sm" @click="cancel">
             Cancel
           </BaseButton>
-          <BaseButton type="button" variant="secondary" size="sm" :loading="isSaving" @click="submitAsDraft">
+          <BaseButton type="button" variant="secondary" size="sm" :loading="isSaving || isUploadingImages" @click="submitAsDraft">
             Save as Draft
           </BaseButton>
-          <BaseButton type="button" variant="primary" size="sm" :loading="isSaving" @click="submitAndPublish">
-            {{ isEditing ? 'Save Changes' : 'Save & Submit' }}
+          <BaseButton type="button" variant="primary" size="sm" :loading="isSaving || isUploadingImages" @click="submitAndPublish">
+            {{ isUploadingImages ? 'ছবি আপলোড হচ্ছে...' : isEditing ? 'Save Changes' : 'Save & Submit' }}
           </BaseButton>
         </div>
       </div>
@@ -1396,7 +1493,6 @@ function cancel() {
             :product-type="productType"
             :errors="attributeErrors"
             :non-variant-only="productType === 'variable'"
-            @variant-attributes="handleVariantAttributesChange"
           />
         </BaseCard>
 
@@ -1479,6 +1575,9 @@ function cancel() {
           <VariantMatrix
             :attributes="variantAttributes"
             :variants="variants"
+            :product-slug="productSlug || ''"
+            :base-price="Number(values.price || 0)"
+            :base-sku="values.sku || ''"
             @update:variants="variants = $event"
             @generate="generateVariants"
             @upload-image="handleVariantImageClick"
@@ -1489,13 +1588,18 @@ function cancel() {
         <input
           ref="variantImageInput"
           type="file"
-          accept="image/*"
+          :accept="ALLOWED_IMAGE_EXTENSIONS"
           class="hidden"
           @change="handleVariantImageUpload"
         />
 
         <!-- Images (Drag & Drop Reorder) -->
         <BaseCard title="Product Images">
+          <template #header-actions>
+            <span class="text-sm" :class="images.length >= MAX_IMAGES ? 'text-red-500 font-medium' : 'text-gray-500 dark:text-gray-400'">
+              {{ images.length }}/{{ MAX_IMAGES }}
+            </span>
+          </template>
           <div class="space-y-4">
             <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <!-- Draggable images -->
@@ -1539,6 +1643,7 @@ function cancel() {
 
               <!-- Upload button -->
               <button
+                v-if="images.length < MAX_IMAGES"
                 type="button"
                 class="flex aspect-square items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-500 dark:border-gray-600 dark:hover:border-primary-400"
                 @click="imageInput?.click()"
@@ -1553,23 +1658,23 @@ function cancel() {
             <input
               ref="imageInput"
               type="file"
-              accept="image/*"
+              :accept="ALLOWED_IMAGE_EXTENSIONS"
               multiple
               class="hidden"
               @change="handleImageUpload"
             />
 
             <p class="text-sm text-gray-500 dark:text-gray-400">
-              Drag images to reorder. First image is the main product image. Max 10 images.
+              ছবি ড্র্যাগ করে সাজান। প্রথম ছবিটি প্রাইমারি ছবি হবে। সর্বোচ্চ {{ MAX_IMAGES }}টি ছবি।
             </p>
             
             <!-- Image Upload Hints -->
             <div class="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
-              <p class="text-xs font-medium text-blue-800 dark:text-blue-300">📷 Image Guidelines:</p>
+              <p class="text-xs font-medium text-blue-800 dark:text-blue-300">📷 ছবির নির্দেশিকা:</p>
               <ul class="mt-1 space-y-0.5 text-xs text-blue-700 dark:text-blue-400">
-                <li>• Recommended: 800x800px or 1:1 aspect ratio</li>
-                <li>• Formats: PNG, JPG, WebP (max 5MB each)</li>
-                <li>• Use white background for best results</li>
+                <li>• সাইজ: 800x800px বা 1:1 অনুপাত সেরা</li>
+                <li>• ফরম্যাট: JPG, PNG, WebP, GIF (প্রতিটি সর্বোচ্চ 5MB)</li>
+                <li>• সাদা ব্যাকগ্রাউন্ড ব্যবহার করুন সেরা ফলাফলের জন্য</li>
               </ul>
             </div>
           </div>

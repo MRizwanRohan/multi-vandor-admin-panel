@@ -189,15 +189,20 @@ function getStatusVariant(status: string): 'success' | 'warning' | 'secondary' |
   return variants[status] || 'secondary'
 }
 
-// Stock status
+// Stock status — uses total_stock (sum of variant stock for variable products)
 function getStockStatus(product: Product): { text: string; class: string } {
-  if (product.stock_quantity === 0) {
+  const stock = (product as any).total_stock ?? product.stock_quantity ?? 0
+  const hasVariants = (product as any).has_variants || ((product as any).variant_count ?? 0) > 0
+
+  if (stock === 0) {
     return { text: 'Out of Stock', class: 'text-danger-600 dark:text-danger-400' }
   }
-  if (product.stock_quantity <= 10) {
-    return { text: `Low: ${product.stock_quantity}`, class: 'text-warning-600 dark:text-warning-400' }
+  if (stock <= 10) {
+    const label = hasVariants ? `Low: ${stock} (variants)` : `Low: ${stock}`
+    return { text: label, class: 'text-warning-600 dark:text-warning-400' }
   }
-  return { text: product.stock_quantity.toString(), class: 'text-gray-900 dark:text-white' }
+  const label = hasVariants ? `${stock} (variants)` : stock.toString()
+  return { text: label, class: 'text-gray-900 dark:text-white' }
 }
 </script>
 
@@ -271,8 +276,8 @@ function getStockStatus(product: Product): { text: string; class: string } {
           <div class="flex items-center gap-3">
             <div class="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-700">
               <img
-                v-if="row.primary_image"
-                :src="row.primary_image"
+                v-if="row.thumbnail"
+                :src="row.thumbnail"
                 :alt="row.name"
                 class="h-full w-full object-cover"
                 loading="lazy"

@@ -159,6 +159,7 @@ export interface ProductVariant {
   weight: number | null
   image_url: string | null
   barcode: string | null
+  has_orders: boolean
   options: VariantOption[]
 }
 

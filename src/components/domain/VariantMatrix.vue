@@ -7,7 +7,8 @@ import { ref, computed, watch } from 'vue'
 import type { VariantMatrixAttribute, ProductVariant, VariantOption } from '@/types'
 import { FormInput, FormSwitch } from '@/components/form'
 import { BaseButton } from '@/components/ui'
-import { useConfirm } from '@/composables'
+import { useConfirm, useToast } from '@/composables'
+import { productService } from '@/services'
 import { 
   PhotoIcon, 
   TrashIcon,
@@ -16,7 +17,8 @@ import {
   ChevronUpIcon,
   ClipboardIcon,
   CubeIcon,
-  TagIcon
+  TagIcon,
+  ShieldExclamationIcon
 } from '@heroicons/vue/24/outline'
 
 interface Props {
@@ -25,12 +27,14 @@ interface Props {
   currency?: string
   basePrice?: number
   baseSku?: string
+  productSlug?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
   currency: '৳',
   basePrice: 0,
-  baseSku: ''
+  baseSku: '',
+  productSlug: ''
 })
 
 const emit = defineEmits<{
@@ -40,6 +44,7 @@ const emit = defineEmits<{
 }>()
 
 const confirm = useConfirm()
+const toast = useToast()
 
 // Local state
 const expandedRows = ref<Set<number>>(new Set())
@@ -107,21 +112,52 @@ const updateVariant = (index: number, field: keyof ProductVariant, value: unknow
   emit('update:variants', updated)
 }
 
-// Delete variant with confirmation
+// Delete variant with confirmation and order protection
 const deleteVariant = async (index: number) => {
   const variant = props.variants[index]
-  const confirmed = await confirm.confirm({
-    title: 'Delete Variant?',
-    message: `Are you sure you want to delete "${variant.name}"? This action cannot be undone.`,
-    confirmText: 'Delete',
-    cancelText: 'Cancel',
-    variant: 'danger',
-  })
   
-  if (confirmed) {
-    const updated = props.variants.filter((_, i) => i !== index)
-    emit('update:variants', updated)
+  // Guard: variants with orders cannot be fully deleted
+  if (variant.has_orders || variant.hasOrders) {
+    const confirmed = await confirm.confirm({
+      title: 'অর্ডার আছে!',
+      message: `"${variant.name}" ভেরিয়েন্টে অর্ডার রয়েছে। এটি সম্পূর্ণ মুছে ফেলা সম্ভব নয়, তবে নিষ্ক্রিয় (soft-delete) করা যাবে। চালিয়ে যেতে চান?`,
+      confirmText: 'নিষ্ক্রিয় করুন',
+      cancelText: 'বাতিল',
+      variant: 'warning',
+    })
+    
+    if (!confirmed) return
+  } else {
+    const confirmed = await confirm.confirm({
+      title: 'ভেরিয়েন্ট মুছুন?',
+      message: `"${variant.name}" স্থায়ীভাবে মুছে ফেলা হবে। এটি পূর্বাবস্থায় ফেরানো যাবে না।`,
+      confirmText: 'মুছুন',
+      cancelText: 'বাতিল',
+      variant: 'danger',
+    })
+    
+    if (!confirmed) return
   }
+
+  // If the variant has an ID (saved to DB), call the API
+  if (variant.id && variant.id > 0 && props.productSlug) {
+    try {
+      const result = await productService.deleteVariant(props.productSlug, variant.id)
+      
+      if (result.action === 'soft_deleted') {
+        toast.warning('ভেরিয়েন্টটি নিষ্ক্রিয় করা হয়েছে (অর্ডার ইতিহাস সংরক্ষিত)')
+      } else {
+        toast.success('ভেরিয়েন্ট স্থায়ীভাবে মুছে ফেলা হয়েছে')
+      }
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'ভেরিয়েন্ট মুছতে ব্যর্থ')
+      return
+    }
+  }
+  
+  // Remove from local array
+  const updated = props.variants.filter((_, i) => i !== index)
+  emit('update:variants', updated)
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -423,9 +459,19 @@ const priceRange = computed(() => {
 
               <!-- Variant Name -->
               <td class="px-3 py-3">
-                <span class="font-medium text-gray-900 dark:text-white">
-                  {{ variant.name }}
-                </span>
+                <div class="flex items-center gap-2">
+                  <span class="font-medium text-gray-900 dark:text-white">
+                    {{ variant.name }}
+                  </span>
+                  <span
+                    v-if="variant.has_orders || variant.hasOrders"
+                    class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/50 dark:text-amber-300"
+                    title="এই ভেরিয়েন্টে অর্ডার রয়েছে"
+                  >
+                    <ShieldExclamationIcon class="h-3 w-3" />
+                    অর্ডার আছে
+                  </span>
+                </div>
                 <div class="mt-0.5 flex flex-wrap gap-1">
                   <span
                     v-for="option in variant.options"
@@ -496,10 +542,17 @@ const priceRange = computed(() => {
               <td class="px-3 py-3">
                 <button
                   type="button"
-                  class="text-gray-400 hover:text-danger-500"
+                  :class="[
+                    'transition-colors',
+                    (variant.has_orders || variant.hasOrders)
+                      ? 'text-amber-400 hover:text-amber-600'
+                      : 'text-gray-400 hover:text-danger-500'
+                  ]"
+                  :title="(variant.has_orders || variant.hasOrders) ? 'অর্ডার আছে — নিষ্ক্রিয় হবে' : 'মুছুন'"
                   @click="deleteVariant(index)"
                 >
-                  <TrashIcon class="h-4 w-4" />
+                  <ShieldExclamationIcon v-if="variant.has_orders || variant.hasOrders" class="h-4 w-4" />
+                  <TrashIcon v-else class="h-4 w-4" />
                 </button>
               </td>
             </tr>

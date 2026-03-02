@@ -241,8 +241,7 @@ export const productService = {
     }
     const response = await api.post<ApiResponse<import('@/types').ProductImage[]>>(
       `${VENDOR_BASE}/${productSlug}/images`,
-      formData,
-      { headers: { 'Content-Type': 'multipart/form-data' } }
+      formData
     )
     return response.data.data
   },
@@ -512,9 +511,13 @@ export const productService = {
 
   /**
    * Delete product variant
+   * Returns { action: 'soft_deleted' | 'hard_deleted', message: string }
    */
-  async deleteVariant(productId: number, variantId: number): Promise<void> {
-    await api.delete(`${VENDOR_BASE}/${productId}/variants/${variantId}`)
+  async deleteVariant(productSlugOrId: string | number, variantId: number): Promise<{ action: string; message: string }> {
+    const response = await api.delete<ApiResponse<{ action: string; message: string }>>(
+      `${VENDOR_BASE}/${productSlugOrId}/variants/${variantId}`
+    )
+    return response.data.data
   },
 
   /**

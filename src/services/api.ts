@@ -45,8 +45,12 @@ api.interceptors.request.use(
     const locale = getItem('locale') || 'en'
     config.headers['Accept-Language'] = locale
 
-    // Convert request body keys to snake_case for API
-    if (config.data && !(config.data instanceof FormData)) {
+    // Handle FormData vs JSON body
+    if (config.data instanceof FormData) {
+      // Delete Content-Type so browser auto-sets multipart/form-data with correct boundary
+      delete config.headers['Content-Type']
+    } else if (config.data) {
+      // Convert request body keys to snake_case for API
       config.data = keysToSnake(config.data)
     }
 

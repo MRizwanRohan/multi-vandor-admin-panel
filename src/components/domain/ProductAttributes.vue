@@ -119,6 +119,9 @@ const getSelectOptions = (template: AttributeTemplate) => {
 watch(
   () => props.modelValue,
   () => {
+    // Skip emit for non-variant-only instances (they have no variant-defining templates)
+    if (props.nonVariantOnly) return
+
     if (props.productType === 'variable') {
       const variantAttrs: VariantMatrixAttribute[] = variantDefiningTemplates.value
         .map((template) => {

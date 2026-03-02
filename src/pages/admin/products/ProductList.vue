@@ -51,7 +51,11 @@ const {
 const showRejectModal = ref(false)
 const rejectingProduct = ref<Product | null>(null)
 const rejectionReason = ref('')
+const rejectError = ref('')
+const rejectLoading = ref(false)
 const bulkRejectionReason = ref('')
+const bulkRejectError = ref('')
+const bulkRejectLoading = ref(false)
 const showBulkRejectModal = ref(false)
 
 // Set page info
@@ -180,19 +184,36 @@ async function handleApprove(product: Product) {
 function openRejectModal(product: Product) {
   rejectingProduct.value = product
   rejectionReason.value = ''
+  rejectError.value = ''
   showRejectModal.value = true
 }
 
 async function handleReject() {
-  if (!rejectingProduct.value || !rejectionReason.value.trim()) {
-    toast.error('Please provide a rejection reason')
+  rejectError.value = ''
+  if (!rejectingProduct.value) return
+  if (!rejectionReason.value.trim()) {
+    rejectError.value = 'Please provide a rejection reason.'
     return
   }
+  if (rejectionReason.value.trim().length < 10) {
+    rejectError.value = 'Rejection reason must be at least 10 characters.'
+    return
+  }
+  rejectLoading.value = true
   try {
     await rejectProduct(rejectingProduct.value.slug, rejectionReason.value)
     showRejectModal.value = false
     fetchProducts()
-  } catch { /* handled in composable */ }
+  } catch (e: any) {
+    const errors = e.response?.data?.errors
+    if (errors?.reason) {
+      rejectError.value = Array.isArray(errors.reason) ? errors.reason[0] : errors.reason
+    } else {
+      rejectError.value = e.response?.data?.message || 'Failed to reject product.'
+    }
+  } finally {
+    rejectLoading.value = false
+  }
 }
 
 async function handleToggleFeatured(product: Product) {
@@ -258,21 +279,37 @@ async function handleBulkApprove() {
 
 function openBulkRejectModal() {
   bulkRejectionReason.value = ''
+  bulkRejectError.value = ''
   showBulkRejectModal.value = true
 }
 
 async function handleBulkReject() {
+  bulkRejectError.value = ''
   if (!bulkRejectionReason.value.trim()) {
-    toast.error('Please provide a rejection reason')
+    bulkRejectError.value = 'Please provide a rejection reason.'
     return
   }
+  if (bulkRejectionReason.value.trim().length < 10) {
+    bulkRejectError.value = 'Rejection reason must be at least 10 characters.'
+    return
+  }
+  bulkRejectLoading.value = true
   try {
     const ids = selectedProducts.value.map(p => p.id)
     await adminBulkReject(ids, bulkRejectionReason.value)
     showBulkRejectModal.value = false
     selectedProducts.value = []
     fetchProducts()
-  } catch { /* handled in composable */ }
+  } catch (e: any) {
+    const errors = e.response?.data?.errors
+    if (errors?.reason) {
+      bulkRejectError.value = Array.isArray(errors.reason) ? errors.reason[0] : errors.reason
+    } else {
+      bulkRejectError.value = e.response?.data?.message || 'Failed to reject products.'
+    }
+  } finally {
+    bulkRejectLoading.value = false
+  }
 }
 
 async function handleBulkFeatured(featured: boolean) {
@@ -620,12 +657,23 @@ function getStockStatus(product: Product): { text: string; class: string } {
           <textarea
             v-model="rejectionReason"
             rows="3"
-            placeholder="Provide a reason for rejection..."
-            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            placeholder="Provide a reason for rejection (min 10 characters)..."
+            :class="[
+              'w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 dark:bg-gray-700 dark:text-white',
+              rejectError
+                ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+                : 'border-gray-300 focus:border-primary-500 focus:ring-primary-500 dark:border-gray-600'
+            ]"
+            @input="rejectError = ''"
           ></textarea>
-          <div class="mt-4 flex justify-end gap-3">
+          <div class="mt-1 flex items-center justify-between">
+            <p v-if="rejectError" class="text-xs text-red-600 dark:text-red-400">{{ rejectError }}</p>
+            <span v-else></span>
+            <span class="text-xs" :class="rejectionReason.trim().length < 10 ? 'text-gray-400' : 'text-green-600 dark:text-green-400'">{{ rejectionReason.trim().length }}/10</span>
+          </div>
+          <div class="mt-3 flex justify-end gap-3">
             <BaseButton variant="secondary" size="sm" @click="showRejectModal = false">Cancel</BaseButton>
-            <BaseButton variant="danger" size="sm" @click="handleReject">Reject</BaseButton>
+            <BaseButton variant="danger" size="sm" :loading="rejectLoading" @click="handleReject">Reject</BaseButton>
           </div>
         </div>
       </div>
@@ -643,12 +691,23 @@ function getStockStatus(product: Product): { text: string; class: string } {
           <textarea
             v-model="bulkRejectionReason"
             rows="3"
-            placeholder="Provide a reason for rejection..."
-            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            placeholder="Provide a reason for rejection (min 10 characters)..."
+            :class="[
+              'w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 dark:bg-gray-700 dark:text-white',
+              bulkRejectError
+                ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+                : 'border-gray-300 focus:border-primary-500 focus:ring-primary-500 dark:border-gray-600'
+            ]"
+            @input="bulkRejectError = ''"
           ></textarea>
-          <div class="mt-4 flex justify-end gap-3">
+          <div class="mt-1 flex items-center justify-between">
+            <p v-if="bulkRejectError" class="text-xs text-red-600 dark:text-red-400">{{ bulkRejectError }}</p>
+            <span v-else></span>
+            <span class="text-xs" :class="bulkRejectionReason.trim().length < 10 ? 'text-gray-400' : 'text-green-600 dark:text-green-400'">{{ bulkRejectionReason.trim().length }}/10</span>
+          </div>
+          <div class="mt-3 flex justify-end gap-3">
             <BaseButton variant="secondary" size="sm" @click="showBulkRejectModal = false">Cancel</BaseButton>
-            <BaseButton variant="danger" size="sm" @click="handleBulkReject">Reject All</BaseButton>
+            <BaseButton variant="danger" size="sm" :loading="bulkRejectLoading" @click="handleBulkReject">Reject All</BaseButton>
           </div>
         </div>
       </div>

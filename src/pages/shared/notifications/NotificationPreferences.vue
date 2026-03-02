@@ -83,20 +83,20 @@ onMounted(async () => {
     if (prefs) {
       // Email
       form.email_promotional = prefs.email.promotional
-      form.email_new_products = prefs.email.new_products
-      form.email_special_offers = prefs.email.special_offers
-      form.email_wishlist_alerts = prefs.email.wishlist_alerts
+      form.email_new_products = prefs.email.newProducts
+      form.email_special_offers = prefs.email.specialOffers
+      form.email_wishlist_alerts = prefs.email.wishlistAlerts
       form.email_newsletter = prefs.email.newsletter
-      if (prefs.email.new_orders != null) form.email_new_orders = prefs.email.new_orders
+      if (prefs.email.newOrders != null) form.email_new_orders = prefs.email.newOrders
       if (prefs.email.payout != null) form.email_payout = prefs.email.payout
 
       // In-app
-      form.inapp_order_updates = prefs.inapp.order_updates
+      form.inapp_order_updates = prefs.inapp.orderUpdates
       form.inapp_reviews = prefs.inapp.reviews
-      form.inapp_stock_alerts = prefs.inapp.stock_alerts
-      if (prefs.inapp.new_orders != null) form.inapp_new_orders = prefs.inapp.new_orders
-      if (prefs.inapp.low_stock != null) form.inapp_low_stock = prefs.inapp.low_stock
-      if (prefs.inapp.return_requests != null) form.inapp_return_requests = prefs.inapp.return_requests
+      form.inapp_stock_alerts = prefs.inapp.stockAlerts
+      if (prefs.inapp.newOrders != null) form.inapp_new_orders = prefs.inapp.newOrders
+      if (prefs.inapp.lowStock != null) form.inapp_low_stock = prefs.inapp.lowStock
+      if (prefs.inapp.returnRequests != null) form.inapp_return_requests = prefs.inapp.returnRequests
 
       // Push
       form.push_enabled = prefs.push.enabled

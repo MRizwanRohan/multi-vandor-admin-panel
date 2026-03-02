@@ -85,8 +85,8 @@ export const useNotificationStore = defineStore('notification', () => {
       }
 
       meta.value = response.meta
-      totalUnread.value = response.meta.unread_count
-      hasMore.value = response.meta.current_page < response.meta.last_page
+      totalUnread.value = response.meta.unreadCount
+      hasMore.value = response.meta.currentPage < response.meta.lastPage
       page.value++
     } catch (error: any) {
       if (DEV_MODE && error?.response?.status === 404) {
@@ -128,8 +128,8 @@ export const useNotificationStore = defineStore('notification', () => {
     try {
       await notificationService.markAsRead(id)
       const notification = notifications.value.find((n) => n.id === id)
-      if (notification && !notification.read_at) {
-        notification.read_at = new Date().toISOString()
+      if (notification && !notification.readAt) {
+        notification.readAt = new Date().toISOString()
         totalUnread.value = Math.max(0, totalUnread.value - 1)
       }
     } catch (error) {
@@ -144,8 +144,8 @@ export const useNotificationStore = defineStore('notification', () => {
     try {
       const count = await notificationService.markAllAsRead()
       notifications.value.forEach((n) => {
-        if (!n.read_at) {
-          n.read_at = new Date().toISOString()
+        if (!n.readAt) {
+          n.readAt = new Date().toISOString()
         }
       })
       totalUnread.value = 0
@@ -163,7 +163,7 @@ export const useNotificationStore = defineStore('notification', () => {
       const notification = notifications.value.find((n) => n.id === id)
       await notificationService.delete(id)
       notifications.value = notifications.value.filter((n) => n.id !== id)
-      if (notification && !notification.read_at) {
+      if (notification && !notification.readAt) {
         totalUnread.value = Math.max(0, totalUnread.value - 1)
       }
     } catch (error) {
@@ -193,7 +193,7 @@ export const useNotificationStore = defineStore('notification', () => {
    */
   function addNotification(notification: Notification): void {
     notifications.value.unshift(notification)
-    if (!notification.read_at) {
+    if (!notification.readAt) {
       totalUnread.value++
     }
   }

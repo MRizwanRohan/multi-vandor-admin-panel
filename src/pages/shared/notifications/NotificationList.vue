@@ -48,9 +48,9 @@ onMounted(() => {
 const filteredNotifications = computed(() => {
   switch (activeFilter.value) {
     case 'unread':
-      return store.notifications.filter((n) => !n.read_at)
+      return store.notifications.filter((n) => !n.readAt)
     case 'read':
-      return store.notifications.filter((n) => !!n.read_at)
+      return store.notifications.filter((n) => !!n.readAt)
     default:
       return store.notifications
   }
@@ -58,8 +58,8 @@ const filteredNotifications = computed(() => {
 
 const filterCounts = computed(() => ({
   all: store.notifications.length,
-  unread: store.notifications.filter((n) => !n.read_at).length,
-  read: store.notifications.filter((n) => !!n.read_at).length,
+  unread: store.notifications.filter((n) => !n.readAt).length,
+  read: store.notifications.filter((n) => !!n.readAt).length,
 }))
 
 const isEmpty = computed(() => filteredNotifications.value.length === 0 && !store.isLoading)

@@ -29,10 +29,10 @@ const emit = defineEmits<{
 
 const { getIcon, getColors } = useNotification()
 
-const isUnread = computed(() => !props.notification.read_at)
+const isUnread = computed(() => !props.notification.readAt)
 const IconComponent = computed(() => getIcon(props.notification))
 const colors = computed(() => getColors(props.notification))
-const formattedTime = computed(() => timeAgo(props.notification.created_at))
+const formattedTime = computed(() => timeAgo(props.notification.createdAt))
 
 function handleClick() {
   emit('click', props.notification)
@@ -100,10 +100,10 @@ function handleDelete(event: Event) {
           {{ formattedTime }}
         </p>
         <span
-          v-if="notification.action_text"
+          v-if="notification.actionText"
           class="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
         >
-          {{ notification.action_text }}
+          {{ notification.actionText }}
         </span>
       </div>
     </div>

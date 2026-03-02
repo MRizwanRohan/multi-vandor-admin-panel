@@ -198,20 +198,20 @@ export function useNotification() {
    */
   function handleNotificationClick(notification: Notification): void {
     // Mark as read if unread
-    if (!notification.read_at) {
+    if (!notification.readAt) {
       store.markAsRead(notification.id)
     }
 
     // Navigate to action URL
-    if (notification.action_url) {
+    if (notification.actionUrl) {
       // If action_url already starts with /admin or /vendor, use as-is
       // Otherwise prefix with role-based path
       const prefix = authStore.isAdmin ? '/admin' : '/vendor'
-      const url = notification.action_url.startsWith('/admin') || notification.action_url.startsWith('/vendor')
-        ? notification.action_url
-        : notification.action_url.startsWith('/')
-          ? `${prefix}${notification.action_url}`
-          : notification.action_url
+      const url = notification.actionUrl.startsWith('/admin') || notification.actionUrl.startsWith('/vendor')
+        ? notification.actionUrl
+        : notification.actionUrl.startsWith('/')
+          ? `${prefix}${notification.actionUrl}`
+          : notification.actionUrl
       router.push(url)
     }
   }

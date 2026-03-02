@@ -53,24 +53,24 @@ export type NotificationColor = 'blue' | 'green' | 'red' | 'yellow' | 'indigo' |
  * Notification metadata (varies by type)
  */
 export interface NotificationMetadata {
-  order_id?: number
-  order_number?: string
+  orderId?: number
+  orderNumber?: string
   status?: string
-  previous_status?: string
-  tracking_number?: string
-  product_id?: number
-  product_name?: string
-  product_slug?: string
-  review_id?: number
+  previousStatus?: string
+  trackingNumber?: string
+  productId?: number
+  productName?: string
+  productSlug?: string
+  reviewId?: number
   rating?: number
-  vendor_id?: number
-  vendor_name?: string
-  payout_id?: number
+  vendorId?: number
+  vendorName?: string
+  payoutId?: number
   amount?: number
-  current_stock?: number
+  currentStock?: number
   threshold?: number
-  dispute_id?: number
-  category_name?: string
+  disputeId?: number
+  categoryName?: string
   reason?: string
   [key: string]: unknown
 }
@@ -85,11 +85,11 @@ export interface Notification {
   message: string
   icon: NotificationIcon | string
   color: NotificationColor | string
-  action_url: string | null
-  action_text: string | null
+  actionUrl: string | null
+  actionText: string | null
   metadata: NotificationMetadata
-  read_at: string | null
-  created_at: string
+  readAt: string | null
+  createdAt: string
 }
 
 /**
@@ -97,12 +97,12 @@ export interface Notification {
  */
 export interface EmailPreferences {
   promotional: boolean
-  new_products: boolean
-  special_offers: boolean
-  wishlist_alerts: boolean
+  newProducts: boolean
+  specialOffers: boolean
+  wishlistAlerts: boolean
   newsletter: boolean
   // Vendor-only (null for customers)
-  new_orders?: boolean | null
+  newOrders?: boolean | null
   payout?: boolean | null
 }
 
@@ -110,13 +110,13 @@ export interface EmailPreferences {
  * In-app notification preferences
  */
 export interface InAppPreferences {
-  order_updates: boolean
+  orderUpdates: boolean
   reviews: boolean
-  stock_alerts: boolean
+  stockAlerts: boolean
   // Vendor-only (null for customers)
-  new_orders?: boolean | null
-  low_stock?: boolean | null
-  return_requests?: boolean | null
+  newOrders?: boolean | null
+  lowStock?: boolean | null
+  returnRequests?: boolean | null
 }
 
 /**
@@ -171,11 +171,11 @@ export interface NotificationFilters {
  * Notification list meta from paginated response
  */
 export interface NotificationMeta {
-  current_page: number
-  per_page: number
+  currentPage: number
+  perPage: number
   total: number
-  last_page: number
-  unread_count: number
+  lastPage: number
+  unreadCount: number
 }
 
 /**
@@ -193,11 +193,11 @@ export interface BroadcastNotificationPayload {
  * Admin send notification to specific users
  */
 export interface SendNotificationPayload {
-  user_ids: string[]
+  userIds: string[]
   title: string
   message: string
   type: string
-  action_url?: string
+  actionUrl?: string
   channels: ('database' | 'broadcast' | 'mail')[]
 }
 
@@ -206,14 +206,14 @@ export interface SendNotificationPayload {
  */
 export interface EmailLog {
   id: number
-  recipient_email: string
-  email_type: string
+  recipientEmail: string
+  emailType: string
   subject: string
   status: 'queued' | 'sent' | 'delivered' | 'bounced' | 'failed'
-  sent_at: string | null
-  delivered_at: string | null
-  error_message: string | null
-  created_at: string
+  sentAt: string | null
+  deliveredAt: string | null
+  errorMessage: string | null
+  createdAt: string
 }
 
 /**
@@ -221,8 +221,8 @@ export interface EmailLog {
  */
 export interface EmailLogFilters {
   status?: EmailLog['status']
-  email_type?: string
-  user_id?: string
-  per_page?: number
+  emailType?: string
+  userId?: string
+  perPage?: number
   page?: number
 }

@@ -15,15 +15,20 @@ import {
   XCircleIcon,
   StarIcon,
   ShoppingBagIcon,
+  ShoppingCartIcon,
   ExclamationTriangleIcon,
   BuildingStorefrontIcon,
   BanknotesIcon,
+  CurrencyDollarIcon,
   ArrowUturnLeftIcon,
   ShieldExclamationIcon,
   TagIcon,
   BellIcon,
   MegaphoneIcon,
   ArchiveBoxIcon,
+  UserPlusIcon,
+  Cog6ToothIcon,
+  InformationCircleIcon,
 } from '@heroicons/vue/24/outline'
 
 // ─────────────────────────────────────────────────────────────────
@@ -38,14 +43,20 @@ const iconMap: Record<string, Component> = {
   'x-circle': markRaw(XCircleIcon),
   'star': markRaw(StarIcon),
   'shopping-bag': markRaw(ShoppingBagIcon),
+  'shopping-cart': markRaw(ShoppingCartIcon),
   'exclamation-triangle': markRaw(ExclamationTriangleIcon),
+  'alert-triangle': markRaw(ExclamationTriangleIcon),
   'building-storefront': markRaw(BuildingStorefrontIcon),
   'banknotes': markRaw(BanknotesIcon),
+  'dollar-sign': markRaw(CurrencyDollarIcon),
   'arrow-uturn-left': markRaw(ArrowUturnLeftIcon),
   'shield-exclamation': markRaw(ShieldExclamationIcon),
   'tag': markRaw(TagIcon),
   'bell': markRaw(BellIcon),
   'megaphone': markRaw(MegaphoneIcon),
+  'user-plus': markRaw(UserPlusIcon),
+  'settings': markRaw(Cog6ToothIcon),
+  'info': markRaw(InformationCircleIcon),
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -193,10 +204,14 @@ export function useNotification() {
 
     // Navigate to action URL
     if (notification.action_url) {
+      // If action_url already starts with /admin or /vendor, use as-is
+      // Otherwise prefix with role-based path
       const prefix = authStore.isAdmin ? '/admin' : '/vendor'
-      const url = notification.action_url.startsWith('/')
-        ? `${prefix}${notification.action_url}`
-        : notification.action_url
+      const url = notification.action_url.startsWith('/admin') || notification.action_url.startsWith('/vendor')
+        ? notification.action_url
+        : notification.action_url.startsWith('/')
+          ? `${prefix}${notification.action_url}`
+          : notification.action_url
       router.push(url)
     }
   }

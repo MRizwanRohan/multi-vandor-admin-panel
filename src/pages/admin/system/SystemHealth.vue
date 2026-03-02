@@ -286,19 +286,124 @@ onUnmounted(() => {
     </div>
 
     <template v-else-if="dashboard">
-      <!-- Stats -->
+      <!-- Stats with improved gradient cards -->
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          v-for="stat in stats"
-          :key="stat.title"
-          :title="stat.title"
-          :value="stat.value"
-          :icon="stat.icon"
-          :change="stat.change"
-          :trend="stat.trend"
-          :change-label="stat.changeLabel"
-          :color="stat.color"
-        />
+        <!-- Uptime Card -->
+        <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 p-5 shadow-sm ring-1 ring-emerald-100 transition-all hover:shadow-md dark:from-emerald-900/20 dark:to-teal-900/20 dark:ring-emerald-800/30">
+          <div class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-emerald-100/50 blur-2xl transition-all group-hover:scale-150 dark:bg-emerald-800/20" />
+          <div class="relative flex items-start justify-between">
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-emerald-700 dark:text-emerald-400">Uptime</p>
+              <p class="mt-1.5 text-3xl font-bold text-gray-900 dark:text-white">{{ dashboard.uptime.percentage.toFixed(2) }}%</p>
+              <p class="mt-1 text-sm text-emerald-600 dark:text-emerald-500">{{ dashboard.uptime.formatted }}</p>
+            </div>
+            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 ring-1 ring-emerald-500/20 dark:bg-emerald-500/20 dark:ring-emerald-500/30">
+              <ClockIcon class="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+            </div>
+          </div>
+        </div>
+
+        <!-- CPU Usage Card -->
+        <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 p-5 shadow-sm ring-1 ring-blue-100 transition-all hover:shadow-md dark:from-blue-900/20 dark:to-indigo-900/20 dark:ring-blue-800/30">
+          <div class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-blue-100/50 blur-2xl transition-all group-hover:scale-150 dark:bg-blue-800/20" />
+          <div class="relative flex items-start justify-between">
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-blue-700 dark:text-blue-400">CPU Usage</p>
+              <p class="mt-1.5 text-3xl font-bold text-gray-900 dark:text-white">{{ Math.round(dashboard.metrics.cpu) }}%</p>
+              <p class="mt-1 text-sm text-blue-600 dark:text-blue-500">{{ dashboard.metrics.cpu.toFixed(2) }}% current</p>
+            </div>
+            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 ring-1 ring-blue-500/20 dark:bg-blue-500/20 dark:ring-blue-500/30">
+              <CpuChipIcon class="h-6 w-6 text-blue-600 dark:text-blue-400" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Memory Usage Card -->
+        <div 
+          class="group relative overflow-hidden rounded-xl p-5 shadow-sm transition-all hover:shadow-md"
+          :class="dashboard.metrics.memory > 80 
+            ? 'bg-gradient-to-br from-rose-50 to-red-50 ring-1 ring-rose-100 dark:from-rose-900/20 dark:to-red-900/20 dark:ring-rose-800/30'
+            : dashboard.metrics.memory > 60
+              ? 'bg-gradient-to-br from-amber-50 to-orange-50 ring-1 ring-amber-100 dark:from-amber-900/20 dark:to-orange-900/20 dark:ring-amber-800/30'
+              : 'bg-gradient-to-br from-violet-50 to-purple-50 ring-1 ring-violet-100 dark:from-violet-900/20 dark:to-purple-900/20 dark:ring-violet-800/30'"
+        >
+          <div 
+            class="absolute -right-4 -top-4 h-24 w-24 rounded-full blur-2xl transition-all group-hover:scale-150"
+            :class="dashboard.metrics.memory > 80 ? 'bg-rose-100/50 dark:bg-rose-800/20' : dashboard.metrics.memory > 60 ? 'bg-amber-100/50 dark:bg-amber-800/20' : 'bg-violet-100/50 dark:bg-violet-800/20'"
+          />
+          <div class="relative flex items-start justify-between">
+            <div class="min-w-0 flex-1">
+              <p 
+                class="text-sm font-medium"
+                :class="dashboard.metrics.memory > 80 ? 'text-rose-700 dark:text-rose-400' : dashboard.metrics.memory > 60 ? 'text-amber-700 dark:text-amber-400' : 'text-violet-700 dark:text-violet-400'"
+              >Memory Usage</p>
+              <p class="mt-1.5 text-3xl font-bold text-gray-900 dark:text-white">{{ Math.round(dashboard.metrics.memory) }}%</p>
+              <p 
+                class="mt-1 text-sm"
+                :class="dashboard.metrics.memory > 80 ? 'text-rose-600 dark:text-rose-500' : dashboard.metrics.memory > 60 ? 'text-amber-600 dark:text-amber-500' : 'text-violet-600 dark:text-violet-500'"
+              >{{ formatBytes(dashboard.metrics.memory_used) }} / {{ formatBytes(dashboard.metrics.memory_total) }}</p>
+            </div>
+            <div 
+              class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ring-1"
+              :class="dashboard.metrics.memory > 80 
+                ? 'bg-rose-500/10 ring-rose-500/20 dark:bg-rose-500/20 dark:ring-rose-500/30' 
+                : dashboard.metrics.memory > 60 
+                  ? 'bg-amber-500/10 ring-amber-500/20 dark:bg-amber-500/20 dark:ring-amber-500/30'
+                  : 'bg-violet-500/10 ring-violet-500/20 dark:bg-violet-500/20 dark:ring-violet-500/30'"
+            >
+              <ServerIcon 
+                class="h-6 w-6"
+                :class="dashboard.metrics.memory > 80 ? 'text-rose-600 dark:text-rose-400' : dashboard.metrics.memory > 60 ? 'text-amber-600 dark:text-amber-400' : 'text-violet-600 dark:text-violet-400'"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Services Card -->
+        <div 
+          class="group relative overflow-hidden rounded-xl p-5 shadow-sm transition-all hover:shadow-md"
+          :class="dashboard.summary.down > 0 
+            ? 'bg-gradient-to-br from-rose-50 to-red-50 ring-1 ring-rose-100 dark:from-rose-900/20 dark:to-red-900/20 dark:ring-rose-800/30'
+            : dashboard.summary.degraded > 0
+              ? 'bg-gradient-to-br from-amber-50 to-orange-50 ring-1 ring-amber-100 dark:from-amber-900/20 dark:to-orange-900/20 dark:ring-amber-800/30'
+              : 'bg-gradient-to-br from-cyan-50 to-sky-50 ring-1 ring-cyan-100 dark:from-cyan-900/20 dark:to-sky-900/20 dark:ring-cyan-800/30'"
+        >
+          <div 
+            class="absolute -right-4 -top-4 h-24 w-24 rounded-full blur-2xl transition-all group-hover:scale-150"
+            :class="dashboard.summary.down > 0 ? 'bg-rose-100/50 dark:bg-rose-800/20' : dashboard.summary.degraded > 0 ? 'bg-amber-100/50 dark:bg-amber-800/20' : 'bg-cyan-100/50 dark:bg-cyan-800/20'"
+          />
+          <div class="relative flex items-start justify-between">
+            <div class="min-w-0 flex-1">
+              <p 
+                class="text-sm font-medium"
+                :class="dashboard.summary.down > 0 ? 'text-rose-700 dark:text-rose-400' : dashboard.summary.degraded > 0 ? 'text-amber-700 dark:text-amber-400' : 'text-cyan-700 dark:text-cyan-400'"
+              >Services</p>
+              <p class="mt-1.5 text-3xl font-bold text-gray-900 dark:text-white">{{ dashboard.summary.operational }}/{{ dashboard.summary.total_services }}</p>
+              <p 
+                class="mt-1 text-sm"
+                :class="dashboard.summary.down > 0 ? 'text-rose-600 dark:text-rose-500' : dashboard.summary.degraded > 0 ? 'text-amber-600 dark:text-amber-500' : 'text-cyan-600 dark:text-cyan-500'"
+              >
+                <template v-if="dashboard.summary.down > 0 || dashboard.summary.degraded > 0">
+                  {{ dashboard.summary.down + dashboard.summary.degraded }} issues
+                </template>
+                <template v-else>All services healthy</template>
+              </p>
+            </div>
+            <div 
+              class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ring-1"
+              :class="dashboard.summary.down > 0 
+                ? 'bg-rose-500/10 ring-rose-500/20 dark:bg-rose-500/20 dark:ring-rose-500/30' 
+                : dashboard.summary.degraded > 0 
+                  ? 'bg-amber-500/10 ring-amber-500/20 dark:bg-amber-500/20 dark:ring-amber-500/30'
+                  : 'bg-cyan-500/10 ring-cyan-500/20 dark:bg-cyan-500/20 dark:ring-cyan-500/30'"
+            >
+              <CircleStackIcon 
+                class="h-6 w-6"
+                :class="dashboard.summary.down > 0 ? 'text-rose-600 dark:text-rose-400' : dashboard.summary.degraded > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-cyan-600 dark:text-cyan-400'"
+              />
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Resource Utilization -->

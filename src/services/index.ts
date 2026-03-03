@@ -19,3 +19,4 @@ export { notificationService, type NotificationFilters } from './notification.se
 export { shippingService, type ShippingZone, type ShippingMethod, type ShippingRegion, type ShippingClass, type ShippingRate, type ShippingCalculation } from './shipping.service'
 export { healthService } from './health.service'
 export { activityService } from './activity.service'
+export { inventoryService } from './inventory.service'

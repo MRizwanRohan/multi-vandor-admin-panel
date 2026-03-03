@@ -118,6 +118,16 @@ const adminNavItems: NavItem[] = [
     icon: UsersIcon,
   },
   {
+    name: 'Inventory',
+    to: '/admin/inventory',
+    icon: CubeIcon,
+    children: [
+      { name: 'Overview', to: '/admin/inventory' },
+      { name: 'Stock Alerts', to: '/admin/inventory/alerts' },
+      { name: 'Movements', to: '/admin/inventory/movements' },
+    ],
+  },
+  {
     name: 'Reviews',
     to: '/admin/reviews',
     icon: StarIcon,

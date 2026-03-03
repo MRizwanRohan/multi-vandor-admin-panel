@@ -148,6 +148,25 @@ const adminRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/admin/customers/CustomerDetail.vue'),
         meta: { title: 'Customer Details' },
       },
+      // Inventory
+      {
+        path: 'inventory',
+        name: 'admin-inventory',
+        component: () => import('@/pages/admin/inventory/InventoryOverview.vue'),
+        meta: { title: 'Inventory' },
+      },
+      {
+        path: 'inventory/alerts',
+        name: 'admin-inventory-alerts',
+        component: () => import('@/pages/admin/inventory/StockAlerts.vue'),
+        meta: { title: 'Stock Alerts' },
+      },
+      {
+        path: 'inventory/movements',
+        name: 'admin-inventory-movements',
+        component: () => import('@/pages/admin/inventory/StockMovements.vue'),
+        meta: { title: 'Stock Movements' },
+      },
       // Reviews
       {
         path: 'reviews',

@@ -77,8 +77,8 @@ const adminInventory = {
    * Paginated stock alerts with optional filters
    */
   async getAlerts(params?: AlertListParams): Promise<AlertListResponse> {
-    const response = await api.get<AlertListResponse>(`${ADMIN_BASE}/alerts`, { params })
-    return response.data
+    const response = await api.get(`${ADMIN_BASE}/alerts`, { params })
+    return response.data  // paginatedResponse: { success, message, data: [], meta: {} }
   },
 
   /**
@@ -86,8 +86,8 @@ const adminInventory = {
    * Paginated inventory log / movements
    */
   async getMovements(params?: MovementListParams): Promise<PaginatedApiResponse<InventoryLog>> {
-    const response = await api.get<PaginatedApiResponse<InventoryLog>>(`${ADMIN_BASE}/movements`, { params })
-    return response.data
+    const response = await api.get(`${ADMIN_BASE}/movements`, { params })
+    return response.data  // paginatedResponse: { success, message, data: [], meta: {} }
   },
 
   /**
@@ -95,8 +95,8 @@ const adminInventory = {
    * Low stock products (paginated StockOverview)
    */
   async getLowStock(params?: InventoryListParams): Promise<InventoryListResponse> {
-    const response = await api.get<InventoryListResponse>(`${ADMIN_BASE}/low-stock`, { params })
-    return response.data
+    const response = await api.get(`${ADMIN_BASE}/low-stock`, { params })
+    return response.data  // paginatedResponse: { success, message, data: [], meta: {} }
   },
 
   /**
@@ -120,11 +120,20 @@ const adminInventory = {
    * Adjust stock for a single product/variant
    */
   async adjustStock(data: StockAdjustmentRequest): Promise<StockUpdateResponse> {
+    // Backend expects quantity_change (positive/negative integer) + reason
+    let quantityChange: number
+    if (data.type === 'set') {
+      quantityChange = data.quantity - data.currentStock
+    } else if (data.type === 'subtract') {
+      quantityChange = -Math.abs(data.quantity)
+    } else {
+      quantityChange = Math.abs(data.quantity)
+    }
+
     const response = await api.post<StockUpdateResponse>(`${ADMIN_BASE}/adjust`, {
       product_id: data.productId,
       variant_id: data.variantId,
-      quantity: data.quantity,
-      type: data.type,
+      quantity_change: quantityChange,
       reason: data.reason,
     })
     return response.data
@@ -166,23 +175,26 @@ const vendorInventory = {
    * Paginated stock overview for the vendor's products
    */
   async getInventory(params?: InventoryListParams): Promise<InventoryListResponse> {
-    const response = await api.get<InventoryListResponse>(VENDOR_BASE, { params })
-    return response.data
+    const response = await api.get(VENDOR_BASE, { params })
+    return response.data.data
   },
 
   /**
-   * PUT /vendor/inventory/{productId}
+   * PUT /vendor/inventory/{id}?type=product|variant
    * Update stock for a product or variant
+   * Backend takes the ID from URL + type param to determine product vs variant
    */
   async updateStock(productId: number, data: {
     stockQuantity: number
     variantId?: number
-    type?: 'set' | 'add' | 'subtract'
+    reason?: string
   }): Promise<StockUpdateResponse> {
-    const response = await api.put<StockUpdateResponse>(`${VENDOR_BASE}/${productId}`, {
+    const id = data.variantId || productId
+    const type = data.variantId ? 'variant' : 'product'
+    const response = await api.put<StockUpdateResponse>(`${VENDOR_BASE}/${id}`, {
       stock_quantity: data.stockQuantity,
-      variant_id: data.variantId,
-      type: data.type || 'set',
+      type,
+      reason: data.reason || 'Stock adjustment',
     })
     return response.data
   },
@@ -192,8 +204,8 @@ const vendorInventory = {
    * Paginated stock movement history for vendor's products
    */
   async getMovements(params?: MovementListParams): Promise<PaginatedApiResponse<InventoryLog>> {
-    const response = await api.get<PaginatedApiResponse<InventoryLog>>(`${VENDOR_BASE}/movements`, { params })
-    return response.data
+    const response = await api.get(`${VENDOR_BASE}/movements`, { params })
+    return response.data  // paginatedResponse: { success, message, data: [], meta: {} }
   },
 
   /**
@@ -201,8 +213,8 @@ const vendorInventory = {
    * Paginated stock alerts for vendor's products
    */
   async getAlerts(params?: AlertListParams): Promise<AlertListResponse> {
-    const response = await api.get<AlertListResponse>(`${VENDOR_BASE}/alerts`, { params })
-    return response.data
+    const response = await api.get(`${VENDOR_BASE}/alerts`, { params })
+    return response.data.data
   },
 
   /**

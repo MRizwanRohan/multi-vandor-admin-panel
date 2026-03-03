@@ -13,6 +13,7 @@ export interface StockOverviewItem {
   sku: string | null
   name: string
   variantName: string | null
+  imageUrl: string | null
   stockQuantity: number
   reservedQuantity: number
   availableQuantity: number
@@ -21,6 +22,7 @@ export interface StockOverviewItem {
   isOutOfStock: boolean
   status: StockStatus
   lastUpdated: string | null
+  vendor?: { id: number; storeName: string }
 }
 
 // ── Inventory Log / Movement (from InventoryLogResource) ─────────
@@ -91,7 +93,7 @@ export interface StockAlertVariant {
 
 export interface StockAlertVendor {
   id: number
-  shopName: string
+  storeName: string
 }
 
 export interface StockAlert {
@@ -171,7 +173,8 @@ export interface StockAdjustmentRequest {
   variantId?: number
   quantity: number
   type: 'set' | 'add' | 'subtract'
-  reason?: string
+  currentStock: number
+  reason: string
 }
 
 export interface BulkStockAdjustmentRequest {

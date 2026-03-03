@@ -120,6 +120,18 @@ function closeModal() {
 
 async function submitAdjust() {
   if (!selectedItem.value) return
+  if (!adjustReason.value.trim()) {
+    toast.error('Please provide a reason for the adjustment')
+    return
+  }
+  if (adjustType.value === 'set' && adjustQty.value === selectedItem.value.stockQuantity) {
+    toast.error('New quantity is the same as current stock')
+    return
+  }
+  if (adjustType.value !== 'set' && adjustQty.value <= 0) {
+    toast.error('Please enter a quantity greater than 0')
+    return
+  }
   isSaving.value = true
   try {
     await inventoryService.admin.adjustStock({
@@ -127,7 +139,8 @@ async function submitAdjust() {
       variantId: selectedItem.value.variantId ?? undefined,
       quantity: adjustQty.value,
       type: adjustType.value,
-      reason: adjustReason.value || undefined,
+      currentStock: selectedItem.value.stockQuantity,
+      reason: adjustReason.value.trim(),
     })
     toast.success('Stock adjusted successfully')
     closeModal()

@@ -270,7 +270,7 @@ onMounted(() => {
 
         <template #cell-vendor="{ row }">
           <span class="text-sm text-gray-700 dark:text-gray-300">
-            {{ row.vendor?.shopName ?? '—' }}
+            {{ row.vendor?.storeName ?? '—' }}
           </span>
         </template>
 

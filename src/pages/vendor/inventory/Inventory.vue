@@ -101,6 +101,7 @@ const isModalOpen = ref(false)
 const selectedItem = ref<StockOverviewItem | null>(null)
 const newStock = ref(0)
 const updateType = ref<'set' | 'add' | 'subtract'>('set')
+const updateReason = ref('')
 const isSaving = ref(false)
 
 const stockTypeOptions = [
@@ -123,6 +124,7 @@ function openStockModal(item: StockOverviewItem) {
   selectedItem.value = item
   newStock.value = item.stockQuantity
   updateType.value = 'set'
+  updateReason.value = ''
   isModalOpen.value = true
 }
 
@@ -133,12 +135,26 @@ function closeModal() {
 
 async function updateStock() {
   if (!selectedItem.value) return
+  // Compute final stock quantity based on type
+  const finalStock = previewStock.value
+  if (finalStock === selectedItem.value.stockQuantity && updateType.value === 'set') {
+    toast.error('New quantity is the same as current stock')
+    return
+  }
+  if (updateType.value !== 'set' && newStock.value <= 0) {
+    toast.error('Please enter a quantity greater than 0')
+    return
+  }
+  if (!updateReason.value.trim()) {
+    toast.error('Please provide a reason for the stock change')
+    return
+  }
   isSaving.value = true
   try {
     await inventoryService.vendor.updateStock(selectedItem.value.productId, {
-      stockQuantity: newStock.value,
+      stockQuantity: finalStock,
       variantId: selectedItem.value.variantId ?? undefined,
-      type: updateType.value,
+      reason: updateReason.value.trim(),
     })
     toast.success('Stock updated successfully')
     closeModal()
@@ -692,6 +708,14 @@ onMounted(() => {
           name="stock"
           type="number"
           :min="0"
+          required
+        />
+
+        <FormInput
+          v-model="updateReason"
+          label="Reason"
+          name="reason"
+          placeholder="e.g., Restocking, Correction, Damaged goods"
           required
         />
 

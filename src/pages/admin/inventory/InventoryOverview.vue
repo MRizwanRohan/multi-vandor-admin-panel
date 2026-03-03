@@ -4,7 +4,7 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useBreadcrumbStore } from '@/stores'
 import { inventoryService } from '@/services'
 import { usePagination, useToast } from '@/composables'
@@ -14,19 +14,15 @@ import BaseBadge from '@/components/ui/BaseBadge.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import FormInput from '@/components/form/FormInput.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
-import DataTable from '@/components/data/DataTable.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import type {
   InventoryStats,
   StockOverviewItem,
   StockStatus,
-  TableColumn,
 } from '@/types'
 import {
   CubeIcon,
   ExclamationTriangleIcon,
-  CheckCircleIcon,
-  XCircleIcon,
   ArrowPathIcon,
   BellAlertIcon,
   ClockIcon,
@@ -62,16 +58,59 @@ const stockLoading = ref(true)
 const searchQuery = ref('')
 const statusFilter = ref<StockStatus | ''>('')
 
-const columns: TableColumn[] = [
-  { key: 'name', label: 'Product', sortable: true },
-  { key: 'sku', label: 'SKU', sortable: true },
-  { key: 'stockQuantity', label: 'Stock', sortable: true, align: 'center' },
-  { key: 'reservedQuantity', label: 'Reserved', align: 'center' },
-  { key: 'availableQuantity', label: 'Available', align: 'center' },
-  { key: 'lowStockThreshold', label: 'Threshold', align: 'center' },
-  { key: 'status', label: 'Status', align: 'center' },
-  { key: 'actions', label: '', align: 'right' },
-]
+// ── Grouped Stock Items (Professional Grouped Rows) ──────────────
+
+interface GroupedProduct {
+  productId: number
+  name: string
+  imageUrl?: string
+  vendor?: { id: number; name: string }
+  isSimple: boolean
+  item?: StockOverviewItem
+  variants: StockOverviewItem[]
+  totalStock: number
+  hasLowStock: boolean
+  hasOutOfStock: boolean
+}
+
+const groupedStockItems = computed<GroupedProduct[]>(() => {
+  const groups = new Map<number, GroupedProduct>()
+  
+  for (const item of stockItems.value) {
+    const pid = item.productId
+    
+    if (!groups.has(pid)) {
+      groups.set(pid, {
+        productId: pid,
+        name: item.name,
+        imageUrl: item.imageUrl,
+        vendor: item.vendor,
+        isSimple: !item.variantId,
+        item: !item.variantId ? item : undefined,
+        variants: [],
+        totalStock: 0,
+        hasLowStock: false,
+        hasOutOfStock: false,
+      })
+    }
+    
+    const group = groups.get(pid)!
+    
+    if (item.variantId) {
+      group.variants.push(item)
+      group.isSimple = false
+    } else {
+      group.item = item
+      group.isSimple = true
+    }
+    
+    group.totalStock += item.stockQuantity
+    if (item.isLowStock) group.hasLowStock = true
+    if (item.isOutOfStock) group.hasOutOfStock = true
+  }
+  
+  return Array.from(groups.values())
+})
 
 async function fetchStock() {
   stockLoading.value = true
@@ -325,71 +364,170 @@ onMounted(() => {
         </div>
       </template>
 
-      <DataTable
-        :columns="columns"
-        :data="stockItems"
-        :loading="stockLoading"
-        row-key="productId"
-        :current-page="pagination.currentPage.value"
-        :per-page="pagination.perPage.value"
-        :total="pagination.totalItems.value"
-        @update:currentPage="pagination.currentPage.value = $event; fetchStock()"
-        @update:perPage="pagination.perPage.value = $event; fetchStock()"
-      >
-        <template #cell-name="{ row }">
-          <div>
-            <p class="font-medium text-gray-900 dark:text-white">{{ row.name }}</p>
-            <p v-if="row.variantName" class="text-xs text-gray-500 dark:text-gray-400">
-              Variant: {{ row.variantName }}
-            </p>
-          </div>
-        </template>
+      <!-- Loading state -->
+      <div v-if="stockLoading" class="flex items-center justify-center py-12">
+        <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600"></div>
+      </div>
 
-        <template #cell-stockQuantity="{ row }">
-          <span
-            class="font-bold"
-            :class="[
-              row.isOutOfStock ? 'text-danger-600 dark:text-danger-400' :
-              row.isLowStock ? 'text-warning-600 dark:text-warning-400' :
-              'text-gray-900 dark:text-white'
-            ]"
+      <!-- Empty state -->
+      <div v-else-if="groupedStockItems.length === 0" class="py-8">
+        <EmptyState
+          title="No products found"
+          description="No products match the current filters."
+        />
+      </div>
+
+      <!-- Grouped Table -->
+      <div v-else class="overflow-x-auto">
+        <table class="w-full min-w-[900px]">
+          <thead class="bg-gray-50 dark:bg-gray-800/50">
+            <tr>
+              <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Product / Variant</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">SKU</th>
+              <th class="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Stock</th>
+              <th class="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Reserved</th>
+              <th class="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Available</th>
+              <th class="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Threshold</th>
+              <th class="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
+              <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700/50">
+            <template v-for="group in groupedStockItems" :key="group.productId">
+              <!-- Simple Product Row -->
+              <tr v-if="group.isSimple && group.item" class="hover:bg-gray-50 dark:hover:bg-gray-800/30">
+                <td class="px-4 py-3">
+                  <div class="flex items-center gap-3">
+                    <div v-if="group.imageUrl" class="h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-700">
+                      <img :src="group.imageUrl" :alt="group.name" class="h-full w-full object-cover" />
+                    </div>
+                    <div v-else class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700">
+                      <CubeIcon class="h-5 w-5 text-gray-400" />
+                    </div>
+                    <div>
+                      <span class="font-medium text-gray-900 dark:text-white">{{ group.name }}</span>
+                      <p v-if="group.vendor" class="text-xs text-gray-500 dark:text-gray-400">{{ group.vendor.name }}</p>
+                    </div>
+                  </div>
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{ group.item.sku }}</td>
+                <td class="px-4 py-3 text-center">
+                  <span class="font-bold" :class="[
+                    group.item.isOutOfStock ? 'text-danger-600 dark:text-danger-400' :
+                    group.item.isLowStock ? 'text-warning-600 dark:text-warning-400' :
+                    'text-gray-900 dark:text-white'
+                  ]">{{ group.item.stockQuantity }}</span>
+                </td>
+                <td class="px-4 py-3 text-center text-sm text-gray-500 dark:text-gray-400">{{ group.item.reservedQuantity }}</td>
+                <td class="px-4 py-3 text-center font-medium text-gray-900 dark:text-white">{{ group.item.availableQuantity }}</td>
+                <td class="px-4 py-3 text-center text-sm text-gray-500 dark:text-gray-400">{{ group.item.lowStockThreshold }}</td>
+                <td class="px-4 py-3 text-center">
+                  <BaseBadge :variant="getStatusBadge(group.item.status).variant">
+                    {{ getStatusBadge(group.item.status).label }}
+                  </BaseBadge>
+                </td>
+                <td class="px-4 py-3 text-right">
+                  <BaseButton variant="secondary" size="sm" @click="openAdjustModal(group.item)">
+                    <PencilIcon class="mr-1 h-4 w-4" />
+                    Adjust
+                  </BaseButton>
+                </td>
+              </tr>
+
+              <!-- Variable Product: Header Row -->
+              <tr v-if="!group.isSimple" class="bg-gray-50/50 dark:bg-gray-800/20">
+                <td class="px-4 py-3" colspan="8">
+                  <div class="flex items-center gap-3">
+                    <div v-if="group.imageUrl" class="h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-700">
+                      <img :src="group.imageUrl" :alt="group.name" class="h-full w-full object-cover" />
+                    </div>
+                    <div v-else class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700">
+                      <CubeIcon class="h-5 w-5 text-gray-400" />
+                    </div>
+                    <div>
+                      <span class="font-semibold text-gray-900 dark:text-white">{{ group.name }}</span>
+                      <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">({{ group.variants.length }} variants)</span>
+                      <p v-if="group.vendor" class="text-xs text-gray-500 dark:text-gray-400">{{ group.vendor.name }}</p>
+                    </div>
+                    <div class="ml-auto flex items-center gap-2">
+                      <span class="text-sm text-gray-500 dark:text-gray-400">Total: <strong class="text-gray-700 dark:text-gray-300">{{ group.totalStock }}</strong></span>
+                      <ExclamationTriangleIcon v-if="group.hasOutOfStock" class="h-4 w-4 text-danger-500" title="Has out of stock variants" />
+                      <ExclamationTriangleIcon v-else-if="group.hasLowStock" class="h-4 w-4 text-warning-500" title="Has low stock variants" />
+                    </div>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Variable Product: Variant Rows (indented) -->
+              <tr
+                v-for="(variant, idx) in group.variants"
+                :key="`${group.productId}-${variant.variantId}`"
+                class="hover:bg-gray-50 dark:hover:bg-gray-800/30"
+              >
+                <td class="py-2.5 pl-8 pr-4">
+                  <div class="flex items-center gap-2">
+                    <!-- Tree connector -->
+                    <span class="text-gray-300 dark:text-gray-600">
+                      {{ idx === group.variants.length - 1 ? '└─' : '├─' }}
+                    </span>
+                    <span class="text-sm text-gray-700 dark:text-gray-300">{{ variant.variantName }}</span>
+                  </div>
+                </td>
+                <td class="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400">{{ variant.sku }}</td>
+                <td class="px-4 py-2.5 text-center">
+                  <span class="font-bold" :class="[
+                    variant.isOutOfStock ? 'text-danger-600 dark:text-danger-400' :
+                    variant.isLowStock ? 'text-warning-600 dark:text-warning-400' :
+                    'text-gray-900 dark:text-white'
+                  ]">{{ variant.stockQuantity }}</span>
+                </td>
+                <td class="px-4 py-2.5 text-center text-sm text-gray-500 dark:text-gray-400">{{ variant.reservedQuantity }}</td>
+                <td class="px-4 py-2.5 text-center font-medium text-gray-900 dark:text-white">{{ variant.availableQuantity }}</td>
+                <td class="px-4 py-2.5 text-center text-sm text-gray-500 dark:text-gray-400">{{ variant.lowStockThreshold }}</td>
+                <td class="px-4 py-2.5 text-center">
+                  <BaseBadge :variant="getStatusBadge(variant.status).variant">
+                    {{ getStatusBadge(variant.status).label }}
+                  </BaseBadge>
+                </td>
+                <td class="px-4 py-2.5 text-right">
+                  <BaseButton variant="secondary" size="sm" @click="openAdjustModal(variant)">
+                    <PencilIcon class="mr-1 h-4 w-4" />
+                    Adjust
+                  </BaseButton>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div v-if="pagination.totalItems.value > pagination.perPage.value" class="flex items-center justify-between border-t border-gray-200 px-4 py-3 dark:border-gray-700">
+        <div class="text-sm text-gray-500 dark:text-gray-400">
+          Showing {{ (pagination.currentPage.value - 1) * pagination.perPage.value + 1 }} 
+          to {{ Math.min(pagination.currentPage.value * pagination.perPage.value, pagination.totalItems.value) }} 
+          of {{ pagination.totalItems.value }} items
+        </div>
+        <div class="flex items-center gap-2">
+          <BaseButton
+            variant="secondary"
+            size="sm"
+            :disabled="pagination.currentPage.value <= 1"
+            @click="pagination.currentPage.value--; fetchStock()"
           >
-            {{ row.stockQuantity }}
-          </span>
-        </template>
-
-        <template #cell-reservedQuantity="{ row }">
-          <span class="text-gray-500 dark:text-gray-400">{{ row.reservedQuantity }}</span>
-        </template>
-
-        <template #cell-availableQuantity="{ row }">
-          <span class="font-medium text-gray-900 dark:text-white">{{ row.availableQuantity }}</span>
-        </template>
-
-        <template #cell-lowStockThreshold="{ row }">
-          <span class="text-gray-500 dark:text-gray-400">{{ row.lowStockThreshold }}</span>
-        </template>
-
-        <template #cell-status="{ row }">
-          <BaseBadge :variant="getStatusBadge(row.status).variant">
-            {{ getStatusBadge(row.status).label }}
-          </BaseBadge>
-        </template>
-
-        <template #cell-actions="{ row }">
-          <BaseButton variant="secondary" size="sm" @click="openAdjustModal(row)">
-            <PencilIcon class="mr-1 h-4 w-4" />
-            Adjust
+            Previous
           </BaseButton>
-        </template>
-
-        <template #empty>
-          <EmptyState
-            title="No products found"
-            description="No products match the current filters."
-          />
-        </template>
-      </DataTable>
+          <span class="px-3 text-sm text-gray-700 dark:text-gray-300">Page {{ pagination.currentPage.value }}</span>
+          <BaseButton
+            variant="secondary"
+            size="sm"
+            :disabled="pagination.currentPage.value >= pagination.totalPages.value"
+            @click="pagination.currentPage.value++; fetchStock()"
+          >
+            Next
+          </BaseButton>
+        </div>
+      </div>
     </BaseCard>
 
     <!-- Stock Adjust Modal -->

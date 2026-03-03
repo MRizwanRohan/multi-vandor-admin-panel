@@ -20,3 +20,4 @@ export { shippingService, type ShippingZone, type ShippingMethod, type ShippingR
 export { healthService } from './health.service'
 export { activityService } from './activity.service'
 export { inventoryService } from './inventory.service'
+export { paymentService, refundService, webhookService } from './payment.service'

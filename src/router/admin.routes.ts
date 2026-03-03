@@ -193,6 +193,31 @@ const adminRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/admin/coupons/CouponForm.vue'),
         meta: { title: 'Edit Coupon' },
       },
+      // Payments
+      {
+        path: 'payments',
+        name: 'admin-payments',
+        component: () => import('@/pages/admin/payments/PaymentList.vue'),
+        meta: { title: 'Payments' },
+      },
+      {
+        path: 'payments/refunds',
+        name: 'admin-refunds',
+        component: () => import('@/pages/admin/payments/RefundList.vue'),
+        meta: { title: 'Refunds' },
+      },
+      {
+        path: 'payments/webhooks',
+        name: 'admin-webhooks',
+        component: () => import('@/pages/admin/payments/WebhookLogs.vue'),
+        meta: { title: 'Webhook Logs' },
+      },
+      {
+        path: 'payments/:id',
+        name: 'admin-payment-detail',
+        component: () => import('@/pages/admin/payments/PaymentDetail.vue'),
+        meta: { title: 'Payment Details' },
+      },
       // Commissions & Payouts
       {
         path: 'commissions',

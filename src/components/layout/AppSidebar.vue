@@ -138,6 +138,16 @@ const adminNavItems: NavItem[] = [
     icon: TicketIcon,
   },
   {
+    name: 'Payments',
+    to: '/admin/payments',
+    icon: CreditCardIcon,
+    children: [
+      { name: 'Transactions', to: '/admin/payments' },
+      { name: 'Refunds', to: '/admin/payments/refunds' },
+      { name: 'Webhooks', to: '/admin/payments/webhooks' },
+    ],
+  },
+  {
     name: 'Commissions',
     to: '/admin/commissions',
     icon: BanknotesIcon,
@@ -145,7 +155,7 @@ const adminNavItems: NavItem[] = [
   {
     name: 'Payouts',
     to: '/admin/payouts',
-    icon: CreditCardIcon,
+    icon: BanknotesIcon,
   },
   {
     name: 'Reports',

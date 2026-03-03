@@ -31,6 +31,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  data: () => [] as T[],
   loading: false,
   sortDirection: 'asc',
   selectable: false,

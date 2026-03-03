@@ -680,7 +680,7 @@ onMounted(() => {
 
     <!-- ═══ Stock Update Modal ═══ -->
     <BaseModal
-      :open="isModalOpen"
+      :show="isModalOpen"
       title="Update Stock"
       @close="closeModal"
     >

@@ -91,6 +91,15 @@ const adminInventory = {
   },
 
   /**
+   * GET /admin/inventory/stock
+   * All products stock overview (paginated StockOverview)
+   */
+  async getAllStock(params?: InventoryListParams): Promise<InventoryListResponse> {
+    const response = await api.get(`${ADMIN_BASE}/stock`, { params })
+    return response.data  // paginatedResponse: { success, message, data: [], meta: {} }
+  },
+
+  /**
    * GET /admin/inventory/low-stock
    * Low stock products (paginated StockOverview)
    */

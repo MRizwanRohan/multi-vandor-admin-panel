@@ -506,7 +506,7 @@ function formatRate(rate: number, type: 'percentage' | 'fixed'): string {
 
     <!-- Add/Edit Modal -->
     <BaseModal
-      :open="showModal"
+      :show="showModal"
       :title="isEditing ? `Edit ${modalType === 'category' ? 'Category' : 'Vendor'} Commission` : `Add ${modalType === 'category' ? 'Category' : 'Vendor'} Override`"
       @close="showModal = false"
     >

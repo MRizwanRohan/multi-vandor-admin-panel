@@ -19,6 +19,7 @@ import EmptyState from '@/components/ui/EmptyState.vue'
 import type {
   InventoryStats,
   StockOverviewItem,
+  StockStatus,
   TableColumn,
 } from '@/types'
 import {
@@ -32,7 +33,6 @@ import {
   BuildingStorefrontIcon,
   MagnifyingGlassIcon,
   PencilIcon,
-  ArrowTrendingDownIcon,
 } from '@heroicons/vue/24/outline'
 
 const breadcrumbStore = useBreadcrumbStore()
@@ -54,39 +54,42 @@ async function fetchStats() {
   }
 }
 
-// ── Low Stock Table ──────────────────────────────────────────────
+// ── Stock Table ──────────────────────────────────────────────────
 
 const pagination = usePagination()
-const lowStockItems = ref<StockOverviewItem[]>([])
-const lowStockLoading = ref(true)
+const stockItems = ref<StockOverviewItem[]>([])
+const stockLoading = ref(true)
 const searchQuery = ref('')
+const statusFilter = ref<StockStatus | ''>('')
 
 const columns: TableColumn[] = [
   { key: 'name', label: 'Product', sortable: true },
   { key: 'sku', label: 'SKU', sortable: true },
   { key: 'stockQuantity', label: 'Stock', sortable: true, align: 'center' },
+  { key: 'reservedQuantity', label: 'Reserved', align: 'center' },
   { key: 'availableQuantity', label: 'Available', align: 'center' },
   { key: 'lowStockThreshold', label: 'Threshold', align: 'center' },
   { key: 'status', label: 'Status', align: 'center' },
   { key: 'actions', label: '', align: 'right' },
 ]
 
-async function fetchLowStock() {
-  lowStockLoading.value = true
+async function fetchStock() {
+  stockLoading.value = true
   try {
-    const response = await inventoryService.admin.getLowStock({
+    const response = await inventoryService.admin.getAllStock({
       page: pagination.currentPage.value,
       perPage: pagination.perPage.value,
       search: searchQuery.value || undefined,
+      status: statusFilter.value || undefined,
     })
-    lowStockItems.value = response.data
+    stockItems.value = response.data
     if (response.meta) {
       pagination.setMeta(response.meta)
     }
   } catch (error) {
-    toast.error('Failed to load low stock products')
+    toast.error('Failed to load stock overview')
   } finally {
-    lowStockLoading.value = false
+    stockLoading.value = false
   }
 }
 
@@ -144,7 +147,7 @@ async function submitAdjust() {
     })
     toast.success('Stock adjusted successfully')
     closeModal()
-    fetchLowStock()
+    fetchStock()
     fetchStats()
   } catch (error) {
     toast.error('Failed to adjust stock')
@@ -187,7 +190,7 @@ onMounted(() => {
     { label: 'Inventory' },
   ], 'Monitor and manage product stock across all vendors')
   fetchStats()
-  fetchLowStock()
+  fetchStock()
 })
 </script>
 
@@ -285,37 +288,53 @@ onMounted(() => {
       </BaseButton>
     </div>
 
-    <!-- Low Stock Products Table -->
+    <!-- All Products Stock Table -->
     <BaseCard>
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-4">
           <div class="flex items-center gap-2">
-            <ArrowTrendingDownIcon class="h-5 w-5 text-warning-500" />
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Low Stock & Out of Stock Products</h3>
+            <CubeIcon class="h-5 w-5 text-primary-500" />
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">All Products Stock</h3>
           </div>
-          <div class="relative min-w-[200px]">
-            <MagnifyingGlassIcon class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              v-model="searchQuery"
-              type="text"
-              placeholder="Search..."
-              class="w-full rounded-lg border border-gray-300 bg-white py-1.5 pl-9 pr-4 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-              @input="fetchLowStock"
-            />
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="relative min-w-[200px]">
+              <MagnifyingGlassIcon class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                v-model="searchQuery"
+                type="text"
+                placeholder="Search products..."
+                class="w-full rounded-lg border border-gray-300 bg-white py-1.5 pl-9 pr-4 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                @input="fetchStock"
+              />
+            </div>
+            <select
+              v-model="statusFilter"
+              class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+              @change="fetchStock"
+            >
+              <option value="">All Status</option>
+              <option value="in_stock">In Stock</option>
+              <option value="low_stock">Low Stock</option>
+              <option value="out_of_stock">Out of Stock</option>
+            </select>
+            <BaseButton variant="secondary" size="sm" @click="fetchStock">
+              <ArrowPathIcon class="mr-1 h-4 w-4" />
+              Refresh
+            </BaseButton>
           </div>
         </div>
       </template>
 
       <DataTable
         :columns="columns"
-        :data="lowStockItems"
-        :loading="lowStockLoading"
+        :data="stockItems"
+        :loading="stockLoading"
         row-key="productId"
         :current-page="pagination.currentPage.value"
         :per-page="pagination.perPage.value"
         :total="pagination.totalItems.value"
-        @update:currentPage="pagination.currentPage.value = $event; fetchLowStock()"
-        @update:perPage="pagination.perPage.value = $event; fetchLowStock()"
+        @update:currentPage="pagination.currentPage.value = $event; fetchStock()"
+        @update:perPage="pagination.perPage.value = $event; fetchStock()"
       >
         <template #cell-name="{ row }">
           <div>
@@ -329,10 +348,18 @@ onMounted(() => {
         <template #cell-stockQuantity="{ row }">
           <span
             class="font-bold"
-            :class="row.isOutOfStock ? 'text-danger-600 dark:text-danger-400' : 'text-warning-600 dark:text-warning-400'"
+            :class="[
+              row.isOutOfStock ? 'text-danger-600 dark:text-danger-400' :
+              row.isLowStock ? 'text-warning-600 dark:text-warning-400' :
+              'text-gray-900 dark:text-white'
+            ]"
           >
             {{ row.stockQuantity }}
           </span>
+        </template>
+
+        <template #cell-reservedQuantity="{ row }">
+          <span class="text-gray-500 dark:text-gray-400">{{ row.reservedQuantity }}</span>
         </template>
 
         <template #cell-availableQuantity="{ row }">
@@ -358,8 +385,8 @@ onMounted(() => {
 
         <template #empty>
           <EmptyState
-            title="No low stock products"
-            description="All products have sufficient stock levels."
+            title="No products found"
+            description="No products match the current filters."
           />
         </template>
       </DataTable>
@@ -367,7 +394,7 @@ onMounted(() => {
 
     <!-- Stock Adjust Modal -->
     <BaseModal
-      :open="isModalOpen"
+      :show="isModalOpen"
       title="Adjust Stock"
       @close="closeModal"
     >
@@ -404,9 +431,10 @@ onMounted(() => {
 
         <FormInput
           v-model="adjustReason"
-          label="Reason (optional)"
+          label="Reason"
           name="reason"
           placeholder="e.g. Restock from supplier"
+          required
         />
       </div>
 

@@ -32,6 +32,9 @@ import {
   GlobeAltIcon,
   ChevronDownIcon,
   IdentificationIcon,
+  BoltIcon,
+  PhotoIcon,
+  EnvelopeIcon,
 } from '@heroicons/vue/24/outline'
 
 interface NavItem {
@@ -135,9 +138,15 @@ const adminNavItems: NavItem[] = [
     icon: StarIcon,
   },
   {
-    name: 'Coupons',
+    name: 'Marketing',
     to: '/admin/coupons',
-    icon: TicketIcon,
+    icon: MegaphoneIcon,
+    children: [
+      { name: 'Coupons', to: '/admin/coupons' },
+      { name: 'Flash Sales', to: '/admin/flash-sales' },
+      { name: 'Banners', to: '/admin/banners' },
+      { name: 'Newsletter', to: '/admin/newsletter' },
+    ],
   },
   {
     name: 'Payments',

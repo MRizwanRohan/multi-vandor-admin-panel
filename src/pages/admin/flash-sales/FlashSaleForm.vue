@@ -130,9 +130,20 @@ async function fetchFlashSale() {
 // Fetch products for selection
 async function fetchProducts() {
   try {
-    const response = await productService.getAll({ per_page: 200, status: 'active' })
-    products.value = Array.isArray(response.data) ? response.data : []
-  } catch (error) {
+    // Use admin endpoint to list all products (max 100 per page)
+    const response = await productService.adminList({ per_page: 100 })
+    // Handle various response structures
+    const data = response as any
+    if (Array.isArray(data.data)) {
+      products.value = data.data
+    } else if (Array.isArray(data)) {
+      products.value = data
+    } else {
+      products.value = []
+    }
+  } catch (error: any) {
+    console.error('Failed to fetch products:', error)
+    toast.error(error.response?.data?.message || 'Failed to load products. Please check your permissions.')
     products.value = []
   }
 }
@@ -309,23 +320,21 @@ function goBack() {
                     placeholder="Search products to add..."
                     class="pl-10"
                     @focus="showProductSearch = true"
+                    @input="showProductSearch = true"
                   />
                 </div>
               </div>
               
               <!-- Search Results Dropdown -->
               <div
-                v-if="showProductSearch && (productSearch || filteredProducts.length > 0)"
-                class="absolute z-10 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800 max-h-64 overflow-auto"
+                v-if="showProductSearch && filteredProducts.length > 0"
+                class="absolute z-50 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800 max-h-64 overflow-auto"
               >
-                <div v-if="filteredProducts.length === 0" class="p-4 text-center text-gray-500">
-                  No products found
-                </div>
                 <button
                   v-for="product in filteredProducts"
                   :key="product.id"
                   type="button"
-                  class="flex w-full items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                  class="flex w-full items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 border-b border-gray-100 dark:border-gray-700 last:border-0"
                   :disabled="isProductSelected(product.id)"
                   @click="addProduct(product)"
                 >
@@ -349,12 +358,20 @@ function goBack() {
                   <PlusIcon v-else class="h-5 w-5 text-gray-400" />
                 </button>
               </div>
+
+              <!-- No results message -->
+              <div
+                v-else-if="showProductSearch && productSearch && filteredProducts.length === 0"
+                class="absolute z-50 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800 p-4 text-center text-gray-500"
+              >
+                No products found for "{{ productSearch }}"
+              </div>
             </div>
 
             <!-- Backdrop to close dropdown -->
             <div
               v-if="showProductSearch"
-              class="fixed inset-0 z-0"
+              class="fixed inset-0 z-40"
               @click="showProductSearch = false"
             />
 

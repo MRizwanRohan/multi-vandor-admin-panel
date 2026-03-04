@@ -174,23 +174,23 @@ async function fetchCoupon() {
   }
 }
 
-// Fetch reference data
+// Fetch reference data (max 100 per page per backend limit)
 async function fetchData() {
   try {
     const [catRes, prodRes, vendorRes] = await Promise.all([
-      categoryService.getAll(),
-      productService.getAll({ per_page: 100 }),
+      categoryService.getAll({ per_page: 100 }),
+      productService.adminList({ per_page: 100 }),
       vendorService.getAll({ per_page: 100 }),
     ])
-    categories.value = catRes.data
-    products.value = prodRes.data
-    vendors.value = vendorRes.data
-  } catch (error) {
-    // Mock data
-    categories.value = [
-      { id: 1, name: 'Clothing', slug: 'clothing', description: null, parent_id: null, status: 'active' as const, is_active: true, display_order: 1, product_count: 100, depth: 0, created_at: '', updated_at: '' },
-      { id: 2, name: 'Shoes', slug: 'shoes', description: null, parent_id: null, status: 'active' as const, is_active: true, display_order: 2, product_count: 50, depth: 0, created_at: '', updated_at: '' },
-    ]
+    categories.value = Array.isArray(catRes.data) ? catRes.data : []
+    products.value = Array.isArray(prodRes.data) ? prodRes.data : []
+    vendors.value = Array.isArray(vendorRes.data) ? vendorRes.data : []
+  } catch (error: any) {
+    console.error('Failed to fetch reference data:', error)
+    toast.error(error.response?.data?.message || 'Failed to load reference data')
+    categories.value = []
+    products.value = []
+    vendors.value = []
   }
 }
 

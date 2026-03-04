@@ -8,6 +8,7 @@ export { productService, type ProductFilters, type ProductFormData, type Product
 export { categoryService, type CategoryFilters, type CategoryFormData } from './category.service'
 export { orderService, type OrderFilters, type OrderStatusUpdate, type RefundData } from './order.service'
 export { vendorService, type VendorFilters, type VendorFormData } from './vendor.service'
+export { customerService, type CustomerFilters, type CustomerStats } from './customer.service'
 export { settingsService } from './settings.service'
 export { attributeTemplateService, vendorTemplateService } from './attribute-template.service'
 export { reviewService, type ReviewFilters, type ReviewStats } from './review.service'

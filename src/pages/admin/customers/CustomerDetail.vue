@@ -7,6 +7,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
 import { useToast, useCurrency, useDate } from '@/composables'
+import { customerService } from '@/services'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
@@ -71,73 +72,17 @@ const orderColumns: TableColumn[] = [
   { key: 'actions', label: '', align: 'right' },
 ]
 
-// Fetch customer
+// Fetch customer from API
 async function fetchCustomer() {
   if (!customerId.value) return
   
   isLoading.value = true
   try {
-    // Mock API call - replace with actual service
-    // const data = await customerService.getById(customerId.value)
-    
-    // Mock data for demo
-    customer.value = {
-      id: customerId.value,
-      uuid: 'cust-001',
-      first_name: 'John',
-      last_name: 'Doe',
-      full_name: 'John Doe',
-      email: 'john.doe@example.com',
-      phone: '+880 1712-345678',
-      avatar: null,
-      status: 'active',
-      order_count: 15,
-      total_spent: 45000,
-      last_order_at: '2024-01-15T10:30:00',
-      email_verified_at: '2024-01-01T00:00:00',
-      review_count: 8,
-      created_at: '2023-06-15T00:00:00',
-      updated_at: '2024-01-15T10:30:00',
-      addresses: [
-        {
-          id: 1,
-          label: 'Home',
-          name: 'John Doe',
-          phone: '+880 1712-345678',
-          address_line_1: 'House 123, Road 5',
-          address_line_2: 'Block C',
-          city: 'Dhaka',
-          district: 'Dhaka',
-          postal_code: '1205',
-          country: 'Bangladesh',
-          is_default_shipping: true,
-          is_default_billing: true,
-        },
-        {
-          id: 2,
-          label: 'Office',
-          name: 'John Doe',
-          phone: '+880 1712-345678',
-          address_line_1: 'Tower 5, Floor 10',
-          address_line_2: 'Gulshan Avenue',
-          city: 'Dhaka',
-          district: 'Dhaka',
-          postal_code: '1212',
-          country: 'Bangladesh',
-          is_default_shipping: false,
-          is_default_billing: false,
-        },
-      ],
-      recent_orders: [
-        { id: 1, order_number: 'ORD-2024-001', status: 'delivered', total_amount: 3500, created_at: '2024-01-15' },
-        { id: 2, order_number: 'ORD-2024-002', status: 'processing', total_amount: 5200, created_at: '2024-01-12' },
-        { id: 3, order_number: 'ORD-2024-003', status: 'shipped', total_amount: 1800, created_at: '2024-01-10' },
-        { id: 4, order_number: 'ORD-2023-150', status: 'delivered', total_amount: 4500, created_at: '2023-12-25' },
-        { id: 5, order_number: 'ORD-2023-149', status: 'cancelled', total_amount: 2200, created_at: '2023-12-20' },
-      ],
-    }
-  } catch (error) {
-    toast.error('Failed to fetch customer')
+    const data = await customerService.getById(customerId.value)
+    customer.value = data
+  } catch (error: any) {
+    console.error('Failed to fetch customer:', error)
+    toast.error(error.response?.data?.message || 'Failed to fetch customer')
     router.push('/admin/customers')
   } finally {
     isLoading.value = false

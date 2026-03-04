@@ -3,19 +3,25 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
 import { useToast, useCurrency, useDate } from '@/composables'
+import { useDebounce } from '@/composables/useDebounce'
+import { customerService } from '@/services'
+import type { Customer } from '@/types'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
 import DataTable from '@/components/data/DataTable.vue'
 import FormInput from '@/components/form/FormInput.vue'
+import FormSelect from '@/components/form/FormSelect.vue'
 import {
   MagnifyingGlassIcon,
   EnvelopeIcon,
   EyeIcon,
 } from '@heroicons/vue/24/outline'
 
+const router = useRouter()
 const breadcrumbStore = useBreadcrumbStore()
 const toast = useToast()
 const { formatCurrency } = useCurrency()
@@ -26,10 +32,28 @@ onMounted(() => {
   breadcrumbStore.setPageInfo('Customers', [
     { label: 'Customers' },
   ], 'Manage your customers')
+  
+  fetchCustomers()
 })
 
-// Search
+// State
+const isLoading = ref(false)
+const customers = ref<Customer[]>([])
+const totalItems = ref(0)
+const currentPage = ref(1)
+const perPage = ref(20)
+
+// Filters
 const searchQuery = ref('')
+const statusFilter = ref('')
+
+// Status options for filter
+const statusOptions = [
+  { value: '', label: 'All Status' },
+  { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
+  { value: 'blocked', label: 'Blocked' },
+]
 
 // Table columns
 const columns = [
@@ -43,51 +67,64 @@ const columns = [
   { key: 'actions', label: 'Actions', align: 'right' as const },
 ]
 
-// Mock data
-const customers = ref([
-  {
-    id: '1',
-    name: 'আহমেদ হোসেন',
-    email: 'ahmed@example.com',
-    phone: '+8801712345678',
-    avatar: null,
-    orders: 15,
-    totalSpent: 45000,
-    status: 'active',
-    createdAt: '2024-01-15',
-  },
-  {
-    id: '2',
-    name: 'ফাতেমা বেগম',
-    email: 'fatema@example.com',
-    phone: '+8801812345678',
-    avatar: null,
-    orders: 8,
-    totalSpent: 28500,
-    status: 'active',
-    createdAt: '2024-02-20',
-  },
-  {
-    id: '3',
-    name: 'করিম উদ্দিন',
-    email: 'karim@example.com',
-    phone: '+8801912345678',
-    avatar: null,
-    orders: 3,
-    totalSpent: 12000,
-    status: 'blocked',
-    createdAt: '2024-03-10',
-  },
-])
-
-// Send email (mock)
-function sendEmail(customer: typeof customers.value[0]) {
-  toast.info(`Opening email for ${customer.email}`)
+// Fetch customers from API
+async function fetchCustomers() {
+  isLoading.value = true
+  try {
+    const response = await customerService.getAll({
+      page: currentPage.value,
+      per_page: perPage.value,
+      search: searchQuery.value || undefined,
+      status: statusFilter.value as any || undefined,
+    })
+    
+    // Handle response - could be paginated or direct array
+    if (response.data) {
+      customers.value = response.data
+      totalItems.value = response.meta?.total || response.total || response.data.length
+    } else if (Array.isArray(response)) {
+      customers.value = response
+      totalItems.value = response.length
+    }
+  } catch (error: any) {
+    console.error('Failed to fetch customers:', error)
+    // Don't show error toast if API doesn't exist yet
+    if (error.response?.status !== 404) {
+      toast.error(error.response?.data?.message || 'Failed to load customers')
+    }
+    customers.value = []
+    totalItems.value = 0
+  } finally {
+    isLoading.value = false
+  }
 }
 
-// View details (would navigate to detail page)
-function viewDetails(customer: typeof customers.value[0]) {
-  toast.info(`Viewing details for ${customer.name}`)
+// Debounced fetch function
+const debouncedFetch = useDebounce(() => {
+  currentPage.value = 1
+  fetchCustomers()
+}, 300)
+
+// Watch for filter changes
+watch([searchQuery, statusFilter], () => {
+  debouncedFetch()
+})
+
+// Page change handler
+function onPageChange(page: number) {
+  currentPage.value = page
+  fetchCustomers()
+}
+
+// Send email
+function sendEmail(customer: Customer) {
+  toast.info(`Opening email for ${customer.email}`)
+  window.location.href = `mailto:${customer.email}`
+}
+
+// View details
+function viewDetails(customer: Customer) {
+  router.push(`/admin/customers/${customer.id}`)
 }
 
 // Get status variant
@@ -110,13 +147,21 @@ function getInitials(name: string) {
     <!-- Filters -->
     <BaseCard>
       <div class="flex flex-wrap items-center gap-4">
-        <div class="relative flex-1">
+        <div class="relative flex-1 min-w-[200px]">
           <MagnifyingGlassIcon class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
           <FormInput
             v-model="searchQuery"
             name="search"
             placeholder="Search customers..."
             class="pl-10"
+          />
+        </div>
+        <div class="w-40">
+          <FormSelect
+            v-model="statusFilter"
+            name="status"
+            :options="statusOptions"
+            placeholder="All Status"
           />
         </div>
       </div>
@@ -127,10 +172,11 @@ function getInitials(name: string) {
       <DataTable
         :columns="columns"
         :data="customers"
-        :loading="false"
-        :total="customers.length"
-        :current-page="1"
-        :per-page="20"
+        :loading="isLoading"
+        :total="totalItems"
+        :current-page="currentPage"
+        :per-page="perPage"
+        @page-change="onPageChange"
       >
         <template #cell-customer="{ item }">
           <div class="flex items-center gap-3">
@@ -138,16 +184,16 @@ function getInitials(name: string) {
               v-if="item.avatar"
               class="h-10 w-10 shrink-0 overflow-hidden rounded-full"
             >
-              <img :src="item.avatar" :alt="item.name" class="h-full w-full object-cover" />
+              <img :src="item.avatar" :alt="item.full_name || item.name" class="h-full w-full object-cover" />
             </div>
             <div
               v-else
               class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-400"
             >
-              {{ getInitials(item.name) }}
+              {{ getInitials(item.full_name || item.name || item.email) }}
             </div>
             <span class="font-medium text-gray-900 dark:text-white">
-              {{ item.name }}
+              {{ item.full_name || item.name || item.email }}
             </span>
           </div>
         </template>
@@ -160,19 +206,19 @@ function getInitials(name: string) {
 
         <template #cell-phone="{ item }">
           <span class="text-gray-600 dark:text-gray-400">
-            {{ item.phone }}
+            {{ item.phone || '—' }}
           </span>
         </template>
 
         <template #cell-orders="{ item }">
           <span class="font-medium text-gray-900 dark:text-white">
-            {{ item.orders }}
+            {{ item.order_count ?? item.orders ?? 0 }}
           </span>
         </template>
 
         <template #cell-totalSpent="{ item }">
           <span class="font-medium text-gray-900 dark:text-white">
-            {{ formatCurrency(item.totalSpent) }}
+            {{ formatCurrency(item.total_spent ?? item.totalSpent ?? 0) }}
           </span>
         </template>
 
@@ -184,7 +230,7 @@ function getInitials(name: string) {
 
         <template #cell-createdAt="{ item }">
           <span class="text-gray-600 dark:text-gray-400">
-            {{ formatDate(item.createdAt) }}
+            {{ formatDate(item.created_at || item.createdAt) }}
           </span>
         </template>
 

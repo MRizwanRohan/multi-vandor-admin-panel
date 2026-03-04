@@ -158,6 +158,12 @@ const vendorRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/vendor/reviews/ReviewList.vue'),
         meta: { title: 'Reviews' },
       },
+      {
+        path: 'reviews/needs-response',
+        name: 'vendor-reviews-needs-response',
+        component: () => import('@/pages/vendor/reviews/NeedsResponse.vue'),
+        meta: { title: 'Needs Response' },
+      },
       // Coupons
       {
         path: 'coupons',

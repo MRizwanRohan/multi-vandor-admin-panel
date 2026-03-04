@@ -50,8 +50,18 @@ async function fetchReviews() {
       page: currentPage.value,
       per_page: perPage.value,
     })
-    reviews.value = response.data
-    totalItems.value = response.meta?.total || response.data.length
+    // Handle both response formats: { data: [] } or direct array
+    const resData = response as any
+    if (Array.isArray(resData.data)) {
+      reviews.value = resData.data
+      totalItems.value = resData.meta?.total || resData.data.length
+    } else if (Array.isArray(resData)) {
+      reviews.value = resData
+      totalItems.value = resData.length
+    } else {
+      reviews.value = []
+      totalItems.value = 0
+    }
   } catch (error: any) {
     toast.error(error.response?.data?.message || 'Failed to load reviews')
   } finally {
@@ -74,7 +84,10 @@ async function loadMoreReviews() {
       page: currentPage.value,
       per_page: perPage.value,
     })
-    reviews.value.push(...response.data)
+    // Handle both response formats
+    const resData = response as any
+    const newData = Array.isArray(resData.data) ? resData.data : (Array.isArray(resData) ? resData : [])
+    reviews.value.push(...newData)
   } catch (error: any) {
     toast.error(error.response?.data?.message || 'Failed to load more reviews')
   } finally {

@@ -5,7 +5,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useBreadcrumbStore } from '@/stores'
-import { useToast, useDate, useDebounce, useConfirm } from '@/composables'
+import { useToast, useDate, useConfirm } from '@/composables'
+import { useDebounce } from '@/composables/useDebounce'
 import { reviewService } from '@/services'
 import type { Review, ReviewStats, ReviewStatus, ReviewFilters } from '@/types'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -34,7 +35,6 @@ const breadcrumbStore = useBreadcrumbStore()
 const toast = useToast()
 const confirm = useConfirm()
 const { formatDate, timeAgo } = useDate()
-const { debounce } = useDebounce()
 
 // ── State ──
 const loading = ref(false)
@@ -122,8 +122,18 @@ async function fetchReviews() {
     if (ratingFilter.value) params.rating = ratingFilter.value
 
     const response = await reviewService.getAll(params)
-    reviews.value = response.data
-    totalItems.value = response.meta?.total || response.data.length
+    // Handle both response formats: { data: [] } or direct array
+    const resData = response as any
+    if (Array.isArray(resData.data)) {
+      reviews.value = resData.data
+      totalItems.value = resData.meta?.total || resData.data.length
+    } else if (Array.isArray(resData)) {
+      reviews.value = resData
+      totalItems.value = resData.length
+    } else {
+      reviews.value = []
+      totalItems.value = 0
+    }
     selectedIds.value = [] // Clear selection on page change
   } catch (error: any) {
     toast.error(error.response?.data?.message || 'Failed to load reviews')
@@ -132,7 +142,7 @@ async function fetchReviews() {
   }
 }
 
-const debouncedFetch = debounce(fetchReviews, 300)
+const debouncedFetch = useDebounce(fetchReviews, 300)
 
 // Watch filters
 watch([statusFilter, ratingFilter], () => {

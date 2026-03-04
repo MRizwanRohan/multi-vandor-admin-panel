@@ -5,7 +5,8 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import { useBreadcrumbStore } from '@/stores'
-import { useToast, useDate, useDebounce } from '@/composables'
+import { useToast, useDate } from '@/composables'
+import { useDebounce } from '@/composables/useDebounce'
 import { reviewService } from '@/services'
 import type { Review, VendorReviewStats, ReviewFilters } from '@/types'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -30,7 +31,6 @@ import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid'
 const breadcrumbStore = useBreadcrumbStore()
 const toast = useToast()
 const { formatDate, timeAgo } = useDate()
-const { debounce } = useDebounce()
 
 // ── State ──
 const loading = ref(false)
@@ -104,8 +104,18 @@ async function fetchReviews() {
     if (responseFilter.value) params.has_response = responseFilter.value === 'responded'
 
     const response = await reviewService.getVendorReviews(params)
-    reviews.value = response.data
-    totalItems.value = response.meta?.total || response.data.length
+    // Handle both response formats: { data: [] } or direct array
+    const resData = response as any
+    if (Array.isArray(resData.data)) {
+      reviews.value = resData.data
+      totalItems.value = resData.meta?.total || resData.data.length
+    } else if (Array.isArray(resData)) {
+      reviews.value = resData
+      totalItems.value = resData.length
+    } else {
+      reviews.value = []
+      totalItems.value = 0
+    }
   } catch (error: any) {
     toast.error(error.response?.data?.message || 'Failed to load reviews')
   } finally {
@@ -113,7 +123,7 @@ async function fetchReviews() {
   }
 }
 
-const debouncedFetch = debounce(fetchReviews, 300)
+const debouncedFetch = useDebounce(fetchReviews, 300)
 
 // Watch filters
 watch([ratingFilter, responseFilter], () => {

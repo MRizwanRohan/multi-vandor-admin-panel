@@ -125,6 +125,7 @@ const adminNavItems: NavItem[] = [
       { name: 'Overview', to: '/admin/inventory' },
       { name: 'Stock Alerts', to: '/admin/inventory/alerts' },
       { name: 'Movements', to: '/admin/inventory/movements' },
+      { name: 'Reservations', to: '/admin/inventory/reservations' },
     ],
   },
   {

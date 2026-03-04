@@ -167,6 +167,12 @@ const adminRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/admin/inventory/StockMovements.vue'),
         meta: { title: 'Stock Movements' },
       },
+      {
+        path: 'inventory/reservations',
+        name: 'admin-inventory-reservations',
+        component: () => import('@/pages/admin/inventory/StockReservations.vue'),
+        meta: { title: 'Stock Reservations' },
+      },
       // Reviews
       {
         path: 'reviews',

@@ -113,6 +113,57 @@ export interface StockAlert {
   vendor?: StockAlertVendor
 }
 
+// ── Stock Reservation (from StockReservationResource) ───────────
+
+export type ReservationStatus = 'active' | 'converted' | 'released' | 'expired'
+
+export interface StockReservationProduct {
+  id: number
+  name: string
+  slug: string
+  sku: string | null
+  imageUrl: string | null
+}
+
+export interface StockReservationVariant {
+  id: number
+  sku: string
+  name: string | null
+}
+
+export interface StockReservationOrder {
+  id: number
+  orderNumber: string
+  status: string
+  customerName: string
+}
+
+export interface StockReservationVendor {
+  id: number
+  storeName: string
+}
+
+export interface StockReservation {
+  id: number
+  productId: number
+  variantId: number | null
+  orderId: number | null
+  quantity: number
+  status: ReservationStatus
+  statusLabel: string
+  expiresAt: string | null
+  convertedAt: string | null
+  releasedAt: string | null
+  createdAt: string
+  updatedAt: string
+  isExpired: boolean
+  isActive: boolean
+  product?: StockReservationProduct
+  variant?: StockReservationVariant
+  order?: StockReservationOrder
+  vendor?: StockReservationVendor
+}
+
 // ── Admin Inventory Stats (from Admin InventoryController@stats) ─
 
 export interface InventoryStats {
@@ -168,6 +219,15 @@ export interface AlertListParams {
   type?: AlertType | ''
 }
 
+export interface ReservationListParams {
+  page?: number
+  perPage?: number
+  search?: string
+  status?: ReservationStatus | ''
+  vendorId?: number
+  expiringSoon?: boolean
+}
+
 export interface StockAdjustmentRequest {
   productId: number
   variantId?: number
@@ -197,4 +257,14 @@ export interface AlertSummary {
   outOfStock: number
   resolved: number
   unresolved: number
+}
+
+export interface ReservationSummary {
+  total: number
+  active: number
+  converted: number
+  released: number
+  expired: number
+  totalQuantity: number
+  expiringSoon: number
 }

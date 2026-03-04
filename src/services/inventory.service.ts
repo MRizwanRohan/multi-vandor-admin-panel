@@ -9,11 +9,14 @@ import type {
   StockOverviewItem,
   InventoryLog,
   StockAlert,
+  StockReservation,
   StockSummary,
   AlertSummary,
+  ReservationSummary,
   InventoryListParams,
   MovementListParams,
   AlertListParams,
+  ReservationListParams,
   StockAdjustmentRequest,
   BulkStockAdjustmentRequest,
   PaginationMeta,
@@ -44,6 +47,10 @@ interface InventoryListResponse extends PaginatedApiResponse<StockOverviewItem> 
 
 interface AlertListResponse extends PaginatedApiResponse<StockAlert> {
   summary: AlertSummary
+}
+
+interface ReservationListResponse extends PaginatedApiResponse<StockReservation> {
+  summary: ReservationSummary
 }
 
 interface StockUpdateResponse {
@@ -109,11 +116,11 @@ const adminInventory = {
   },
 
   /**
-   * POST /admin/inventory/alerts/{id}/resolve
+   * PUT /admin/inventory/alerts/{id}/resolve
    * Resolve a single alert
    */
   async resolveAlert(id: number): Promise<void> {
-    await api.post(`${ADMIN_BASE}/alerts/${id}/resolve`)
+    await api.put(`${ADMIN_BASE}/alerts/${id}/resolve`)
   },
 
   /**
@@ -172,6 +179,55 @@ const adminInventory = {
     const response = await api.post<ApiResponse<{ created: number; resolved: number }>>(`${ADMIN_BASE}/scan-alerts`)
     return response.data.data
   },
+
+  // ── Reservations ─────────────────────────────────────────────────
+
+  /**
+   * GET /admin/inventory/reservations
+   * Paginated stock reservations list
+   */
+  async getReservations(params?: ReservationListParams): Promise<ReservationListResponse> {
+    const response = await api.get(`${ADMIN_BASE}/reservations`, { params })
+    return response.data
+  },
+
+  /**
+   * GET /admin/inventory/reservations/{id}
+   * Single reservation details
+   */
+  async getReservation(id: number): Promise<StockReservation> {
+    const response = await api.get<ApiResponse<StockReservation>>(`${ADMIN_BASE}/reservations/${id}`)
+    return response.data.data
+  },
+
+  /**
+   * PUT /admin/inventory/reservations/{id}/release
+   * Manually release a reservation (restore stock)
+   */
+  async releaseReservation(id: number, reason?: string): Promise<void> {
+    await api.put(`${ADMIN_BASE}/reservations/${id}/release`, { reason })
+  },
+
+  /**
+   * POST /admin/inventory/reservations/bulk-release
+   * Bulk release multiple reservations
+   */
+  async bulkReleaseReservations(ids: number[], reason?: string): Promise<{ released: number }> {
+    const response = await api.post<ApiResponse<{ released: number }>>(`${ADMIN_BASE}/reservations/bulk-release`, {
+      reservation_ids: ids,
+      reason,
+    })
+    return response.data.data
+  },
+
+  /**
+   * POST /admin/inventory/reservations/release-expired
+   * Release all expired reservations
+   */
+  async releaseExpiredReservations(): Promise<{ released: number }> {
+    const response = await api.post<ApiResponse<{ released: number }>>(`${ADMIN_BASE}/reservations/release-expired`)
+    return response.data.data
+  },
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -227,11 +283,11 @@ const vendorInventory = {
   },
 
   /**
-   * POST /vendor/inventory/alerts/{id}/resolve
+   * PUT /vendor/inventory/alerts/{id}/resolve
    * Resolve a single vendor alert
    */
   async resolveAlert(id: number): Promise<void> {
-    await api.post(`${VENDOR_BASE}/alerts/${id}/resolve`)
+    await api.put(`${VENDOR_BASE}/alerts/${id}/resolve`)
   },
 }
 

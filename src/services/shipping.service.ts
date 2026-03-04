@@ -1,317 +1,273 @@
 // ═══════════════════════════════════════════════════════════════════
-// Shipping Service — Shipping Zones, Methods, Rates API calls
+// Shipping Service — Shipping Zones, Methods, Shipments API calls
 // ═══════════════════════════════════════════════════════════════════
 
 import api, { getRolePrefix } from './api'
 import type { PaginatedResponse } from '@/types'
-
-const prefix = () => `${getRolePrefix()}/shipping`
-
-export interface ShippingZone {
-  id: number
-  name: string
-  regions: ShippingRegion[]
-  methods: ShippingMethod[]
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
-
-export interface ShippingRegion {
-  id: number
-  zone_id: number
-  type: 'country' | 'state' | 'city' | 'postcode'
-  code: string
-  name: string
-}
-
-export interface ShippingMethod {
-  id: number
-  zone_id: number
-  name: string
-  description: string | null
-  type: 'flat_rate' | 'free_shipping' | 'local_pickup' | 'weight_based' | 'price_based'
-  cost: number
-  min_order_amount: number | null
-  max_order_amount: number | null
-  min_weight: number | null
-  max_weight: number | null
-  estimated_days_min: number | null
-  estimated_days_max: number | null
-  is_active: boolean
-  sort_order: number
-}
-
-export interface ShippingRate {
-  id: number
-  method_id: number
-  min_value: number
-  max_value: number | null
-  cost: number
-}
-
-export interface ShippingClass {
-  id: number
-  name: string
-  slug: string
-  description: string | null
-  product_count: number
-}
-
-// ── DTOs ──
-export interface CreateShippingZoneRequest {
-  name: string
-  regions: { type: string; code: string; name: string }[]
-  is_active?: boolean
-}
-
-export interface CreateShippingMethodRequest {
-  zone_id: number
-  name: string
-  description?: string
-  type: ShippingMethod['type']
-  cost: number
-  min_order_amount?: number
-  max_order_amount?: number
-  min_weight?: number
-  max_weight?: number
-  estimated_days_min?: number
-  estimated_days_max?: number
-  is_active?: boolean
-  rates?: { min_value: number; max_value?: number; cost: number }[]
-}
-
-export interface ShippingCalculation {
-  zone: ShippingZone | null
-  available_methods: {
-    method: ShippingMethod
-    cost: number
-    estimated_delivery: string
-  }[]
-}
+import type {
+  ShippingZone,
+  ShippingMethod,
+  Shipment,
+  CreateShippingZoneRequest,
+  UpdateShippingZoneRequest,
+  CreateShippingMethodRequest,
+  UpdateShippingMethodRequest,
+  CreateShipmentRequest,
+  UpdateShipmentRequest,
+  UpdateShipmentStatusRequest,
+  ShippingCalculateRequest,
+  ShippingCalculateResult,
+  ShippingZoneFilters,
+  ShippingMethodFilters,
+  ShipmentFilters,
+} from '@/types'
 
 export const shippingService = {
-  // ─────────────────────────────────────────────────────────────────
-  // Shipping Zones
-  // ─────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════
+  // Admin: Shipping Zones — /admin/shipping-zones
+  // ═══════════════════════════════════════════════════════════════════
 
   /**
-   * Get all shipping zones
+   * Get all shipping zones (admin)
    */
-  async getZones(): Promise<ShippingZone[]> {
-    const response = await api.get<{ data: ShippingZone[] }>(`${prefix()}/zones`)
-    return response.data.data
+  async getZones(filters?: ShippingZoneFilters): Promise<PaginatedResponse<ShippingZone>> {
+    const response = await api.get<PaginatedResponse<ShippingZone>>(
+      '/admin/shipping-zones',
+      { params: filters }
+    )
+    return response.data
   },
 
   /**
    * Get single shipping zone
    */
   async getZoneById(id: number): Promise<ShippingZone> {
-    const response = await api.get<{ data: ShippingZone }>(`${prefix()}/zones/${id}`)
+    const response = await api.get<{ data: ShippingZone }>(`/admin/shipping-zones/${id}`)
     return response.data.data
   },
 
   /**
-   * Create shipping zone
+   * Create shipping zone (admin)
    */
   async createZone(data: CreateShippingZoneRequest): Promise<ShippingZone> {
-    const response = await api.post<{ data: ShippingZone }>(`${prefix()}/zones`, data)
+    const response = await api.post<{ data: ShippingZone }>('/admin/shipping-zones', data)
     return response.data.data
   },
 
   /**
-   * Update shipping zone
+   * Update shipping zone (admin)
    */
-  async updateZone(id: number, data: Partial<CreateShippingZoneRequest>): Promise<ShippingZone> {
-    const response = await api.put<{ data: ShippingZone }>(`${prefix()}/zones/${id}`, data)
+  async updateZone(id: number, data: UpdateShippingZoneRequest): Promise<ShippingZone> {
+    const response = await api.put<{ data: ShippingZone }>(`/admin/shipping-zones/${id}`, data)
     return response.data.data
   },
 
   /**
-   * Delete shipping zone
+   * Delete shipping zone (admin)
    */
   async deleteZone(id: number): Promise<void> {
-    await api.delete(`${prefix()}/zones/${id}`)
+    await api.delete(`/admin/shipping-zones/${id}`)
   },
 
-  /**
-   * Toggle zone active status
-   */
-  async toggleZoneActive(id: number): Promise<ShippingZone> {
-    const response = await api.patch<{ data: ShippingZone }>(`${prefix()}/zones/${id}/toggle`)
-    return response.data.data
-  },
+  // ═══════════════════════════════════════════════════════════════════
+  // Admin: Shipping Methods — /admin/shipping-methods
+  // ═══════════════════════════════════════════════════════════════════
 
   /**
-   * Reorder zones
+   * Get all shipping methods (admin)
    */
-  async reorderZones(zoneIds: number[]): Promise<void> {
-    await api.post(`${prefix()}/zones/reorder`, { ids: zoneIds })
-  },
-
-  // ─────────────────────────────────────────────────────────────────
-  // Shipping Methods
-  // ─────────────────────────────────────────────────────────────────
-
-  /**
-   * Get methods for a zone
-   */
-  async getMethods(zoneId: number): Promise<ShippingMethod[]> {
-    const response = await api.get<{ data: ShippingMethod[] }>(
-      `${prefix()}/zones/${zoneId}/methods`
+  async getMethods(filters?: ShippingMethodFilters): Promise<PaginatedResponse<ShippingMethod>> {
+    const response = await api.get<PaginatedResponse<ShippingMethod>>(
+      '/admin/shipping-methods',
+      { params: filters }
     )
-    return response.data.data
+    return response.data
   },
 
   /**
-   * Get single method
+   * Get single shipping method
    */
   async getMethodById(id: number): Promise<ShippingMethod> {
-    const response = await api.get<{ data: ShippingMethod }>(`${prefix()}/methods/${id}`)
+    const response = await api.get<{ data: ShippingMethod }>(`/admin/shipping-methods/${id}`)
     return response.data.data
   },
 
   /**
-   * Create shipping method
+   * Create shipping method (admin)
    */
   async createMethod(data: CreateShippingMethodRequest): Promise<ShippingMethod> {
-    const response = await api.post<{ data: ShippingMethod }>(`${prefix()}/methods`, data)
+    const response = await api.post<{ data: ShippingMethod }>('/admin/shipping-methods', data)
     return response.data.data
   },
 
   /**
-   * Update shipping method
+   * Update shipping method (admin)
    */
-  async updateMethod(id: number, data: Partial<CreateShippingMethodRequest>): Promise<ShippingMethod> {
-    const response = await api.put<{ data: ShippingMethod }>(`${prefix()}/methods/${id}`, data)
-    return response.data.data
-  },
-
-  /**
-   * Delete shipping method
-   */
-  async deleteMethod(id: number): Promise<void> {
-    await api.delete(`${prefix()}/methods/${id}`)
-  },
-
-  /**
-   * Toggle method active status
-   */
-  async toggleMethodActive(id: number): Promise<ShippingMethod> {
-    const response = await api.patch<{ data: ShippingMethod }>(`${prefix()}/methods/${id}/toggle`)
-    return response.data.data
-  },
-
-  /**
-   * Reorder methods
-   */
-  async reorderMethods(zoneId: number, methodIds: number[]): Promise<void> {
-    await api.post(`${prefix()}/zones/${zoneId}/methods/reorder`, { ids: methodIds })
-  },
-
-  // ─────────────────────────────────────────────────────────────────
-  // Shipping Classes
-  // ─────────────────────────────────────────────────────────────────
-
-  /**
-   * Get all shipping classes
-   */
-  async getClasses(): Promise<ShippingClass[]> {
-    const response = await api.get<{ data: ShippingClass[] }>(`${prefix()}/classes`)
-    return response.data.data
-  },
-
-  /**
-   * Create shipping class
-   */
-  async createClass(data: { name: string; slug?: string; description?: string }): Promise<ShippingClass> {
-    const response = await api.post<{ data: ShippingClass }>(`${prefix()}/classes`, data)
-    return response.data.data
-  },
-
-  /**
-   * Update shipping class
-   */
-  async updateClass(
-    id: number,
-    data: { name?: string; slug?: string; description?: string }
-  ): Promise<ShippingClass> {
-    const response = await api.put<{ data: ShippingClass }>(`${prefix()}/classes/${id}`, data)
-    return response.data.data
-  },
-
-  /**
-   * Delete shipping class
-   */
-  async deleteClass(id: number): Promise<void> {
-    await api.delete(`${prefix()}/classes/${id}`)
-  },
-
-  // ─────────────────────────────────────────────────────────────────
-  // Shipping Calculation
-  // ─────────────────────────────────────────────────────────────────
-
-  /**
-   * Calculate shipping for an order
-   */
-  async calculate(data: {
-    country_code: string
-    state_code?: string
-    city?: string
-    postcode?: string
-    items: { product_id: number; quantity: number; weight?: number }[]
-    order_total: number
-  }): Promise<ShippingCalculation> {
-    const response = await api.post<{ data: ShippingCalculation }>(`${prefix()}/calculate`, data)
-    return response.data.data
-  },
-
-  /**
-   * Get available regions (countries, states)
-   */
-  async getAvailableRegions(parentCode?: string): Promise<
-    { code: string; name: string; type: string }[]
-  > {
-    const response = await api.get<{ data: { code: string; name: string; type: string }[] }>(
-      `${prefix()}/regions`,
-      { params: { parent: parentCode } }
+  async updateMethod(id: number, data: UpdateShippingMethodRequest): Promise<ShippingMethod> {
+    const response = await api.put<{ data: ShippingMethod }>(
+      `/admin/shipping-methods/${id}`,
+      data
     )
     return response.data.data
   },
 
-  // ─────────────────────────────────────────────────────────────────
-  // Vendor Shipping Settings
-  // ─────────────────────────────────────────────────────────────────
+  /**
+   * Delete shipping method (admin)
+   */
+  async deleteMethod(id: number): Promise<void> {
+    await api.delete(`/admin/shipping-methods/${id}`)
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Vendor: Shipping Methods — /vendor/shipping/*
+  // ═══════════════════════════════════════════════════════════════════
 
   /**
-   * Get vendor shipping settings
+   * Get available shipping methods (platform-wide, for vendor reference)
    */
-  async getVendorSettings(): Promise<{
-    shipping_enabled: boolean
-    default_zone_id: number | null
-    handling_time_days: number
-    free_shipping_threshold: number | null
-  }> {
-    const response = await api.get<{
-      data: {
-        shipping_enabled: boolean
-        default_zone_id: number | null
-        handling_time_days: number
-        free_shipping_threshold: number | null
-      }
-    }>(`${prefix()}/vendor-settings`)
+  async getAvailableMethods(): Promise<ShippingMethod[]> {
+    const response = await api.get<{ data: ShippingMethod[] }>('/vendor/shipping/methods')
     return response.data.data
   },
 
   /**
-   * Update vendor shipping settings
+   * Get vendor's own shipping methods
    */
-  async updateVendorSettings(data: {
-    shipping_enabled?: boolean
-    default_zone_id?: number
-    handling_time_days?: number
-    free_shipping_threshold?: number | null
-  }): Promise<void> {
-    await api.put(`${prefix()}/vendor-settings`, data)
+  async getMyMethods(): Promise<ShippingMethod[]> {
+    const response = await api.get<{ data: ShippingMethod[] }>('/vendor/shipping/my-methods')
+    return response.data.data
+  },
+
+  /**
+   * Create vendor shipping method
+   */
+  async createMyMethod(data: CreateShippingMethodRequest): Promise<ShippingMethod> {
+    const response = await api.post<{ data: ShippingMethod }>('/vendor/shipping/my-methods', data)
+    return response.data.data
+  },
+
+  /**
+   * Update vendor shipping method
+   */
+  async updateMyMethod(id: number, data: UpdateShippingMethodRequest): Promise<ShippingMethod> {
+    const response = await api.put<{ data: ShippingMethod }>(
+      `/vendor/shipping/my-methods/${id}`,
+      data
+    )
+    return response.data.data
+  },
+
+  /**
+   * Delete vendor shipping method
+   */
+  async deleteMyMethod(id: number): Promise<void> {
+    await api.delete(`/vendor/shipping/my-methods/${id}`)
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Vendor: Shipments — /vendor/shipping/shipments
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Get vendor shipments list
+   */
+  async getShipments(filters?: ShipmentFilters): Promise<PaginatedResponse<Shipment>> {
+    const response = await api.get<PaginatedResponse<Shipment>>(
+      '/vendor/shipping/shipments',
+      { params: filters }
+    )
+    return response.data
+  },
+
+  /**
+   * Get single shipment
+   */
+  async getShipmentById(id: number): Promise<Shipment> {
+    const response = await api.get<{ data: Shipment }>(`/vendor/shipping/shipments/${id}`)
+    return response.data.data
+  },
+
+  /**
+   * Create shipment for an order
+   */
+  async createShipment(orderId: number, data: CreateShipmentRequest): Promise<Shipment> {
+    const response = await api.post<{ data: Shipment }>(
+      `/vendor/orders/${orderId}/shipment`,
+      data
+    )
+    return response.data.data
+  },
+
+  /**
+   * Update shipment details
+   */
+  async updateShipment(id: number, data: UpdateShipmentRequest): Promise<Shipment> {
+    const response = await api.put<{ data: Shipment }>(
+      `/vendor/shipping/shipments/${id}`,
+      data
+    )
+    return response.data.data
+  },
+
+  /**
+   * Update shipment status
+   */
+  async updateShipmentStatus(id: number, status: string): Promise<Shipment> {
+    const response = await api.put<{ data: Shipment }>(
+      `/vendor/shipping/shipments/${id}/status`,
+      { status }
+    )
+    return response.data.data
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Shipping Zones for Vendor (read-only list)
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Get available shipping zones (vendor read-only)
+   */
+  async getAvailableZones(): Promise<ShippingZone[]> {
+    // Vendors can see zones to select for their methods
+    const response = await api.get<{ data: ShippingZone[] }>('/vendor/shipping/zones')
+    return response.data.data
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Shipping Calculation
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Calculate shipping cost for cart/order
+   */
+  async calculate(data: ShippingCalculateRequest): Promise<ShippingCalculateResult> {
+    const role = getRolePrefix()
+    const response = await api.post<{ data: ShippingCalculateResult }>(
+      `${role}/shipping/calculate`,
+      data
+    )
+    return response.data.data
   },
 }
+
+// Re-export types for convenience
+export type {
+  ShippingZone,
+  ShippingMethod,
+  Shipment,
+  ShipmentStatus,
+  ShippingMethodType,
+  ShippingRateType,
+  CreateShippingZoneRequest,
+  UpdateShippingZoneRequest,
+  CreateShippingMethodRequest,
+  UpdateShippingMethodRequest,
+  CreateShipmentRequest,
+  UpdateShipmentRequest,
+  UpdateShipmentStatusRequest,
+  ShippingCalculateRequest,
+  ShippingCalculateResult,
+  ShipmentFilters,
+  ShippingZoneFilters,
+  ShippingMethodFilters,
+} from '@/types'

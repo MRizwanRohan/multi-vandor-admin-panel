@@ -112,6 +112,25 @@ const vendorRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/vendor/shipping/ShippingSettings.vue'),
         meta: { title: 'Shipping Settings' },
       },
+      // Shipments
+      {
+        path: 'shipments',
+        name: 'vendor-shipments',
+        component: () => import('@/pages/vendor/shipments/ShipmentList.vue'),
+        meta: { title: 'Shipments' },
+      },
+      {
+        path: 'shipments/:id',
+        name: 'vendor-shipment-detail',
+        component: () => import('@/pages/vendor/shipments/ShipmentDetail.vue'),
+        meta: { title: 'Shipment Details' },
+      },
+      {
+        path: 'orders/:orderId/ship',
+        name: 'vendor-create-shipment',
+        component: () => import('@/pages/vendor/shipments/ShipmentForm.vue'),
+        meta: { title: 'Create Shipment' },
+      },
       // Earnings
       {
         path: 'earnings',

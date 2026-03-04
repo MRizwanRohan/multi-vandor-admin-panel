@@ -243,6 +243,43 @@ const adminRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/admin/payouts/PayoutDetail.vue'),
         meta: { title: 'Payout Details' },
       },
+      // Shipping Zones & Methods
+      {
+        path: 'shipping/zones',
+        name: 'admin-shipping-zones',
+        component: () => import('@/pages/admin/shipping/ShippingZoneList.vue'),
+        meta: { title: 'Shipping Zones' },
+      },
+      {
+        path: 'shipping/zones/new',
+        name: 'admin-shipping-zone-create',
+        component: () => import('@/pages/admin/shipping/ShippingZoneForm.vue'),
+        meta: { title: 'Create Shipping Zone' },
+      },
+      {
+        path: 'shipping/zones/:id',
+        name: 'admin-shipping-zone-edit',
+        component: () => import('@/pages/admin/shipping/ShippingZoneForm.vue'),
+        meta: { title: 'Edit Shipping Zone' },
+      },
+      {
+        path: 'shipping/methods',
+        name: 'admin-shipping-methods',
+        component: () => import('@/pages/admin/shipping/ShippingMethodList.vue'),
+        meta: { title: 'Shipping Methods' },
+      },
+      {
+        path: 'shipping/methods/new',
+        name: 'admin-shipping-method-create',
+        component: () => import('@/pages/admin/shipping/ShippingMethodForm.vue'),
+        meta: { title: 'Create Shipping Method' },
+      },
+      {
+        path: 'shipping/methods/:id',
+        name: 'admin-shipping-method-edit',
+        component: () => import('@/pages/admin/shipping/ShippingMethodForm.vue'),
+        meta: { title: 'Edit Shipping Method' },
+      },
       // Reports
       {
         path: 'reports/sales',

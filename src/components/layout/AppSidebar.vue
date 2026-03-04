@@ -160,6 +160,15 @@ const adminNavItems: NavItem[] = [
     icon: BanknotesIcon,
   },
   {
+    name: 'Shipping',
+    to: '/admin/shipping',
+    icon: TruckIcon,
+    children: [
+      { name: 'Shipping Zones', to: '/admin/shipping/zones' },
+      { name: 'Shipping Methods', to: '/admin/shipping/methods' },
+    ],
+  },
+  {
     name: 'Reports',
     to: '/admin/reports',
     icon: DocumentChartBarIcon,
@@ -221,6 +230,10 @@ const vendorNavItems: NavItem[] = [
     name: 'Shipping',
     to: '/vendor/shipping',
     icon: TruckIcon,
+    children: [
+      { name: 'Shipping Settings', to: '/vendor/shipping' },
+      { name: 'Shipments', to: '/vendor/shipments' },
+    ],
   },
   {
     name: 'Analytics',

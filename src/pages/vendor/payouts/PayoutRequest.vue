@@ -110,26 +110,26 @@ function getAccountTypeLabel(type: string): string {
   return labels[type] || type
 }
 
-// Fetch earnings summary
+// Fetch earnings summary (uses /vendor/payouts/balance)
 async function fetchEarnings() {
   try {
     const data = await payoutService.getEarningsSummary()
     earnings.value = data
   } catch (error) {
-    // Mock data
+    toast.error('Failed to load earnings data')
     earnings.value = {
-      available_balance: 25000,
-      pending_balance: 5000,
-      total_earned: 150000,
-      total_commission: 15000,
-      total_paid_out: 110000,
-      this_month_revenue: 35000,
-      this_month_commission: 3500,
+      available_balance: 0,
+      pending_balance: 0,
+      total_earned: 0,
+      total_commission: 0,
+      total_paid_out: 0,
+      this_month_revenue: 0,
+      this_month_commission: 0,
     }
   }
 }
 
-// Fetch bank accounts
+// Fetch bank accounts (uses /vendor/bank-accounts)
 async function fetchBankAccounts() {
   isLoading.value = true
   try {
@@ -142,12 +142,8 @@ async function fetchBankAccounts() {
       bankAccountId.value = primary.id
     }
   } catch (error) {
-    // Mock data
-    bankAccounts.value = [
-      { id: 1, account_type: 'bank', bank_name: 'Dutch Bangla Bank', account_name: 'John Doe', account_number: '1234567890', is_primary: true, is_verified: true },
-      { id: 2, account_type: 'bkash', bank_name: null, account_name: 'John Doe', account_number: '01712345678', is_primary: false, is_verified: true },
-    ]
-    bankAccountId.value = 1
+    toast.error('Failed to load bank accounts')
+    bankAccounts.value = []
   } finally {
     isLoading.value = false
   }

@@ -1,5 +1,5 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<!-- Admin Vendor Detail — View vendor details page -->
+<!-- Admin Vendor Detail — View vendor details + Approve/Reject/Suspend -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
@@ -11,18 +11,24 @@ import { useCurrency, useDate, useConfirm, useToast } from '@/composables'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
+import BaseModal from '@/components/ui/BaseModal.vue'
 import PageLoader from '@/components/ui/PageLoader.vue'
 import StatCard from '@/components/ui/StatCard.vue'
+import FormTextarea from '@/components/form/FormTextarea.vue'
 import type { Vendor } from '@/types'
 import {
   ArrowLeftIcon,
   CheckCircleIcon,
   XCircleIcon,
+  NoSymbolIcon,
+  ArrowPathIcon,
   BuildingStorefrontIcon,
   ShoppingBagIcon,
   ShoppingCartIcon,
   CurrencyDollarIcon,
   StarIcon,
+  IdentificationIcon,
+  ShieldCheckIcon,
 } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
@@ -41,6 +47,12 @@ const vendorId = computed(() => {
   return isNaN(id) ? null : id
 })
 
+// Reason modal state
+const showReasonModal = ref(false)
+const reasonModalTitle = ref('')
+const reasonModalAction = ref<'reject' | 'suspend'>('reject')
+const reasonText = ref('')
+
 // Set page info
 onMounted(() => {
   if (!vendorId.value) {
@@ -51,63 +63,118 @@ onMounted(() => {
   fetchVendor()
 })
 
-// Fetch vendor
+// Fetch vendor (no mock fallback)
 async function fetchVendor() {
   isLoading.value = true
   try {
-    vendor.value = await vendorService.getById(vendorId.value)
+    vendor.value = await vendorService.getById(vendorId.value!)
     breadcrumbStore.setPageInfo(vendor.value.store_name, [
       { label: 'Vendors', to: '/admin/vendors' },
       { label: vendor.value.store_name },
     ])
   } catch (error) {
-    toast.error('Failed to fetch vendor')
-    // Mock data
-    vendor.value = {
-      id: vendorId.value,
-      user_id: 1,
-      store_name: 'Fashion Store',
-      slug: 'fashion-store',
-      business_name: 'Fashion Store Ltd',
-      business_type: 'retail',
-      description: 'Premium fashion clothing and accessories for men and women.',
-      logo_url: null,
-      banner_url: null,
-      status: 'approved' as const,
-      commission_rate: 10,
-      rating_average: 4.7,
-      review_count: 150,
-      product_count: 156,
-      order_count: 523,
-      total_sales: 850000,
-      owner: {
-        id: 1,
-        name: 'John Doe',
-        email: 'fashion@example.com',
-        phone: '+880123456789',
-        avatar: null,
-      },
-      is_verified: true,
-      verified_at: '2024-01-01',
-      created_at: '2024-01-01',
-      updated_at: '2024-01-15',
-    }
-    breadcrumbStore.setPageInfo(vendor.value.store_name, [
-      { label: 'Vendors', to: '/admin/vendors' },
-      { label: vendor.value.store_name },
-    ])
+    toast.error('Failed to fetch vendor details')
+    router.push('/admin/vendors')
   } finally {
     isLoading.value = false
   }
 }
 
-// Actions
-async function verifyVendor() {
+// ─── Actions ─────────────────────────────────────────────────────
+
+// Approve vendor (pending → approved)
+async function approveVendor() {
   if (!vendor.value) return
 
   const confirmed = await confirm.show({
-    title: 'Verify Vendor',
-    message: `Are you sure you want to verify "${vendor.value.store_name}"?`,
+    title: 'Approve Vendor',
+    message: `Are you sure you want to approve "${vendor.value.store_name}"? They will be able to start selling products.`,
+    confirmText: 'Approve',
+    cancelText: 'Cancel',
+    variant: 'info',
+  })
+
+  if (confirmed) {
+    try {
+      await (vendorService as any).approve(vendor.value.id)
+      toast.success(`"${vendor.value.store_name}" has been approved`)
+      fetchVendor()
+    } catch (error) {
+      toast.error('Failed to approve vendor')
+    }
+  }
+}
+
+// Open reject modal
+function openRejectModal() {
+  if (!vendor.value) return
+  reasonModalTitle.value = `Reject "${vendor.value.store_name}"`
+  reasonModalAction.value = 'reject'
+  reasonText.value = ''
+  showReasonModal.value = true
+}
+
+// Open suspend modal
+function openSuspendModal() {
+  if (!vendor.value) return
+  reasonModalTitle.value = `Suspend "${vendor.value.store_name}"`
+  reasonModalAction.value = 'suspend'
+  reasonText.value = ''
+  showReasonModal.value = true
+}
+
+// Submit reject/suspend with reason
+async function submitReasonAction() {
+  if (!vendor.value || !reasonText.value.trim()) {
+    toast.error('Please provide a reason')
+    return
+  }
+
+  try {
+    if (reasonModalAction.value === 'reject') {
+      await (vendorService as any).reject(vendor.value.id, reasonText.value)
+      toast.success(`"${vendor.value.store_name}" has been rejected`)
+    } else {
+      await (vendorService as any).suspend(vendor.value.id, reasonText.value)
+      toast.success(`"${vendor.value.store_name}" has been suspended`)
+    }
+    showReasonModal.value = false
+    fetchVendor()
+  } catch (error) {
+    toast.error(`Failed to ${reasonModalAction.value} vendor`)
+  }
+}
+
+// Reactivate suspended vendor
+async function reactivateVendor() {
+  if (!vendor.value) return
+
+  const confirmed = await confirm.show({
+    title: 'Reactivate Vendor',
+    message: `Are you sure you want to reactivate "${vendor.value.store_name}"? They will be able to sell products again.`,
+    confirmText: 'Reactivate',
+    cancelText: 'Cancel',
+    variant: 'info',
+  })
+
+  if (confirmed) {
+    try {
+      await (vendorService as any).reactivate(vendor.value.id)
+      toast.success(`"${vendor.value.store_name}" has been reactivated`)
+      fetchVendor()
+    } catch (error) {
+      toast.error('Failed to reactivate vendor')
+    }
+  }
+}
+
+// Verify NID
+async function verifyNid() {
+  if (!vendor.value) return
+
+  const confirmed = await confirm.show({
+    title: 'Verify NID',
+    message: `Are you sure you want to verify the NID documents for "${vendor.value.store_name}"?`,
     confirmText: 'Verify',
     cancelText: 'Cancel',
     variant: 'info',
@@ -116,54 +183,31 @@ async function verifyVendor() {
   if (confirmed) {
     try {
       await vendorService.verify(vendor.value.id)
-      toast.success('Vendor verified successfully')
+      toast.success('NID verified successfully')
       fetchVendor()
     } catch (error) {
-      toast.error('Failed to verify vendor')
+      toast.error('Failed to verify NID')
     }
   }
 }
 
-async function suspendVendor() {
-  if (!vendor.value) return
+// ─── Helpers ─────────────────────────────────────────────────────
 
-  const confirmed = await confirm.show({
-    title: 'Suspend Vendor',
-    message: `Are you sure you want to suspend "${vendor.value.store_name}"? They will not be able to sell products.`,
-    confirmText: 'Suspend',
-    cancelText: 'Cancel',
-    variant: 'danger',
-  })
-
-  if (confirmed) {
-    try {
-      await vendorService.updateStatus(vendor.value.id, 'suspended')
-      toast.success('Vendor suspended')
-      fetchVendor()
-    } catch (error) {
-      toast.error('Failed to suspend vendor')
-    }
-  }
-}
-
-// Status variants
-function getStatusVariant(status: string): 'success' | 'warning' | 'danger' {
-  const variants: Record<string, 'success' | 'warning' | 'danger'> = {
+function getStatusVariant(status: string): 'success' | 'warning' | 'danger' | 'info' | 'secondary' {
+  const variants: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'secondary'> = {
     active: 'success',
-    inactive: 'warning',
+    approved: 'info',
+    pending: 'warning',
     suspended: 'danger',
+    rejected: 'danger',
+    banned: 'danger',
+    inactive: 'secondary',
   }
-  return variants[status] || 'warning'
+  return variants[status] || 'secondary'
 }
 
-function getVerificationVariant(status: string): 'success' | 'warning' | 'danger' {
-  const variants: Record<string, 'success' | 'warning' | 'danger'> = {
-    verified: 'success',
-    pending: 'warning',
-    rejected: 'danger',
-  }
-  return variants[status] || 'warning'
-}
+// Check if vendor has NID detail fields
+const vendorDetail = computed(() => vendor.value as any)
 </script>
 
 <template>
@@ -178,7 +222,8 @@ function getVerificationVariant(status: string): 'success' | 'warning' | 'danger
         </BaseButton>
         <div class="flex items-center gap-4">
           <div class="flex h-14 w-14 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/50">
-            <BuildingStorefrontIcon class="h-7 w-7 text-primary-600 dark:text-primary-400" />
+            <img v-if="vendor.logo_url" :src="vendor.logo_url" :alt="vendor.store_name" class="h-14 w-14 rounded-full object-cover" />
+            <BuildingStorefrontIcon v-else class="h-7 w-7 text-primary-600 dark:text-primary-400" />
           </div>
           <div>
             <div class="flex items-center gap-3">
@@ -188,8 +233,8 @@ function getVerificationVariant(status: string): 'success' | 'warning' | 'danger
               <BaseBadge :variant="getStatusVariant(vendor.status)" class="capitalize">
                 {{ vendor.status }}
               </BaseBadge>
-              <BaseBadge :variant="getVerificationVariant(vendor.is_verified ? 'verified' : 'pending')" class="capitalize">
-                {{ vendor.is_verified ? 'Verified' : 'Pending' }}
+              <BaseBadge :variant="vendor.is_verified ? 'success' : 'warning'" class="capitalize">
+                {{ vendor.is_verified ? 'Verified' : 'Unverified' }}
               </BaseBadge>
             </div>
             <p class="text-sm text-gray-500 dark:text-gray-400">
@@ -199,22 +244,56 @@ function getVerificationVariant(status: string): 'success' | 'warning' | 'danger
         </div>
       </div>
 
-      <div class="flex items-center gap-2">
+      <!-- Action Buttons -->
+      <div class="flex flex-wrap items-center gap-2">
+        <!-- Approve (pending only) -->
         <BaseButton
-          v-if="!vendor.is_verified"
+          v-if="vendor.status === 'pending'"
           variant="primary"
-          @click="verifyVendor"
+          @click="approveVendor"
         >
           <CheckCircleIcon class="mr-2 h-4 w-4" />
-          Verify
+          Approve
         </BaseButton>
+
+        <!-- Reject (pending only) -->
         <BaseButton
-          v-if="vendor.status === 'approved'"
+          v-if="vendor.status === 'pending'"
           variant="danger"
-          @click="suspendVendor"
+          @click="openRejectModal"
         >
           <XCircleIcon class="mr-2 h-4 w-4" />
+          Reject
+        </BaseButton>
+
+        <!-- Suspend (active or approved) -->
+        <BaseButton
+          v-if="vendor.status === 'active' || vendor.status === 'approved'"
+          variant="danger"
+          @click="openSuspendModal"
+        >
+          <NoSymbolIcon class="mr-2 h-4 w-4" />
           Suspend
+        </BaseButton>
+
+        <!-- Reactivate (suspended) -->
+        <BaseButton
+          v-if="vendor.status === 'suspended'"
+          variant="primary"
+          @click="reactivateVendor"
+        >
+          <ArrowPathIcon class="mr-2 h-4 w-4" />
+          Reactivate
+        </BaseButton>
+
+        <!-- Verify NID (if not verified) -->
+        <BaseButton
+          v-if="!vendor.is_verified"
+          variant="secondary"
+          @click="verifyNid"
+        >
+          <ShieldCheckIcon class="mr-2 h-4 w-4" />
+          Verify NID
         </BaseButton>
       </div>
     </div>
@@ -261,6 +340,12 @@ function getVerificationVariant(status: string): 'success' | 'warning' | 'danger
             </p>
           </div>
           <div>
+            <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400">Business Type</h4>
+            <p class="mt-1 text-gray-900 dark:text-white capitalize">
+              {{ vendor.business_type || 'Not specified' }}
+            </p>
+          </div>
+          <div>
             <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400">Description</h4>
             <p class="mt-1 text-gray-900 dark:text-white">
               {{ vendor.description || 'No description provided' }}
@@ -275,12 +360,16 @@ function getVerificationVariant(status: string): 'success' | 'warning' | 'danger
         </div>
       </BaseCard>
 
-      <!-- Contact & Address -->
+      <!-- Contact & Owner -->
       <BaseCard>
         <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
-          Contact & Address
+          Contact & Owner
         </h3>
         <div class="space-y-4">
+          <div>
+            <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400">Owner</h4>
+            <p class="mt-1 text-gray-900 dark:text-white">{{ vendor.owner?.name }}</p>
+          </div>
           <div>
             <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400">Email</h4>
             <p class="mt-1 text-gray-900 dark:text-white">{{ vendor.owner?.email }}</p>
@@ -293,6 +382,47 @@ function getVerificationVariant(status: string): 'success' | 'warning' | 'danger
             <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400">Business Name</h4>
             <p class="mt-1 text-gray-900 dark:text-white">
               {{ vendor.business_name || 'N/A' }}
+            </p>
+          </div>
+        </div>
+      </BaseCard>
+
+      <!-- NID Verification -->
+      <BaseCard>
+        <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+          <div class="flex items-center gap-2">
+            <IdentificationIcon class="h-5 w-5" />
+            NID Verification
+          </div>
+        </h3>
+        <div class="space-y-4">
+          <div class="flex items-center gap-3">
+            <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400">Status</h4>
+            <BaseBadge :variant="vendor.is_verified ? 'success' : 'warning'">
+              {{ vendor.is_verified ? 'Verified' : 'Pending Verification' }}
+            </BaseBadge>
+          </div>
+          <div v-if="vendorDetail?.nid_number">
+            <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400">NID Number</h4>
+            <p class="mt-1 font-mono text-gray-900 dark:text-white">{{ vendorDetail.nid_number }}</p>
+          </div>
+          <div v-if="vendorDetail?.nid_front_image || vendorDetail?.nid_back_image" class="grid grid-cols-2 gap-4">
+            <div v-if="vendorDetail?.nid_front_image">
+              <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Front</h4>
+              <img :src="vendorDetail.nid_front_image" alt="NID Front" class="rounded-lg border border-gray-200 dark:border-gray-700 w-full" />
+            </div>
+            <div v-if="vendorDetail?.nid_back_image">
+              <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Back</h4>
+              <img :src="vendorDetail.nid_back_image" alt="NID Back" class="rounded-lg border border-gray-200 dark:border-gray-700 w-full" />
+            </div>
+          </div>
+          <div v-if="!vendorDetail?.nid_number && !vendorDetail?.nid_front_image" class="text-sm text-gray-500 dark:text-gray-400">
+            No NID documents submitted yet.
+          </div>
+          <div v-if="vendor.verified_at">
+            <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400">Verified At</h4>
+            <p class="mt-1 text-gray-900 dark:text-white">
+              {{ date.format(vendor.verified_at, 'MMMM D, YYYY') }}
             </p>
           </div>
         </div>
@@ -316,14 +446,57 @@ function getVerificationVariant(status: string): 'success' | 'warning' | 'danger
               {{ date.format(vendor.updated_at, 'MMMM D, YYYY') }}
             </p>
           </div>
-          <div v-if="vendor.verified_at">
-            <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400">Verified At</h4>
+          <div>
+            <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400">Reviews</h4>
             <p class="mt-1 text-gray-900 dark:text-white">
-              {{ date.format(vendor.verified_at, 'MMMM D, YYYY') }}
+              {{ vendor.review_count || 0 }} reviews ({{ (vendor.rating_average || 0).toFixed(1) }} avg)
             </p>
           </div>
         </div>
       </BaseCard>
     </div>
+
+    <!-- Reject / Suspend Reason Modal -->
+    <BaseModal
+      :show="showReasonModal"
+      :title="reasonModalTitle"
+      size="md"
+      @close="showReasonModal = false"
+    >
+      <div class="space-y-4">
+        <p class="text-sm text-gray-600 dark:text-gray-400">
+          <template v-if="reasonModalAction === 'reject'">
+            Please provide a reason for rejecting this vendor application. The vendor will be notified.
+          </template>
+          <template v-else>
+            Please provide a reason for suspending this vendor. They will not be able to sell products while suspended.
+          </template>
+        </p>
+
+        <FormTextarea
+          v-model="reasonText"
+          name="reason"
+          label="Reason"
+          placeholder="Enter the reason..."
+          :rows="4"
+          required
+        />
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <BaseButton variant="secondary" @click="showReasonModal = false">
+            Cancel
+          </BaseButton>
+          <BaseButton
+            variant="danger"
+            :disabled="!reasonText.trim()"
+            @click="submitReasonAction"
+          >
+            {{ reasonModalAction === 'reject' ? 'Reject Vendor' : 'Suspend Vendor' }}
+          </BaseButton>
+        </div>
+      </template>
+    </BaseModal>
   </div>
 </template>

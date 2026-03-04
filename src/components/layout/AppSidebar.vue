@@ -31,6 +31,7 @@ import {
   QuestionMarkCircleIcon,
   GlobeAltIcon,
   ChevronDownIcon,
+  IdentificationIcon,
 } from '@heroicons/vue/24/outline'
 
 interface NavItem {
@@ -258,13 +259,18 @@ const vendorNavItems: NavItem[] = [
   },
   {
     name: 'Shop Settings',
-    to: '/vendor/shop-settings',
+    to: '/vendor/settings/shop',
     icon: BuildingStorefrontIcon,
   },
   {
     name: 'Bank Details',
-    to: '/vendor/bank-details',
+    to: '/vendor/settings/bank-details',
     icon: BanknotesIcon,
+  },
+  {
+    name: 'NID Verification',
+    to: '/vendor/settings/nid',
+    icon: IdentificationIcon,
   },
   {
     name: 'Help & Support',

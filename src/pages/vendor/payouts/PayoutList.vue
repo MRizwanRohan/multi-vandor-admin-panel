@@ -1,156 +1,153 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<!-- Vendor Payouts — Payout history and requests page -->
+<!-- Vendor Payouts — Payout history and requests page (real API) -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
-import { useToast, useCurrency, useDate } from '@/composables'
+import { payoutService } from '@/services'
+import { useToast, useCurrency, useDate, usePagination } from '@/composables'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
 import DataTable from '@/components/data/DataTable.vue'
-import FormInput from '@/components/form/FormInput.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
 import StatCard from '@/components/ui/StatCard.vue'
-import BaseModal from '@/components/ui/BaseModal.vue'
+import type { Payout, TableColumn } from '@/types'
 import {
   BanknotesIcon,
   ClockIcon,
   CheckCircleIcon,
   WalletIcon,
   PlusIcon,
+  ExclamationCircleIcon,
 } from '@heroicons/vue/24/outline'
 
+const router = useRouter()
 const breadcrumbStore = useBreadcrumbStore()
 const toast = useToast()
 const { formatCurrency } = useCurrency()
 const { formatDate } = useDate()
+const pagination = usePagination()
 
 // Set page info
 onMounted(() => {
   breadcrumbStore.setPageInfo('Payouts', [
     { label: 'Payouts' },
   ], 'View and request payouts')
+  fetchBalance()
+  fetchPayouts()
 })
 
-// Stats
+// Data
+const payouts = ref<Payout[]>([])
+const isLoading = ref(true)
+const statusFilter = ref('')
+const balance = ref({ available: 0, pending: 0, minimum: 100 })
+
+const statusOptions = [
+  { value: '', label: 'All Status' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'processing', label: 'Processing' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'failed', label: 'Failed' },
+]
+
+// Stats from real data
 const stats = computed(() => [
   {
     title: 'Available Balance',
-    value: formatCurrency(75000),
+    value: formatCurrency(balance.value.available),
     icon: WalletIcon,
     color: 'primary' as const,
   },
   {
     title: 'Pending Payout',
-    value: formatCurrency(25000),
+    value: formatCurrency(balance.value.pending),
     icon: ClockIcon,
     color: 'warning' as const,
   },
   {
-    title: 'This Month',
-    value: formatCurrency(50000),
-    icon: BanknotesIcon,
-    trend: { value: 15, type: 'up' as const },
-    color: 'success' as const,
+    title: 'Min. Payout',
+    value: formatCurrency(balance.value.minimum),
+    icon: ExclamationCircleIcon,
+    color: 'info' as const,
   },
   {
-    title: 'Total Received',
-    value: formatCurrency(450000),
+    title: 'Total Payouts',
+    value: String(pagination.totalItems.value),
     icon: CheckCircleIcon,
-    color: 'info' as const,
+    color: 'success' as const,
   },
 ])
 
 // Table columns
-const columns = [
+const columns: TableColumn[] = [
   { key: 'id', label: 'Payout ID', sortable: true },
   { key: 'amount', label: 'Amount', sortable: true },
   { key: 'method', label: 'Method' },
-  { key: 'requestedAt', label: 'Requested', sortable: true },
-  { key: 'processedAt', label: 'Processed', sortable: true },
+  { key: 'requested_at', label: 'Requested', sortable: true },
+  { key: 'processed_at', label: 'Processed', sortable: true },
   { key: 'status', label: 'Status' },
 ]
 
-// Mock data
-const payouts = ref([
-  {
-    id: 'PAY-001',
-    amount: 50000,
-    method: 'bKash',
-    accountNumber: '01712345678',
-    requestedAt: '2024-12-10T10:00:00Z',
-    processedAt: '2024-12-11T15:00:00Z',
-    status: 'completed',
-  },
-  {
-    id: 'PAY-002',
-    amount: 25000,
-    method: 'Bank Transfer',
-    accountNumber: '1234567890',
-    requestedAt: '2024-12-12T10:00:00Z',
-    processedAt: null,
-    status: 'pending',
-  },
-  {
-    id: 'PAY-003',
-    amount: 75000,
-    method: 'Bank Transfer',
-    accountNumber: '1234567890',
-    requestedAt: '2024-12-01T10:00:00Z',
-    processedAt: '2024-12-03T12:00:00Z',
-    status: 'completed',
-  },
-])
-
-// Request payout modal
-const showRequestModal = ref(false)
-const requestAmount = ref(0)
-const payoutMethod = ref('bank')
-
-const methodOptions = [
-  { value: 'bank', label: 'Bank Transfer' },
-  { value: 'bkash', label: 'bKash' },
-  { value: 'nagad', label: 'Nagad' },
-  { value: 'rocket', label: 'Rocket' },
-]
-
-// Available balance (for validation)
-const availableBalance = 75000
-const minPayout = 5000
-
-// Open request modal
-function openRequestModal() {
-  requestAmount.value = availableBalance
-  showRequestModal.value = true
+// Fetch available balance
+async function fetchBalance() {
+  try {
+    balance.value = await payoutService.getAvailableBalance()
+  } catch (error) {
+    console.error('Failed to fetch balance:', error)
+  }
 }
 
-// Submit payout request
-function submitPayoutRequest() {
-  if (requestAmount.value < minPayout) {
-    toast.error(`Minimum payout amount is ${formatCurrency(minPayout)}`)
-    return
+// Fetch payouts from API
+async function fetchPayouts() {
+  isLoading.value = true
+  try {
+    const response = await payoutService.getAll({
+      page: pagination.currentPage.value,
+      per_page: pagination.perPage.value,
+      status: (statusFilter.value || undefined) as any,
+    })
+    payouts.value = response.data
+    if (response.meta) {
+      pagination.setMeta(response.meta)
+    }
+  } catch (error) {
+    toast.error('Failed to load payouts')
+    payouts.value = []
+  } finally {
+    isLoading.value = false
   }
-  
-  if (requestAmount.value > availableBalance) {
-    toast.error('Amount exceeds available balance')
-    return
+}
+
+// Watch for filter/pagination changes
+watch(statusFilter, () => {
+  pagination.currentPage.value = 1
+  fetchPayouts()
+})
+watch([() => pagination.currentPage.value, () => pagination.perPage.value], () => {
+  fetchPayouts()
+})
+
+// Navigate to request payout page
+function goToRequestPayout() {
+  router.push('/vendor/payouts/request')
+}
+
+// Cancel a pending payout
+async function cancelPayout(payout: Payout) {
+  if (payout.status !== 'pending') return
+  try {
+    await payoutService.cancel(payout.id)
+    toast.success('Payout request cancelled')
+    fetchPayouts()
+    fetchBalance()
+  } catch (error) {
+    toast.error('Failed to cancel payout')
   }
-
-  // Add new payout request
-  payouts.value.unshift({
-    id: `PAY-${Date.now().toString().slice(-5)}`,
-    amount: requestAmount.value,
-    method: methodOptions.find(m => m.value === payoutMethod.value)?.label || 'Bank Transfer',
-    accountNumber: '****7890',
-    requestedAt: new Date().toISOString(),
-    processedAt: null,
-    status: 'pending',
-  })
-
-  toast.success('Payout request submitted successfully')
-  showRequestModal.value = false
 }
 
 // Get status variant
@@ -160,6 +157,7 @@ function getStatusVariant(status: string) {
     case 'pending': return 'warning'
     case 'processing': return 'info'
     case 'rejected': return 'danger'
+    case 'failed': return 'danger'
     default: return 'secondary'
   }
 }
@@ -175,32 +173,40 @@ function getStatusVariant(status: string) {
         :title="stat.title"
         :value="stat.value"
         :icon="stat.icon"
-        :trend="stat.trend"
         :color="stat.color"
       />
     </div>
 
-    <!-- Request payout button -->
-    <div class="flex justify-end">
-      <BaseButton variant="primary" @click="openRequestModal">
+    <!-- Header actions -->
+    <div class="flex items-center justify-between">
+      <FormSelect
+        v-model="statusFilter"
+        name="status"
+        :options="statusOptions"
+        class="w-44"
+      />
+      <BaseButton variant="primary" @click="goToRequestPayout">
         <PlusIcon class="mr-2 h-4 w-4" />
         Request Payout
       </BaseButton>
     </div>
 
     <!-- Payouts table -->
-    <BaseCard title="Payout History">
+    <BaseCard title="Payout History" padding="none">
       <DataTable
         :columns="columns"
         :data="payouts"
-        :loading="false"
-        :total="payouts.length"
-        :current-page="1"
-        :per-page="20"
+        :loading="isLoading"
+        row-key="id"
+        :current-page="pagination.currentPage.value"
+        :per-page="pagination.perPage.value"
+        :total="pagination.totalItems.value"
+        @update:currentPage="pagination.currentPage.value = $event"
+        @update:perPage="pagination.perPage.value = $event"
       >
         <template #cell-id="{ row }">
           <span class="font-mono font-medium text-gray-900 dark:text-white">
-            {{ row.id }}
+            #{{ row.id }}
           </span>
         </template>
 
@@ -212,29 +218,53 @@ function getStatusVariant(status: string) {
 
         <template #cell-method="{ row }">
           <div>
-            <div class="text-gray-900 dark:text-white">{{ row.method }}</div>
-            <div class="text-sm text-gray-500 dark:text-gray-400">
-              {{ row.accountNumber }}
+            <div class="text-gray-900 dark:text-white capitalize">{{ row.method || row.payout_method || '-' }}</div>
+            <div v-if="row.bank_account" class="text-sm text-gray-500 dark:text-gray-400">
+              {{ row.bank_account.account_number?.slice(-4)?.padStart(8, '•') }}
             </div>
           </div>
         </template>
 
-        <template #cell-requestedAt="{ row }">
+        <template #cell-requested_at="{ row }">
           <span class="text-gray-600 dark:text-gray-400">
-            {{ formatDate(row.requestedAt) }}
+            {{ formatDate(row.requested_at || row.created_at) }}
           </span>
         </template>
 
-        <template #cell-processedAt="{ row }">
+        <template #cell-processed_at="{ row }">
           <span class="text-gray-600 dark:text-gray-400">
-            {{ row.processedAt ? formatDate(row.processedAt) : '-' }}
+            {{ row.processed_at ? formatDate(row.processed_at) : '-' }}
           </span>
         </template>
 
         <template #cell-status="{ row }">
-          <BaseBadge :variant="getStatusVariant(row.status)">
-            {{ row.status }}
-          </BaseBadge>
+          <div class="flex items-center gap-2">
+            <BaseBadge :variant="getStatusVariant(row.status)" class="capitalize">
+              {{ row.status }}
+            </BaseBadge>
+            <button
+              v-if="row.status === 'pending'"
+              type="button"
+              class="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400"
+              @click="cancelPayout(row)"
+            >
+              Cancel
+            </button>
+          </div>
+        </template>
+
+        <template #empty>
+          <div class="py-12 text-center">
+            <BanknotesIcon class="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" />
+            <h3 class="mt-4 text-lg font-medium text-gray-900 dark:text-white">No payouts yet</h3>
+            <p class="mt-2 text-gray-500 dark:text-gray-400">
+              Request your first payout when you have available balance.
+            </p>
+            <BaseButton variant="primary" class="mt-4" @click="goToRequestPayout">
+              <PlusIcon class="mr-2 h-4 w-4" />
+              Request Payout
+            </BaseButton>
+          </div>
         </template>
       </DataTable>
     </BaseCard>
@@ -250,69 +280,13 @@ function getStatusVariant(status: string) {
             Payout Information
           </h3>
           <ul class="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-400">
-            <li>• Minimum payout amount: {{ formatCurrency(minPayout) }}</li>
+            <li>• Minimum payout amount: {{ formatCurrency(balance.minimum) }}</li>
             <li>• Payouts are processed within 2-3 business days</li>
             <li>• Bank transfers may take an additional 1-2 days</li>
-            <li>• Commission rate: 10% (deducted from order total)</li>
+            <li>• You can cancel pending payouts before they are processed</li>
           </ul>
         </div>
       </div>
     </BaseCard>
-
-    <!-- Request payout modal -->
-    <BaseModal
-      :show="showRequestModal"
-      title="Request Payout"
-      size="md"
-      @close="showRequestModal = false"
-    >
-      <div class="space-y-4">
-        <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
-          <div class="flex items-center justify-between">
-            <span class="text-gray-600 dark:text-gray-400">Available Balance</span>
-            <span class="text-xl font-bold text-gray-900 dark:text-white">
-              {{ formatCurrency(availableBalance) }}
-            </span>
-          </div>
-        </div>
-
-        <FormInput
-          v-model.number="requestAmount"
-          label="Payout Amount (৳)"
-          name="amount"
-          type="number"
-          :min="minPayout"
-          :max="availableBalance"
-        />
-
-        <FormSelect
-          v-model="payoutMethod"
-          label="Payout Method"
-          name="method"
-          :options="methodOptions"
-        />
-
-        <p class="text-sm text-gray-500 dark:text-gray-400">
-          The payout will be sent to your registered account.
-          <router-link
-            to="/vendor/settings/bank-details"
-            class="text-primary-600 hover:underline dark:text-primary-400"
-          >
-            Update account details
-          </router-link>
-        </p>
-      </div>
-
-      <template #footer>
-        <div class="flex justify-end gap-3">
-          <BaseButton variant="secondary" @click="showRequestModal = false">
-            Cancel
-          </BaseButton>
-          <BaseButton variant="primary" @click="submitPayoutRequest">
-            Request Payout
-          </BaseButton>
-        </div>
-      </template>
-    </BaseModal>
   </div>
 </template>

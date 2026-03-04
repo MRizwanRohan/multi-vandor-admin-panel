@@ -188,6 +188,55 @@ export const vendorService = {
     const response = await api.patch<{ data: Vendor }>(`${prefix()}/${id}/bank-details`, data)
     return response.data.data
   },
+
+  // ─────────────────────────────────────────────────────────────────
+  // Vendor Settings (own profile via /vendor/settings)
+  // ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Get current vendor settings
+   */
+  async getSettings(): Promise<Record<string, unknown>> {
+    const response = await api.get<{ data: Record<string, unknown> }>('/vendor/settings')
+    return response.data.data
+  },
+
+  /**
+   * Update vendor settings
+   */
+  async updateSettings(data: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const response = await api.put<{ data: Record<string, unknown> }>('/vendor/settings', data)
+    return response.data.data
+  },
+
+  /**
+   * Upload NID documents for verification
+   */
+  async uploadNid(data: { nid_number: string; nid_front: File; nid_back: File }): Promise<Record<string, unknown>> {
+    const formData = new FormData()
+    formData.append('nid_number', data.nid_number)
+    formData.append('nid_front', data.nid_front)
+    formData.append('nid_back', data.nid_back)
+    const response = await api.post<{ data: Record<string, unknown> }>('/vendor/settings/nid', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data.data
+  },
+
+  /**
+   * Get NID verification status
+   */
+  async getNidStatus(): Promise<{
+    nid_number: string | null
+    nid_front_image: string | null
+    nid_back_image: string | null
+    nid_verified: boolean
+    nid_verified_at: string | null
+    status: 'not_submitted' | 'pending' | 'verified' | 'rejected'
+  }> {
+    const response = await api.get<{ data: any }>('/vendor/settings/nid-status')
+    return response.data.data
+  },
 }
 
 // Helper to build FormData
@@ -257,7 +306,7 @@ Object.assign(vendorService, {
    * Approve vendor (admin)
    */
   async approve(id: number, note?: string): Promise<Vendor> {
-    const response = await api.post<{ data: Vendor }>(`${getRolePrefix()}/vendors/${id}/approve`, { note })
+    const response = await api.put<{ data: Vendor }>(`${getRolePrefix()}/vendors/${id}/approve`, { note })
     return response.data.data
   },
 
@@ -265,7 +314,7 @@ Object.assign(vendorService, {
    * Reject vendor (admin)
    */
   async reject(id: number, reason: string): Promise<Vendor> {
-    const response = await api.post<{ data: Vendor }>(`${getRolePrefix()}/vendors/${id}/reject`, { reason })
+    const response = await api.put<{ data: Vendor }>(`${getRolePrefix()}/vendors/${id}/reject`, { reason })
     return response.data.data
   },
 
@@ -273,7 +322,7 @@ Object.assign(vendorService, {
    * Suspend vendor (admin)
    */
   async suspend(id: number, reason: string, duration?: number): Promise<Vendor> {
-    const response = await api.post<{ data: Vendor }>(`${getRolePrefix()}/vendors/${id}/suspend`, {
+    const response = await api.put<{ data: Vendor }>(`${getRolePrefix()}/vendors/${id}/suspend`, {
       reason,
       duration_days: duration
     })
@@ -284,7 +333,7 @@ Object.assign(vendorService, {
    * Reactivate suspended vendor (admin)
    */
   async reactivate(id: number, note?: string): Promise<Vendor> {
-    const response = await api.post<{ data: Vendor }>(`${getRolePrefix()}/vendors/${id}/reactivate`, { note })
+    const response = await api.put<{ data: Vendor }>(`${getRolePrefix()}/vendors/${id}/reactivate`, { note })
     return response.data.data
   },
 

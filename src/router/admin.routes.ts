@@ -237,6 +237,12 @@ const adminRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/admin/payouts/PayoutList.vue'),
         meta: { title: 'Payouts' },
       },
+      {
+        path: 'payouts/:id',
+        name: 'admin-payout-detail',
+        component: () => import('@/pages/admin/payouts/PayoutDetail.vue'),
+        meta: { title: 'Payout Details' },
+      },
       // Reports
       {
         path: 'reports/sales',

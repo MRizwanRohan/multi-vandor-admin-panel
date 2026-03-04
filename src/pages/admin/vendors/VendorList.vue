@@ -1,5 +1,5 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<!-- Admin Vendor List — Vendor management list page -->
+<!-- Admin Vendor List — Vendor management list page (real API) -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
@@ -15,12 +15,16 @@ import FormInput from '@/components/form/FormInput.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
 import DataTable from '@/components/data/DataTable.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
+import BaseModal from '@/components/ui/BaseModal.vue'
+import FormTextarea from '@/components/form/FormTextarea.vue'
 import type { Vendor, TableColumn } from '@/types'
 import {
   MagnifyingGlassIcon,
   EyeIcon,
   CheckCircleIcon,
   XCircleIcon,
+  NoSymbolIcon,
+  ArrowPathIcon,
   BuildingStorefrontIcon,
 } from '@heroicons/vue/24/outline'
 
@@ -49,19 +53,29 @@ const searchQuery = ref('')
 const statusFilter = ref('')
 const verificationFilter = ref('')
 
+// Correct status options matching backend VendorStatus enum
 const statusOptions = [
   { value: '', label: 'All Status' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'approved', label: 'Approved' },
   { value: 'active', label: 'Active' },
-  { value: 'inactive', label: 'Inactive' },
   { value: 'suspended', label: 'Suspended' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'banned', label: 'Banned' },
 ]
 
 const verificationOptions = [
   { value: '', label: 'All Verification' },
-  { value: 'verified', label: 'Verified' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'rejected', label: 'Rejected' },
+  { value: '1', label: 'Verified' },
+  { value: '0', label: 'Not Verified' },
 ]
+
+// Reject/Suspend modal
+const showReasonModal = ref(false)
+const reasonModalTitle = ref('')
+const reasonModalAction = ref<'reject' | 'suspend'>('reject')
+const reasonText = ref('')
+const reasonTargetVendor = ref<Vendor | null>(null)
 
 // Table columns
 const columns: TableColumn[] = [
@@ -74,92 +88,24 @@ const columns: TableColumn[] = [
   { key: 'actions', label: '', align: 'right' },
 ]
 
-// Fetch vendors
+// Fetch vendors from API (no mock fallback)
 async function fetchVendors() {
   isLoading.value = true
   try {
     const response = await vendorService.getAll({
       page: pagination.currentPage.value,
       per_page: pagination.perPage.value,
-      search: searchQuery.value,
+      search: searchQuery.value || undefined,
       status: statusFilter.value || undefined,
+      is_verified: verificationFilter.value ? verificationFilter.value === '1' : undefined,
     })
     vendors.value = response.data
-    pagination.totalItems.value = response.meta.total
+    if (response.meta) {
+      pagination.setMeta(response.meta)
+    }
   } catch (error) {
-    // Mock data
-    vendors.value = [
-      {
-        id: 1,
-        user_id: 1,
-        store_name: 'Fashion Store',
-        slug: 'fashion-store',
-        business_name: 'Fashion Store Ltd',
-        business_type: 'retail',
-        description: 'Fashion and accessories store',
-        logo_url: null,
-        banner_url: null,
-        status: 'approved' as const,
-        commission_rate: 10,
-        rating_average: 4.5,
-        review_count: 120,
-        product_count: 156,
-        order_count: 450,
-        total_sales: 850000,
-        owner: { id: 1, name: 'John Doe', email: 'fashion@example.com', phone: '+880123456789', avatar: null },
-        is_verified: true,
-        verified_at: '2024-01-01',
-        created_at: '2024-01-01',
-        updated_at: '2024-01-15',
-      },
-      {
-        id: 2,
-        user_id: 2,
-        store_name: 'Tech Hub',
-        slug: 'tech-hub',
-        business_name: 'Tech Hub Ltd',
-        business_type: 'electronics',
-        description: 'Electronics and gadgets',
-        logo_url: null,
-        banner_url: null,
-        status: 'pending' as const,
-        commission_rate: 12,
-        rating_average: 4.2,
-        review_count: 85,
-        product_count: 89,
-        order_count: 320,
-        total_sales: 1250000,
-        owner: { id: 2, name: 'Jane Smith', email: 'tech@example.com', phone: '+880123456788', avatar: null },
-        is_verified: false,
-        verified_at: null,
-        created_at: '2024-01-05',
-        updated_at: '2024-01-15',
-      },
-      {
-        id: 3,
-        user_id: 3,
-        store_name: 'Sports Zone',
-        slug: 'sports-zone',
-        business_name: 'Sports Zone Inc',
-        business_type: 'sports',
-        description: 'Sports equipment and gear',
-        logo_url: null,
-        banner_url: null,
-        status: 'suspended' as const,
-        commission_rate: 8,
-        rating_average: 4.0,
-        review_count: 45,
-        product_count: 45,
-        order_count: 150,
-        total_sales: 320000,
-        owner: { id: 3, name: 'Bob Wilson', email: 'sports@example.com', phone: '+880123456787', avatar: null },
-        is_verified: true,
-        verified_at: '2024-01-10',
-        created_at: '2024-01-10',
-        updated_at: '2024-01-15',
-      },
-    ] as Vendor[]
-    pagination.totalItems.value = 3
+    toast.error('Failed to load vendors')
+    vendors.value = []
   } finally {
     isLoading.value = false
   }
@@ -180,63 +126,100 @@ function viewVendor(vendor: Vendor) {
   router.push(`/admin/vendors/${vendor.id}`)
 }
 
-async function verifyVendor(vendor: Vendor) {
+// Approve vendor
+async function approveVendor(vendor: Vendor) {
   const confirmed = await confirm.show({
-    title: 'Verify Vendor',
-    message: `Are you sure you want to verify "${vendor.store_name}"?`,
-    confirmText: 'Verify',
+    title: 'Approve Vendor',
+    message: `Are you sure you want to approve "${vendor.store_name}"? They will be able to start selling products.`,
+    confirmText: 'Approve',
     cancelText: 'Cancel',
     variant: 'info',
   })
 
   if (confirmed) {
     try {
-      await vendorService.verify(vendor.id)
-      toast.success('Vendor verified successfully')
+      await (vendorService as any).approve(vendor.id)
+      toast.success(`"${vendor.store_name}" has been approved`)
       fetchVendors()
     } catch (error) {
-      toast.error('Failed to verify vendor')
+      toast.error('Failed to approve vendor')
     }
   }
 }
 
-async function rejectVendor(vendor: Vendor) {
+// Open reject modal
+function openRejectModal(vendor: Vendor) {
+  reasonTargetVendor.value = vendor
+  reasonModalTitle.value = `Reject "${vendor.store_name}"`
+  reasonModalAction.value = 'reject'
+  reasonText.value = ''
+  showReasonModal.value = true
+}
+
+// Open suspend modal
+function openSuspendModal(vendor: Vendor) {
+  reasonTargetVendor.value = vendor
+  reasonModalTitle.value = `Suspend "${vendor.store_name}"`
+  reasonModalAction.value = 'suspend'
+  reasonText.value = ''
+  showReasonModal.value = true
+}
+
+// Submit reject/suspend with reason
+async function submitReasonAction() {
+  if (!reasonTargetVendor.value || !reasonText.value.trim()) {
+    toast.error('Please provide a reason')
+    return
+  }
+
+  try {
+    if (reasonModalAction.value === 'reject') {
+      await (vendorService as any).reject(reasonTargetVendor.value.id, reasonText.value)
+      toast.success(`"${reasonTargetVendor.value.store_name}" has been rejected`)
+    } else {
+      await (vendorService as any).suspend(reasonTargetVendor.value.id, reasonText.value)
+      toast.success(`"${reasonTargetVendor.value.store_name}" has been suspended`)
+    }
+    showReasonModal.value = false
+    fetchVendors()
+  } catch (error) {
+    toast.error(`Failed to ${reasonModalAction.value} vendor`)
+  }
+}
+
+// Reactivate vendor
+async function reactivateVendor(vendor: Vendor) {
   const confirmed = await confirm.show({
-    title: 'Reject Vendor',
-    message: `Are you sure you want to reject "${vendor.store_name}"?`,
-    confirmText: 'Reject',
+    title: 'Reactivate Vendor',
+    message: `Are you sure you want to reactivate "${vendor.store_name}"?`,
+    confirmText: 'Reactivate',
     cancelText: 'Cancel',
-    variant: 'danger',
+    variant: 'info',
   })
 
   if (confirmed) {
     try {
-      await vendorService.updateStatus(vendor.id, 'rejected')
-      toast.success('Vendor rejected')
+      await (vendorService as any).reactivate(vendor.id)
+      toast.success(`"${vendor.store_name}" has been reactivated`)
       fetchVendors()
     } catch (error) {
-      toast.error('Failed to reject vendor')
+      toast.error('Failed to reactivate vendor')
     }
   }
 }
 
 // Status badge variant
-function getStatusVariant(status: string): 'success' | 'warning' | 'danger' | 'secondary' {
-  const variants: Record<string, 'success' | 'warning' | 'danger' | 'secondary'> = {
+function getStatusVariant(status: string): 'success' | 'warning' | 'danger' | 'secondary' | 'info' {
+  const variants: Record<string, 'success' | 'warning' | 'danger' | 'secondary' | 'info'> = {
     active: 'success',
-    inactive: 'warning',
+    approved: 'info',
+    pending: 'warning',
     suspended: 'danger',
+    rejected: 'danger',
+    banned: 'danger',
+    inactive: 'secondary',
   }
   return variants[status] || 'secondary'
-}
-
-function getVerificationVariant(status: string): 'success' | 'warning' | 'danger' {
-  const variants: Record<string, 'success' | 'warning' | 'danger'> = {
-    verified: 'success',
-    pending: 'warning',
-    rejected: 'danger',
-  }
-  return variants[status] || 'warning'
 }
 </script>
 
@@ -287,7 +270,8 @@ function getVerificationVariant(status: string): 'success' | 'warning' | 'danger
         <template #cell-name="{ row }">
           <div class="flex items-center gap-3">
             <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/50">
-              <BuildingStorefrontIcon class="h-5 w-5 text-primary-600 dark:text-primary-400" />
+              <img v-if="row.logo_url" :src="row.logo_url" :alt="row.store_name" class="h-10 w-10 rounded-full object-cover" />
+              <BuildingStorefrontIcon v-else class="h-5 w-5 text-primary-600 dark:text-primary-400" />
             </div>
             <div>
               <p class="font-medium text-gray-900 dark:text-white">{{ row.store_name }}</p>
@@ -321,35 +305,65 @@ function getVerificationVariant(status: string): 'success' | 'warning' | 'danger
         </template>
 
         <template #cell-verification="{ row }">
-          <BaseBadge :variant="getVerificationVariant(row.is_verified ? 'verified' : 'pending')" class="capitalize">
-            {{ row.is_verified ? 'verified' : 'pending' }}
+          <BaseBadge :variant="row.is_verified ? 'success' : 'warning'" class="capitalize">
+            {{ row.is_verified ? 'Verified' : 'Pending' }}
           </BaseBadge>
         </template>
 
         <template #cell-actions="{ row }">
-          <div class="flex items-center justify-end gap-2">
+          <div class="flex items-center justify-end gap-1">
+            <!-- View -->
             <button
               type="button"
-              class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+              class="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+              title="View details"
               @click="viewVendor(row)"
             >
               <EyeIcon class="h-5 w-5" />
             </button>
+
+            <!-- Approve (for pending vendors) -->
             <button
-              v-if="!row.is_verified"
+              v-if="row.status === 'pending'"
               type="button"
-              class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-success-600 dark:hover:bg-gray-700 dark:hover:text-success-400"
-              @click="verifyVendor(row)"
+              class="rounded p-1.5 text-gray-400 hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/30 dark:hover:text-green-400"
+              title="Approve vendor"
+              @click="approveVendor(row)"
             >
               <CheckCircleIcon class="h-5 w-5" />
             </button>
+
+            <!-- Reject (for pending vendors) -->
             <button
-              v-if="!row.is_verified"
+              v-if="row.status === 'pending'"
               type="button"
-              class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-danger-600 dark:hover:bg-gray-700 dark:hover:text-danger-400"
-              @click="rejectVendor(row)"
+              class="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
+              title="Reject vendor"
+              @click="openRejectModal(row)"
             >
               <XCircleIcon class="h-5 w-5" />
+            </button>
+
+            <!-- Suspend (for active/approved vendors) -->
+            <button
+              v-if="row.status === 'active' || row.status === 'approved'"
+              type="button"
+              class="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
+              title="Suspend vendor"
+              @click="openSuspendModal(row)"
+            >
+              <NoSymbolIcon class="h-5 w-5" />
+            </button>
+
+            <!-- Reactivate (for suspended vendors) -->
+            <button
+              v-if="row.status === 'suspended'"
+              type="button"
+              class="rounded p-1.5 text-gray-400 hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/30 dark:hover:text-green-400"
+              title="Reactivate vendor"
+              @click="reactivateVendor(row)"
+            >
+              <ArrowPathIcon class="h-5 w-5" />
             </button>
           </div>
         </template>
@@ -362,5 +376,48 @@ function getVerificationVariant(status: string): 'success' | 'warning' | 'danger
         </template>
       </DataTable>
     </BaseCard>
+
+    <!-- Reject / Suspend Reason Modal -->
+    <BaseModal
+      :show="showReasonModal"
+      :title="reasonModalTitle"
+      size="md"
+      @close="showReasonModal = false"
+    >
+      <div class="space-y-4">
+        <p class="text-sm text-gray-600 dark:text-gray-400">
+          <template v-if="reasonModalAction === 'reject'">
+            Please provide a reason for rejecting this vendor application.
+          </template>
+          <template v-else>
+            Please provide a reason for suspending this vendor. They will not be able to sell products while suspended.
+          </template>
+        </p>
+
+        <FormTextarea
+          v-model="reasonText"
+          name="reason"
+          label="Reason"
+          placeholder="Enter the reason..."
+          :rows="4"
+          required
+        />
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <BaseButton variant="secondary" @click="showReasonModal = false">
+            Cancel
+          </BaseButton>
+          <BaseButton
+            :variant="reasonModalAction === 'reject' ? 'danger' : 'danger'"
+            :disabled="!reasonText.trim()"
+            @click="submitReasonAction"
+          >
+            {{ reasonModalAction === 'reject' ? 'Reject Vendor' : 'Suspend Vendor' }}
+          </BaseButton>
+        </div>
+      </template>
+    </BaseModal>
   </div>
 </template>

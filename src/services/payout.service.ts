@@ -106,7 +106,7 @@ export const payoutService = {
    * Approve payout (admin)
    */
   async approve(id: number, transactionReference?: string): Promise<Payout> {
-    const response = await api.patch<{ data: Payout }>(`${prefix()}/${id}/approve`, {
+    const response = await api.put<{ data: Payout }>(`${prefix()}/${id}/approve`, {
       transaction_reference: transactionReference,
     })
     return response.data.data
@@ -116,7 +116,7 @@ export const payoutService = {
    * Reject payout (admin)
    */
   async reject(id: number, reason: string): Promise<Payout> {
-    const response = await api.patch<{ data: Payout }>(`${prefix()}/${id}/reject`, { reason })
+    const response = await api.put<{ data: Payout }>(`${prefix()}/${id}/reject`, { reason })
     return response.data.data
   },
 
@@ -158,6 +158,22 @@ export const payoutService = {
   },
 
   /**
+   * Complete payout (admin) — marks PROCESSING → COMPLETED
+   */
+  async complete(id: number, data: { transaction_reference: string; notes?: string }): Promise<Payout> {
+    const response = await api.put<{ data: Payout }>(`${prefix()}/${id}/complete`, data)
+    return response.data.data
+  },
+
+  /**
+   * Add note to payout (admin)
+   */
+  async addNote(id: number, note: string): Promise<Payout> {
+    const response = await api.post<{ data: Payout }>(`${prefix()}/${id}/notes`, { note })
+    return response.data.data
+  },
+
+  /**
    * Export payouts
    */
   async export(params?: PayoutFilters): Promise<Blob> {
@@ -174,14 +190,16 @@ export const payoutService = {
 
   /**
    * Get earnings summary (vendor)
+   * Uses /vendor/payouts/balance for balance data
    */
   async getEarningsSummary(): Promise<EarningsSummary> {
-    const response = await api.get<{ data: EarningsSummary }>(`${prefix()}/earnings/summary`)
+    const response = await api.get<{ data: EarningsSummary }>(`/vendor/payouts/balance`)
     return response.data.data
   },
 
   /**
    * Get commissions list (vendor)
+   * Uses /vendor/commissions endpoint
    */
   async getCommissions(params?: {
     page?: number
@@ -190,7 +208,7 @@ export const payoutService = {
     date_from?: string
     date_to?: string
   }): Promise<PaginatedResponse<Commission>> {
-    const response = await api.get<PaginatedResponse<Commission>>(`${prefix()}/commissions`, {
+    const response = await api.get<PaginatedResponse<Commission>>(`/vendor/commissions`, {
       params,
     })
     return response.data
@@ -212,9 +230,10 @@ export const payoutService = {
 
   /**
    * Get vendor bank accounts
+   * Backend route: /vendor/bank-accounts (not under /payouts)
    */
   async getBankAccounts(): Promise<BankAccount[]> {
-    const response = await api.get<{ data: BankAccount[] }>(`${prefix()}/bank-accounts`)
+    const response = await api.get<{ data: BankAccount[] }>(`/vendor/bank-accounts`)
     return response.data.data
   },
 
@@ -222,7 +241,7 @@ export const payoutService = {
    * Add bank account
    */
   async addBankAccount(data: CreateBankAccountRequest): Promise<BankAccount> {
-    const response = await api.post<{ data: BankAccount }>(`${prefix()}/bank-accounts`, data)
+    const response = await api.post<{ data: BankAccount }>(`/vendor/bank-accounts`, data)
     return response.data.data
   },
 
@@ -230,7 +249,7 @@ export const payoutService = {
    * Update bank account
    */
   async updateBankAccount(id: number, data: Partial<CreateBankAccountRequest>): Promise<BankAccount> {
-    const response = await api.put<{ data: BankAccount }>(`${prefix()}/bank-accounts/${id}`, data)
+    const response = await api.put<{ data: BankAccount }>(`/vendor/bank-accounts/${id}`, data)
     return response.data.data
   },
 
@@ -238,15 +257,15 @@ export const payoutService = {
    * Delete bank account
    */
   async deleteBankAccount(id: number): Promise<void> {
-    await api.delete(`${prefix()}/bank-accounts/${id}`)
+    await api.delete(`/vendor/bank-accounts/${id}`)
   },
 
   /**
    * Set primary bank account
    */
   async setPrimaryBankAccount(id: number): Promise<BankAccount> {
-    const response = await api.patch<{ data: BankAccount }>(
-      `${prefix()}/bank-accounts/${id}/primary`
+    const response = await api.put<{ data: BankAccount }>(
+      `/vendor/bank-accounts/${id}/primary`
     )
     return response.data.data
   },

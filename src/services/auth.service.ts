@@ -90,7 +90,26 @@ export const authService = {
   async register(data: RegisterData): Promise<AuthResponse> {
     await getCsrfCookie()
     try {
-      const response = await api.post<any>(`${PREFIX}/register`, data)
+      // Build FormData if files are present (NID images), otherwise send JSON
+      let payload: FormData | RegisterData = data
+      const hasFiles = (data as any).nid_front_image instanceof File || (data as any).nid_back_image instanceof File
+      
+      if (hasFiles) {
+        const formData = new FormData()
+        Object.entries(data).forEach(([key, value]) => {
+          if (value === null || value === undefined) return
+          if (value instanceof File) {
+            formData.append(key, value)
+          } else {
+            formData.append(key, String(value))
+          }
+        })
+        payload = formData
+      }
+      
+      const response = await api.post<any>(`${PREFIX}/register`, payload, hasFiles ? {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      } : undefined)
       const resData = response.data
       // API returns: { success, message, data: { user, token, token_type } }
       const regData = resData?.data || resData

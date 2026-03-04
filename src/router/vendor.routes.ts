@@ -204,6 +204,13 @@ const vendorRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/vendor/settings/BankDetails.vue'),
         meta: { title: 'Bank Details' },
       },
+      // NID Verification
+      {
+        path: 'settings/nid',
+        name: 'vendor-nid-verification',
+        component: () => import('@/pages/vendor/settings/NidVerification.vue'),
+        meta: { title: 'NID Verification' },
+      },
       // Profile
       {
         path: 'profile',

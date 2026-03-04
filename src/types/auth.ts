@@ -37,7 +37,7 @@ export interface VendorProfile {
   status: VendorStatus
 }
 
-export type VendorStatus = 'pending' | 'approved' | 'suspended' | 'rejected' | 'banned' | 'inactive'
+export type VendorStatus = 'pending' | 'approved' | 'active' | 'suspended' | 'rejected' | 'banned' | 'inactive'
 
 export interface LoginRequest {
   login: string
@@ -52,6 +52,12 @@ export interface RegisterRequest {
   phone?: string
   password: string
   password_confirmation: string
+  user_type?: 'vendor' | 'customer'
+  store_name?: string
+  business_type?: string
+  nid_number?: string
+  nid_front_image?: File | null
+  nid_back_image?: File | null
 }
 
 export interface LoginResponse {

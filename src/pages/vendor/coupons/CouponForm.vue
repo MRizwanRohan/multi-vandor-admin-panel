@@ -128,19 +128,25 @@ function generateCode() {
   code.value = result
 }
 
-// Fetch coupon for editing
+// Fetch coupon for editing - use vendor endpoint (falls back to generic getById)
 async function fetchCoupon() {
   if (!couponId.value) return
   
   isLoading.value = true
   try {
-    const coupon = await couponService.getById(couponId.value)
+    // Note: Vendor uses same getById as it returns their own coupon
+    const response = await couponService.getVendorCoupons({ id: couponId.value })
+    const data = response as any
+    const coupon = Array.isArray(data.data) ? data.data.find((c: any) => c.id === couponId.value) : data
+    
+    if (!coupon) throw new Error('Coupon not found')
+    
     setValues({
       code: coupon.code,
       name: coupon.name,
       description: coupon.description || '',
       type: coupon.type === 'free_shipping' ? 'percentage' : coupon.type,
-      discount_value: coupon.discount_value,
+      discount_value: coupon.discount_value || coupon.value || 0,
       min_order_amount: coupon.min_order_amount || 0,
       max_discount_amount: coupon.max_discount_amount,
       usage_limit: coupon.usage_limit,
@@ -150,8 +156,8 @@ async function fetchCoupon() {
       is_active: coupon.is_active,
     })
     selectedProducts.value = coupon.applicable_products || []
-  } catch (error) {
-    toast.error('Failed to fetch coupon')
+  } catch (error: any) {
+    toast.error(error.response?.data?.message || 'Failed to fetch coupon')
     router.push('/vendor/coupons')
   } finally {
     isLoading.value = false
@@ -198,16 +204,16 @@ const onSubmit = handleSubmit(async (values) => {
     }
     
     if (isEditMode.value && couponId.value) {
-      await couponService.update(couponId.value, payload)
+      await couponService.updateVendorCoupon(couponId.value, payload)
       toast.success('Coupon updated successfully')
     } else {
-      await couponService.create(payload)
+      await couponService.createVendorCoupon(payload)
       toast.success('Coupon created successfully')
     }
     
     router.push('/vendor/coupons')
-  } catch (error) {
-    toast.error(isEditMode.value ? 'Failed to update coupon' : 'Failed to create coupon')
+  } catch (error: any) {
+    toast.error(error.response?.data?.message || (isEditMode.value ? 'Failed to update coupon' : 'Failed to create coupon'))
   }
 })
 

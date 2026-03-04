@@ -3,16 +3,19 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
-import { useToast, useDate, useCurrency } from '@/composables'
+import { useToast, useDate, useCurrency, useConfirm } from '@/composables'
+import { useDebounce } from '@/composables/useDebounce'
+import { couponService } from '@/services'
+import type { Coupon, CouponStats, CouponType, CouponStatus, CouponFilters } from '@/types'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
 import DataTable from '@/components/data/DataTable.vue'
 import FormInput from '@/components/form/FormInput.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
-import BaseModal from '@/components/ui/BaseModal.vue'
 import {
   MagnifyingGlassIcon,
   PlusIcon,
@@ -20,29 +23,55 @@ import {
   TrashIcon,
   TicketIcon,
   ClipboardDocumentIcon,
+  ArrowPathIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  ClockIcon,
+  CurrencyDollarIcon,
 } from '@heroicons/vue/24/outline'
 
+const router = useRouter()
 const breadcrumbStore = useBreadcrumbStore()
 const toast = useToast()
+const confirm = useConfirm()
 const { formatDate } = useDate()
 const { formatCurrency } = useCurrency()
+
+// ── State ──
+const loading = ref(false)
+const coupons = ref<Coupon[]>([])
+const stats = ref<CouponStats | null>(null)
+const totalItems = ref(0)
+const currentPage = ref(1)
+const perPage = ref(20)
 
 // Set page info
 onMounted(() => {
   breadcrumbStore.setPageInfo('Coupons', [
     { label: 'Coupons' },
   ], 'Manage discount coupons')
+  fetchStats()
+  fetchCoupons()
 })
 
 // Search and filters
 const searchQuery = ref('')
-const statusFilter = ref('')
+const statusFilter = ref<CouponStatus | ''>('')
+const typeFilter = ref<CouponType | ''>('')
 
 const statusOptions = [
   { value: '', label: 'All Status' },
   { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
   { value: 'expired', label: 'Expired' },
-  { value: 'disabled', label: 'Disabled' },
+  { value: 'scheduled', label: 'Scheduled' },
+]
+
+const typeOptions = [
+  { value: '', label: 'All Types' },
+  { value: 'percentage', label: 'Percentage' },
+  { value: 'fixed', label: 'Fixed Amount' },
+  { value: 'free_shipping', label: 'Free Shipping' },
 ]
 
 // Table columns
@@ -50,160 +79,203 @@ const columns = [
   { key: 'code', label: 'Code', sortable: true },
   { key: 'discount', label: 'Discount', sortable: true },
   { key: 'usage', label: 'Usage' },
-  { key: 'minOrder', label: 'Min Order', sortable: true },
+  { key: 'min_order', label: 'Min Order', sortable: true },
   { key: 'validity', label: 'Validity' },
   { key: 'status', label: 'Status' },
   { key: 'actions', label: 'Actions', align: 'right' as const },
 ]
 
-// Mock data
-const coupons = ref([
-  {
-    id: '1',
-    code: 'WELCOME20',
-    discountType: 'percentage',
-    discountValue: 20,
-    minOrderAmount: 1000,
-    maxDiscount: 500,
-    usageLimit: 100,
-    usedCount: 45,
-    startDate: '2024-12-01',
-    endDate: '2024-12-31',
-    status: 'active',
-  },
-  {
-    id: '2',
-    code: 'FLAT500',
-    discountType: 'fixed',
-    discountValue: 500,
-    minOrderAmount: 2500,
-    maxDiscount: null,
-    usageLimit: 50,
-    usedCount: 50,
-    startDate: '2024-11-01',
-    endDate: '2024-11-30',
-    status: 'expired',
-  },
-  {
-    id: '3',
-    code: 'SAVE15',
-    discountType: 'percentage',
-    discountValue: 15,
-    minOrderAmount: 500,
-    maxDiscount: 300,
-    usageLimit: null,
-    usedCount: 120,
-    startDate: '2024-12-10',
-    endDate: '2025-01-10',
-    status: 'active',
-  },
-])
+// ── API Methods ──
+async function fetchStats() {
+  try {
+    stats.value = await couponService.getStats()
+  } catch (error: any) {
+    console.error('Failed to load stats:', error)
+  }
+}
 
-// Modal
-const showModal = ref(false)
-const isEditing = ref(false)
-const editingCoupon = ref<typeof coupons.value[0] | null>(null)
+async function fetchCoupons() {
+  loading.value = true
+  try {
+    const params: CouponFilters = {
+      page: currentPage.value,
+      per_page: perPage.value,
+    }
+    if (searchQuery.value) params.search = searchQuery.value
+    if (statusFilter.value) params.status = statusFilter.value
+    if (typeFilter.value) params.type = typeFilter.value
 
-// Form data
-const formData = ref({
-  code: '',
-  discountType: 'percentage',
-  discountValue: 10,
-  minOrderAmount: 0,
-  maxDiscount: null as number | null,
-  usageLimit: null as number | null,
-  startDate: '',
-  endDate: '',
+    const response = await couponService.getAll(params)
+    // Handle response format
+    const resData = response as any
+    if (Array.isArray(resData.data)) {
+      coupons.value = resData.data
+      totalItems.value = resData.meta?.total || resData.data.length
+    } else if (Array.isArray(resData)) {
+      coupons.value = resData
+      totalItems.value = resData.length
+    } else {
+      coupons.value = []
+      totalItems.value = 0
+    }
+  } catch (error: any) {
+    toast.error(error.response?.data?.message || 'Failed to load coupons')
+  } finally {
+    loading.value = false
+  }
+}
+
+const debouncedFetch = useDebounce(fetchCoupons, 300)
+
+// Watch filters
+watch([statusFilter, typeFilter], () => {
+  currentPage.value = 1
+  fetchCoupons()
 })
 
-const discountTypeOptions = [
-  { value: 'percentage', label: 'Percentage (%)' },
-  { value: 'fixed', label: 'Fixed Amount (৳)' },
-]
+watch(searchQuery, () => {
+  currentPage.value = 1
+  debouncedFetch()
+})
 
-// Open modal
-function openCreateModal() {
-  isEditing.value = false
-  editingCoupon.value = null
-  formData.value = {
-    code: '',
-    discountType: 'percentage',
-    discountValue: 10,
-    minOrderAmount: 0,
-    maxDiscount: null,
-    usageLimit: null,
-    startDate: '',
-    endDate: '',
+// Pagination
+function handlePageChange(page: number) {
+  currentPage.value = page
+  fetchCoupons()
+}
+
+function handlePerPageChange(size: number) {
+  perPage.value = size
+  currentPage.value = 1
+  fetchCoupons()
+}
+
+// ── Actions ──
+function createCoupon() {
+  router.push({ name: 'admin-coupon-create' })
+}
+
+function editCoupon(coupon: Coupon) {
+  router.push({ name: 'admin-coupon-edit', params: { id: coupon.id } })
+}
+
+async function toggleCoupon(coupon: Coupon) {
+  try {
+    const updated = await couponService.toggle(coupon.id)
+    coupon.is_active = updated.is_active
+    toast.success(coupon.is_active ? 'Coupon activated' : 'Coupon deactivated')
+    fetchStats()
+  } catch (error: any) {
+    toast.error(error.response?.data?.message || 'Failed to toggle coupon')
   }
-  showModal.value = true
 }
 
-function openEditModal(coupon: typeof coupons.value[0]) {
-  isEditing.value = true
-  editingCoupon.value = coupon
-  formData.value = {
-    code: coupon.code,
-    discountType: coupon.discountType,
-    discountValue: coupon.discountValue,
-    minOrderAmount: coupon.minOrderAmount,
-    maxDiscount: coupon.maxDiscount,
-    usageLimit: coupon.usageLimit,
-    startDate: coupon.startDate,
-    endDate: coupon.endDate,
+async function deleteCoupon(coupon: Coupon) {
+  const confirmed = await confirm.danger({
+    title: 'Delete Coupon',
+    message: `Are you sure you want to delete coupon "${coupon.code}"? This action cannot be undone.`,
+    confirmText: 'Delete',
+  })
+  if (!confirmed) return
+
+  try {
+    await couponService.delete(coupon.id)
+    toast.success('Coupon deleted')
+    coupons.value = coupons.value.filter(c => c.id !== coupon.id)
+    totalItems.value--
+    fetchStats()
+  } catch (error: any) {
+    toast.error(error.response?.data?.message || 'Failed to delete coupon')
   }
-  showModal.value = true
 }
 
-// Save coupon
-function saveCoupon() {
-  if (isEditing.value && editingCoupon.value) {
-    Object.assign(editingCoupon.value, formData.value)
-    toast.success('Coupon updated successfully')
-  } else {
-    coupons.value.push({
-      ...formData.value,
-      id: Date.now().toString(),
-      usedCount: 0,
-      status: 'active',
-    })
-    toast.success('Coupon created successfully')
-  }
-  showModal.value = false
-}
-
-// Delete coupon
-function deleteCoupon(coupon: typeof coupons.value[0]) {
-  coupons.value = coupons.value.filter(c => c.id !== coupon.id)
-  toast.success('Coupon deleted')
-}
-
-// Copy code
 function copyCode(code: string) {
   navigator.clipboard.writeText(code)
   toast.success('Code copied to clipboard')
 }
 
-// Get status variant
-function getStatusVariant(status: string) {
-  switch (status) {
-    case 'active': return 'success'
-    case 'expired': return 'danger'
-    case 'disabled': return 'secondary'
-    default: return 'secondary'
-  }
+// ── Helpers ──
+function getStatusVariant(coupon: Coupon) {
+  if (!coupon.is_active) return 'secondary'
+  const now = new Date()
+  if (coupon.expires_at && new Date(coupon.expires_at) < now) return 'danger'
+  if (coupon.starts_at && new Date(coupon.starts_at) > now) return 'info'
+  return 'success'
 }
 
-// Format discount
-function formatDiscount(coupon: typeof coupons.value[0]) {
-  if (coupon.discountType === 'percentage') {
-    return `${coupon.discountValue}%`
+function getStatusLabel(coupon: Coupon) {
+  if (!coupon.is_active) return 'Inactive'
+  const now = new Date()
+  if (coupon.expires_at && new Date(coupon.expires_at) < now) return 'Expired'
+  if (coupon.starts_at && new Date(coupon.starts_at) > now) return 'Scheduled'
+  return 'Active'
+}
+
+function formatDiscount(coupon: Coupon) {
+  const value = coupon.value ?? coupon.discount_value ?? 0
+  if (coupon.type === 'percentage') {
+    return `${value}%`
+  } else if (coupon.type === 'free_shipping') {
+    return 'Free Shipping'
   }
-  return formatCurrency(coupon.discountValue)
+  return formatCurrency(value)
+}
+
+function getTypeLabel(type: CouponType) {
+  switch (type) {
+    case 'percentage': return 'Percentage'
+    case 'fixed': return 'Fixed'
+    case 'free_shipping': return 'Free Shipping'
+    default: return type
+  }
 }
 </script>
 
 <template>
   <div class="space-y-6">
+    <!-- Stats Cards -->
+    <div v-if="stats" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <BaseCard class="flex items-center gap-4 p-4">
+        <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">
+          <TicketIcon class="h-6 w-6" />
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 dark:text-gray-400">Total Coupons</p>
+          <p class="text-2xl font-semibold text-gray-900 dark:text-white">{{ stats.total_coupons }}</p>
+        </div>
+      </BaseCard>
+
+      <BaseCard class="flex items-center gap-4 p-4">
+        <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-success-100 text-success-600 dark:bg-success-900/30 dark:text-success-400">
+          <CheckCircleIcon class="h-6 w-6" />
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 dark:text-gray-400">Active Coupons</p>
+          <p class="text-2xl font-semibold text-gray-900 dark:text-white">{{ stats.active_coupons }}</p>
+        </div>
+      </BaseCard>
+
+      <BaseCard class="flex items-center gap-4 p-4">
+        <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-warning-100 text-warning-600 dark:bg-warning-900/30 dark:text-warning-400">
+          <ClockIcon class="h-6 w-6" />
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 dark:text-gray-400">Expired</p>
+          <p class="text-2xl font-semibold text-gray-900 dark:text-white">{{ stats.expired_coupons }}</p>
+        </div>
+      </BaseCard>
+
+      <BaseCard class="flex items-center gap-4 p-4">
+        <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-info-100 text-info-600 dark:bg-info-900/30 dark:text-info-400">
+          <CurrencyDollarIcon class="h-6 w-6" />
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 dark:text-gray-400">Total Discounted</p>
+          <p class="text-2xl font-semibold text-gray-900 dark:text-white">{{ formatCurrency(stats.total_discount_given) }}</p>
+        </div>
+      </BaseCard>
+    </div>
+
     <!-- Filters -->
     <BaseCard>
       <div class="flex flex-wrap items-center justify-between gap-4">
@@ -223,8 +295,17 @@ function formatDiscount(coupon: typeof coupons.value[0]) {
             :options="statusOptions"
             class="w-40"
           />
+          <FormSelect
+            v-model="typeFilter"
+            name="type"
+            :options="typeOptions"
+            class="w-40"
+          />
+          <BaseButton variant="ghost" size="sm" @click="fetchCoupons">
+            <ArrowPathIcon class="h-4 w-4" />
+          </BaseButton>
         </div>
-        <BaseButton variant="primary" @click="openCreateModal">
+        <BaseButton variant="primary" @click="createCoupon">
           <PlusIcon class="mr-2 h-4 w-4" />
           Create Coupon
         </BaseButton>
@@ -236,22 +317,29 @@ function formatDiscount(coupon: typeof coupons.value[0]) {
       <DataTable
         :columns="columns"
         :data="coupons"
-        :loading="false"
-        :total="coupons.length"
-        :current-page="1"
-        :per-page="20"
+        :loading="loading"
+        :total="totalItems"
+        :current-page="currentPage"
+        :per-page="perPage"
+        @page-change="handlePageChange"
+        @per-page-change="handlePerPageChange"
       >
         <template #cell-code="{ item }">
           <div class="flex items-center gap-2">
             <TicketIcon class="h-5 w-5 text-primary-500" />
-            <span class="font-mono font-semibold text-gray-900 dark:text-white">
-              {{ item.code }}
-            </span>
+            <div>
+              <span class="font-mono font-semibold text-gray-900 dark:text-white">
+                {{ item.code }}
+              </span>
+              <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                ({{ getTypeLabel(item.type) }})
+              </span>
+            </div>
             <button
               type="button"
               class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
               title="Copy code"
-              @click="copyCode(item.code)"
+              @click.stop="copyCode(item.code)"
             >
               <ClipboardDocumentIcon class="h-4 w-4" />
             </button>
@@ -264,41 +352,41 @@ function formatDiscount(coupon: typeof coupons.value[0]) {
               {{ formatDiscount(item) }}
             </span>
             <span
-              v-if="item.maxDiscount"
+              v-if="item.max_discount"
               class="block text-xs text-gray-500 dark:text-gray-400"
             >
-              Max: {{ formatCurrency(item.maxDiscount) }}
+              Max: {{ formatCurrency(item.max_discount) }}
             </span>
           </div>
         </template>
 
         <template #cell-usage="{ item }">
           <span class="text-gray-600 dark:text-gray-400">
-            {{ item.usedCount }} / {{ item.usageLimit || '∞' }}
+            {{ item.used_count ?? item.usage_count ?? 0 }} / {{ item.usage_limit || '∞' }}
           </span>
         </template>
 
-        <template #cell-minOrder="{ item }">
+        <template #cell-min_order="{ item }">
           <span class="text-gray-600 dark:text-gray-400">
-            {{ formatCurrency(item.minOrderAmount) }}
+            {{ item.min_order_amount ? formatCurrency(item.min_order_amount) : '-' }}
           </span>
         </template>
 
         <template #cell-validity="{ item }">
           <div class="text-sm">
             <span class="text-gray-600 dark:text-gray-400">
-              {{ formatDate(item.startDate) }}
+              {{ item.starts_at ? formatDate(item.starts_at) : 'No start' }}
             </span>
             <span class="text-gray-400 dark:text-gray-500"> - </span>
             <span class="text-gray-600 dark:text-gray-400">
-              {{ formatDate(item.endDate) }}
+              {{ item.expires_at ? formatDate(item.expires_at) : 'No expiry' }}
             </span>
           </div>
         </template>
 
         <template #cell-status="{ item }">
-          <BaseBadge :variant="getStatusVariant(item.status)">
-            {{ item.status }}
+          <BaseBadge :variant="getStatusVariant(item)">
+            {{ getStatusLabel(item) }}
           </BaseBadge>
         </template>
 
@@ -306,9 +394,19 @@ function formatDiscount(coupon: typeof coupons.value[0]) {
           <div class="flex items-center justify-end gap-1">
             <button
               type="button"
+              class="rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+              :class="item.is_active ? 'text-success-500' : 'text-gray-400'"
+              :title="item.is_active ? 'Deactivate' : 'Activate'"
+              @click="toggleCoupon(item)"
+            >
+              <CheckCircleIcon v-if="item.is_active" class="h-4 w-4" />
+              <XCircleIcon v-else class="h-4 w-4" />
+            </button>
+            <button
+              type="button"
               class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300"
               title="Edit"
-              @click="openEditModal(item)"
+              @click="editCoupon(item)"
             >
               <PencilIcon class="h-4 w-4" />
             </button>
@@ -322,95 +420,23 @@ function formatDiscount(coupon: typeof coupons.value[0]) {
             </button>
           </div>
         </template>
+
+        <template #empty>
+          <div class="py-12 text-center">
+            <TicketIcon class="mx-auto h-12 w-12 text-gray-400" />
+            <h3 class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">No coupons found</h3>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Get started by creating a new coupon.
+            </p>
+            <div class="mt-6">
+              <BaseButton variant="primary" @click="createCoupon">
+                <PlusIcon class="mr-2 h-4 w-4" />
+                Create Coupon
+              </BaseButton>
+            </div>
+          </div>
+        </template>
       </DataTable>
     </BaseCard>
-
-    <!-- Create/Edit modal -->
-    <BaseModal
-      v-model="showModal"
-      :title="isEditing ? 'Edit Coupon' : 'Create Coupon'"
-      size="lg"
-      @close="showModal = false"
-    >
-      <div class="space-y-4">
-        <FormInput
-          v-model="formData.code"
-          label="Coupon Code"
-          name="code"
-          placeholder="e.g., SAVE20"
-          :disabled="isEditing"
-        />
-
-        <div class="grid gap-4 sm:grid-cols-2">
-          <FormSelect
-            v-model="formData.discountType"
-            label="Discount Type"
-            name="discountType"
-            :options="discountTypeOptions"
-          />
-
-          <FormInput
-            v-model.number="formData.discountValue"
-            label="Discount Value"
-            name="discountValue"
-            type="number"
-            :min="0"
-          />
-        </div>
-
-        <div class="grid gap-4 sm:grid-cols-2">
-          <FormInput
-            v-model.number="formData.minOrderAmount"
-            label="Minimum Order Amount"
-            name="minOrderAmount"
-            type="number"
-            :min="0"
-          />
-
-          <FormInput
-            v-model.number="formData.maxDiscount"
-            label="Maximum Discount (optional)"
-            name="maxDiscount"
-            type="number"
-            :min="0"
-          />
-        </div>
-
-        <FormInput
-          v-model.number="formData.usageLimit"
-          label="Usage Limit (leave empty for unlimited)"
-          name="usageLimit"
-          type="number"
-          :min="1"
-        />
-
-        <div class="grid gap-4 sm:grid-cols-2">
-          <FormInput
-            v-model="formData.startDate"
-            label="Start Date"
-            name="startDate"
-            type="date"
-          />
-
-          <FormInput
-            v-model="formData.endDate"
-            label="End Date"
-            name="endDate"
-            type="date"
-          />
-        </div>
-      </div>
-
-      <template #footer>
-        <div class="flex justify-end gap-3">
-          <BaseButton variant="secondary" @click="showModal = false">
-            Cancel
-          </BaseButton>
-          <BaseButton variant="primary" @click="saveCoupon">
-            {{ isEditing ? 'Save Changes' : 'Create Coupon' }}
-          </BaseButton>
-        </div>
-      </template>
-    </BaseModal>
   </div>
 </template>

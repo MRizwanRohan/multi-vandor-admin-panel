@@ -1,0 +1,1242 @@
+{
+  "generated_at": "2026-03-04",
+  "api_version": "v1",
+  "base_url": "/api/v1",
+
+  "coupon_system": {
+    "overview": {
+      "description": "Full-featured coupon/discount code system with percentage, fixed amount, and free shipping discounts",
+      "service": "App\\Services\\Marketing\\CouponService",
+      "model": "App\\Models\\Coupon"
+    },
+    
+    "database": {
+      "table": "coupons",
+      "columns": {
+        "id": "bigint unsigned, primary key",
+        "code": "string(50), unique - uppercase alphanumeric coupon code",
+        "name": "string - display name",
+        "description": "text, nullable",
+        "type": "string(20) - enum: percentage, fixed, free_shipping",
+        "value": "decimal(10,2) - discount value (percentage or fixed amount)",
+        "min_order_amount": "decimal(10,2), nullable - minimum order for coupon validity",
+        "max_discount": "decimal(10,2), nullable - cap on discount amount",
+        "usage_limit": "unsigned int, nullable - total usage limit",
+        "used_count": "unsigned int, default 0 - current usage count",
+        "per_user_limit": "unsigned int, nullable - max uses per user",
+        "starts_at": "timestamp, nullable - activation date",
+        "expires_at": "timestamp, nullable - expiration date",
+        "is_active": "boolean, default true",
+        "vendor_id": "bigint unsigned, nullable, foreign key to vendors - vendor-specific coupon",
+        "created_by": "bigint unsigned, nullable, foreign key to users",
+        "created_at": "timestamp",
+        "updated_at": "timestamp"
+      },
+      "indexes": ["code", "is_active + starts_at + expires_at"],
+      "relationships": {
+        "vendor": "belongsTo Vendor (nullable)",
+        "createdBy": "belongsTo User",
+        "usages": "hasMany CouponUsage"
+      }
+    },
+    
+    "coupon_usage_table": {
+      "table": "coupon_usages",
+      "columns": {
+        "id": "bigint unsigned, primary key",
+        "coupon_id": "bigint unsigned, foreign key to coupons (cascade delete)",
+        "order_id": "bigint unsigned, foreign key to orders (cascade delete)",
+        "user_id": "bigint unsigned, foreign key to users (cascade delete)",
+        "discount_amount": "decimal(12,2) - actual discount applied",
+        "order_total": "decimal(12,2) - order total before discount",
+        "created_at": "timestamp",
+        "updated_at": "timestamp"
+      },
+      "indexes": ["coupon_id + order_id (unique)", "coupon_id + user_id", "user_id"]
+    },
+    
+    "enums": {
+      "CouponType": {
+        "namespace": "App\\Enums\\CouponType",
+        "values": {
+          "PERCENTAGE": {
+            "value": "percentage",
+            "label": "Percentage Discount"
+          },
+          "FIXED": {
+            "value": "fixed",
+            "label": "Fixed Amount"
+          },
+          "FREE_SHIPPING": {
+            "value": "free_shipping",
+            "label": "Free Shipping"
+          }
+        }
+      }
+    },
+    
+    "admin_routes": {
+      "prefix": "/admin/coupons",
+      "middleware": ["auth:sanctum", "role:admin,super_admin", "throttle:admin"],
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/",
+          "action": "index",
+          "description": "List all coupons with filters",
+          "query_params": {
+            "status": "string (active|inactive|expired|scheduled)",
+            "type": "string (percentage|fixed|free_shipping)",
+            "vendor_id": "integer",
+            "search": "string - search in code or name",
+            "sort_by": "string (default: created_at)",
+            "sort_direction": "string (asc|desc, default: desc)",
+            "per_page": "integer (default: 15)"
+          },
+          "response": {
+            "type": "paginated",
+            "data": "array of Coupon objects with vendor and createdBy relations"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/stats",
+          "action": "stats",
+          "description": "Get coupon statistics for dashboard",
+          "response": {
+            "data": {
+              "total_coupons": "integer",
+              "active_coupons": "integer",
+              "expired_coupons": "integer",
+              "total_uses_this_month": "integer",
+              "total_discount_this_month": "decimal",
+              "top_coupons": "array of top 5 coupons by usage"
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/generate-code",
+          "action": "generateCode",
+          "description": "Generate a unique coupon code",
+          "query_params": {
+            "length": "integer (6-16, default: 8)"
+          },
+          "response": {
+            "data": {
+              "code": "string - unique uppercase alphanumeric code"
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/validate",
+          "action": "validateCoupon",
+          "description": "Validate a coupon code (admin testing)",
+          "request_body": {
+            "code": "required|string",
+            "subtotal": "required|numeric|min:0",
+            "user_id": "nullable|exists:users,id"
+          },
+          "response": {
+            "data": {
+              "valid": "boolean",
+              "error": "string (if invalid)",
+              "error_code": "string (INVALID_CODE|COUPON_INACTIVE|NOT_STARTED|EXPIRED|USAGE_LIMIT_REACHED|USER_LIMIT_REACHED|MIN_AMOUNT_NOT_MET)",
+              "coupon": "object (if valid)",
+              "discount": "decimal (if valid)"
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/bulk",
+          "action": "bulkCreate",
+          "description": "Bulk create coupons with auto-generated codes",
+          "request_body": {
+            "count": "integer (1-100)",
+            "...StoreCouponRequest_fields": "same as store endpoint"
+          },
+          "response": {
+            "data": {
+              "count": "integer",
+              "coupons": "array of created Coupon objects"
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/{id}",
+          "action": "show",
+          "description": "Get coupon details with usage statistics",
+          "params": {
+            "id": "integer"
+          },
+          "response": {
+            "data": {
+              "coupon": "Coupon object with vendor, createdBy, usages.user, usages.order",
+              "stats": {
+                "total_uses": "integer",
+                "unique_users": "integer",
+                "total_discount_given": "decimal",
+                "average_order_value": "decimal",
+                "usage_by_date": "array of {date, count, total_discount}"
+              }
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "action": "store",
+          "description": "Create a new coupon",
+          "request_body": {
+            "code": "required|string|min:3|max:50|alpha_num|unique",
+            "name": "required|string|max:255",
+            "description": "nullable|string|max:1000",
+            "type": "required|enum(percentage,fixed,free_shipping)",
+            "value": "required|numeric|min:0",
+            "min_order_amount": "nullable|numeric|min:0",
+            "max_discount": "nullable|numeric|min:0",
+            "usage_limit": "nullable|integer|min:1",
+            "per_user_limit": "nullable|integer|min:1",
+            "starts_at": "nullable|date",
+            "ends_at": "nullable|date|after:starts_at",
+            "is_active": "boolean",
+            "vendor_id": "nullable|exists:vendors,id",
+            "category_ids": "nullable|array of category IDs",
+            "product_ids": "nullable|array of product IDs"
+          },
+          "response": {
+            "status_code": 201,
+            "data": "Coupon object with relations"
+          }
+        },
+        {
+          "method": "PUT",
+          "path": "/{id}",
+          "action": "update",
+          "description": "Update a coupon (code cannot be changed)",
+          "params": {
+            "id": "integer"
+          },
+          "request_body": "Same as store, all fields optional",
+          "response": {
+            "data": "updated Coupon object"
+          }
+        },
+        {
+          "method": "DELETE",
+          "path": "/{id}",
+          "action": "destroy",
+          "description": "Delete a coupon (fails if coupon has been used)",
+          "params": {
+            "id": "integer"
+          },
+          "response": {
+            "data": null
+          },
+          "errors": {
+            "400": "Cannot delete coupon that has been used"
+          }
+        },
+        {
+          "method": "PUT",
+          "path": "/{id}/toggle",
+          "action": "toggle",
+          "description": "Toggle coupon active status",
+          "params": {
+            "id": "integer"
+          },
+          "response": {
+            "data": "updated Coupon object"
+          }
+        }
+      ]
+    },
+    
+    "customer_routes": {
+      "prefix": "/customer/coupons",
+      "middleware": ["auth:sanctum", "throttle:api"],
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/validate",
+          "action": "validateCoupon",
+          "description": "Validate a coupon code for current user",
+          "request_body": {
+            "code": "required|string",
+            "subtotal": "required|numeric|min:0"
+          },
+          "response": {
+            "success": {
+              "valid": true,
+              "coupon": {
+                "id": "integer",
+                "code": "string",
+                "name": "string",
+                "type": "string",
+                "type_label": "string",
+                "value": "decimal",
+                "expires_at": "ISO8601 datetime or null"
+              },
+              "discount": "decimal",
+              "subtotal_after_discount": "decimal"
+            },
+            "error": {
+              "valid": false,
+              "error": "string",
+              "error_code": "string"
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/apply",
+          "action": "apply",
+          "description": "Apply coupon and calculate final discount",
+          "request_body": {
+            "code": "required|string",
+            "subtotal": "required|numeric|min:0",
+            "shipping_cost": "nullable|numeric|min:0"
+          },
+          "response": {
+            "data": {
+              "coupon": "object",
+              "discount_amount": "decimal",
+              "free_shipping": "boolean",
+              "subtotal": "decimal",
+              "final_total": "decimal"
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/available",
+          "action": "available",
+          "description": "Get available coupons for current user",
+          "query_params": {
+            "subtotal": "numeric - filter by minimum order amount"
+          },
+          "response": {
+            "data": "array of available Coupon objects"
+          }
+        }
+      ]
+    },
+    
+    "validation_logic": {
+      "checks_performed": [
+        "Coupon exists",
+        "Coupon is active",
+        "Start date has passed (if set)",
+        "Not expired (if expires_at set)",
+        "Usage limit not reached (if set)",
+        "Per-user limit not reached (if set)",
+        "Minimum order amount met (if set)",
+        "Vendor restriction (if vendor-specific coupon)"
+      ],
+      "error_codes": [
+        "INVALID_CODE",
+        "COUPON_INACTIVE",
+        "NOT_STARTED",
+        "EXPIRED",
+        "USAGE_LIMIT_REACHED",
+        "USER_LIMIT_REACHED",
+        "MIN_AMOUNT_NOT_MET",
+        "VENDOR_MISMATCH"
+      ]
+    }
+  },
+
+  "flash_sales": {
+    "overview": {
+      "description": "Time-limited flash sales with discounted product prices and quantity limits",
+      "service": "App\\Services\\Marketing\\FlashSaleService",
+      "model": "App\\Models\\FlashSale"
+    },
+    
+    "database": {
+      "flash_sales_table": {
+        "table": "flash_sales",
+        "columns": {
+          "id": "bigint unsigned, primary key",
+          "name": "string - flash sale name",
+          "description": "text, nullable",
+          "discount_percentage": "decimal(5,2), nullable - default discount for products",
+          "is_active": "boolean, default true",
+          "starts_at": "timestamp - sale start time",
+          "ends_at": "timestamp - sale end time",
+          "created_at": "timestamp",
+          "updated_at": "timestamp"
+        },
+        "indexes": ["is_active + starts_at + ends_at"]
+      },
+      "flash_sale_products_table": {
+        "table": "flash_sale_products",
+        "description": "Pivot table for flash sale products",
+        "columns": {
+          "id": "bigint unsigned, primary key",
+          "flash_sale_id": "bigint unsigned, foreign key (cascade delete)",
+          "product_id": "bigint unsigned, foreign key (cascade delete)",
+          "flash_price": "decimal(10,2) - special flash sale price",
+          "flash_quantity": "unsigned int, default 0 - quantity available at flash price (0 = unlimited)",
+          "sold_quantity": "unsigned int, default 0 - units sold at flash price",
+          "created_at": "timestamp",
+          "updated_at": "timestamp"
+        },
+        "indexes": ["flash_sale_id + product_id (unique)"]
+      },
+      "relationships": {
+        "products": "belongsToMany Product via flash_sale_products with pivot data"
+      }
+    },
+    
+    "admin_routes": {
+      "prefix": "/admin/flash-sales",
+      "middleware": ["auth:sanctum", "role:admin,super_admin", "throttle:admin"],
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/",
+          "action": "index",
+          "description": "List all flash sales with filters",
+          "query_params": {
+            "status": "string (active|upcoming|ended|inactive)",
+            "search": "string - search in name",
+            "sort_by": "string (default: starts_at)",
+            "sort_direction": "string (default: desc)",
+            "per_page": "integer (default: 15)"
+          },
+          "response": {
+            "type": "paginated",
+            "data": "array of FlashSale objects with products_count"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/stats",
+          "action": "stats",
+          "description": "Get flash sale statistics",
+          "response": {
+            "data": {
+              "total_flash_sales": "integer",
+              "active_flash_sales": "integer",
+              "upcoming_flash_sales": "integer",
+              "ended_this_month": "integer",
+              "total_products_on_sale": "integer",
+              "total_sold_this_month": "integer"
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/active",
+          "action": "active",
+          "description": "Get currently running flash sales",
+          "response": {
+            "data": "array of active FlashSale objects with products"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/check-conflicts",
+          "action": "checkConflicts",
+          "description": "Check if products have conflicts with other flash sales"
+        },
+        {
+          "method": "GET",
+          "path": "/{id}",
+          "action": "show",
+          "description": "Get flash sale details with statistics",
+          "params": {
+            "id": "integer"
+          },
+          "response": {
+            "data": {
+              "flash_sale": "FlashSale object with products",
+              "stats": {
+                "product_count": "integer",
+                "total_quantity": "integer",
+                "sold_quantity": "integer",
+                "remaining_quantity": "integer",
+                "sell_through_rate": "percentage",
+                "revenue": "decimal",
+                "customer_savings": "decimal",
+                "status": "string (inactive|upcoming|running|ended)",
+                "time_remaining": "string or null"
+              }
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "action": "store",
+          "description": "Create a new flash sale",
+          "request_body": {
+            "name": "required|string|max:255",
+            "description": "nullable|string|max:1000",
+            "discount_percentage": "required|numeric|min:1|max:99",
+            "starts_at": "required|date|after_or_equal:now",
+            "ends_at": "required|date|after:starts_at",
+            "is_active": "boolean",
+            "products": "nullable|array",
+            "products.*.product_id": "required_with:products|exists:products,id",
+            "products.*.flash_price": "required_with:products|numeric|min:0",
+            "products.*.quantity_limit": "nullable|integer|min:1"
+          },
+          "response": {
+            "status_code": 201,
+            "data": "FlashSale object with products"
+          }
+        },
+        {
+          "method": "PUT",
+          "path": "/{id}",
+          "action": "update",
+          "description": "Update flash sale (dates restricted if running with sales)",
+          "params": {
+            "id": "integer"
+          },
+          "request_body": "Same as store, all fields optional",
+          "response": {
+            "data": "updated FlashSale object"
+          },
+          "errors": {
+            "400": "Cannot change dates for running sale with confirmed purchases"
+          }
+        },
+        {
+          "method": "DELETE",
+          "path": "/{id}",
+          "action": "destroy",
+          "description": "Delete flash sale (fails if has purchases)",
+          "params": {
+            "id": "integer"
+          },
+          "errors": {
+            "400": "Cannot delete flash sale with confirmed purchases"
+          }
+        },
+        {
+          "method": "PUT",
+          "path": "/{id}/toggle",
+          "action": "toggle",
+          "description": "Toggle flash sale active status"
+        },
+        {
+          "method": "POST",
+          "path": "/{id}/products",
+          "action": "addProducts",
+          "description": "Add products to flash sale",
+          "request_body": {
+            "products": "required|array|min:1",
+            "products.*.product_id": "required|exists:products,id",
+            "products.*.flash_price": "required|numeric|min:0",
+            "products.*.quantity_limit": "nullable|integer|min:1"
+          }
+        },
+        {
+          "method": "PUT",
+          "path": "/{id}/products",
+          "action": "syncProducts",
+          "description": "Replace all products in flash sale",
+          "request_body": {
+            "products": "required|array",
+            "products.*.product_id": "required|exists:products,id",
+            "products.*.flash_price": "required|numeric|min:0",
+            "products.*.quantity_limit": "nullable|integer|min:1"
+          },
+          "errors": {
+            "400": "Cannot remove products that have confirmed sales"
+          }
+        },
+        {
+          "method": "DELETE",
+          "path": "/{id}/products/{productId}",
+          "action": "removeProduct",
+          "description": "Remove a product from flash sale",
+          "errors": {
+            "400": "Cannot remove product with confirmed sales",
+            "404": "Product not found in this flash sale"
+          }
+        }
+      ]
+    },
+    
+    "public_routes": {
+      "prefix": "/flash-sales",
+      "middleware": ["throttle:public"],
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/",
+          "action": "index",
+          "description": "Get all currently active flash sales",
+          "response": {
+            "data": "array of active FlashSale objects with products (available stock only)"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/upcoming",
+          "action": "upcoming",
+          "description": "Get upcoming flash sales (max 5)",
+          "response": {
+            "data": "array of FlashSale objects with products_count"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/{id}",
+          "action": "show",
+          "description": "Get active flash sale details",
+          "params": {
+            "id": "integer"
+          },
+          "response": {
+            "data": {
+              "flash_sale": "FlashSale object with products"
+            }
+          },
+          "errors": {
+            "404": "Flash sale not found or not active"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/product/{productId}/price",
+          "action": "productPrice",
+          "description": "Check if product has flash sale price",
+          "params": {
+            "productId": "integer"
+          },
+          "response": {
+            "data": {
+              "has_flash_sale": "boolean",
+              "flash_price": "decimal (if has flash sale)",
+              "original_price": "decimal or null",
+              "discount_percentage": "decimal or null",
+              "ends_at": "ISO8601 datetime or null",
+              "quantity_remaining": "integer or null (null = unlimited)"
+            }
+          }
+        }
+      ]
+    },
+    
+    "business_rules": [
+      "Flash sale must be at least 1 hour long",
+      "Products cannot be in multiple overlapping flash sales",
+      "Cannot modify dates of running sale with confirmed purchases",
+      "Cannot delete flash sale with confirmed purchases",
+      "Cannot remove products that have confirmed sales",
+      "flash_quantity = 0 means unlimited quantity"
+    ]
+  },
+
+  "banners": {
+    "overview": {
+      "description": "Banner/promotional image management with positions and scheduling",
+      "service": "App\\Services\\Marketing\\BannerService",
+      "model": "App\\Models\\Banner"
+    },
+    
+    "database": {
+      "table": "banners",
+      "columns": {
+        "id": "bigint unsigned, primary key",
+        "title": "string - banner title",
+        "subtitle": "string, nullable",
+        "image_url": "string - banner image path",
+        "link_url": "string, nullable - click destination URL",
+        "position": "string(30), default 'homepage' - placement position",
+        "display_order": "unsigned int, default 0 - sort order within position",
+        "is_active": "boolean, default true",
+        "starts_at": "timestamp, nullable - scheduled activation",
+        "expires_at": "timestamp, nullable - scheduled deactivation",
+        "created_at": "timestamp",
+        "updated_at": "timestamp"
+      },
+      "indexes": ["position + is_active + display_order"],
+      "media": {
+        "uses": "Spatie MediaLibrary",
+        "collection": "banner_image (single file)"
+      }
+    },
+    
+    "positions": {
+      "values": [
+        "homepage_hero",
+        "homepage_secondary",
+        "category_top",
+        "category_sidebar",
+        "product_sidebar",
+        "checkout",
+        "popup"
+      ]
+    },
+    
+    "admin_routes": {
+      "prefix": "/admin/banners",
+      "middleware": ["auth:sanctum", "role:admin,super_admin", "throttle:admin"],
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/",
+          "action": "index",
+          "description": "List all banners with filters",
+          "query_params": {
+            "position": "string - filter by position",
+            "status": "string (active|inactive|expired|scheduled)",
+            "search": "string - search in title or subtitle",
+            "sort_by": "string (default: display_order)",
+            "sort_direction": "string (default: asc)",
+            "per_page": "integer (default: 15)"
+          },
+          "response": {
+            "type": "paginated",
+            "data": "array of Banner objects"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/positions",
+          "action": "positions",
+          "description": "Get available banner positions with counts",
+          "response": {
+            "data": "array of {value, label, count}"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/position/{position}",
+          "action": "byPosition",
+          "description": "Get all banners for a position (including inactive)",
+          "params": {
+            "position": "string"
+          },
+          "response": {
+            "data": "array of Banner objects ordered by display_order"
+          }
+        },
+        {
+          "method": "PUT",
+          "path": "/reorder",
+          "action": "reorder",
+          "description": "Reorder banners within a position",
+          "request_body": {
+            "position": "required|string",
+            "banner_ids": "required|array|min:1 - ordered list of banner IDs"
+          }
+        },
+        {
+          "method": "PUT",
+          "path": "/bulk-activate",
+          "action": "bulkActivate",
+          "description": "Activate multiple banners"
+        },
+        {
+          "method": "PUT",
+          "path": "/bulk-deactivate",
+          "action": "bulkDeactivate",
+          "description": "Deactivate multiple banners"
+        },
+        {
+          "method": "GET",
+          "path": "/{id}",
+          "action": "show",
+          "description": "Get banner details",
+          "params": {
+            "id": "integer"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "action": "store",
+          "description": "Create a new banner",
+          "content_type": "multipart/form-data",
+          "request_body": {
+            "title": "required|string|max:255",
+            "subtitle": "nullable|string|max:500",
+            "position": "required|string|in:homepage_hero,homepage_secondary,category_top,category_sidebar,product_sidebar,checkout,popup",
+            "link_url": "nullable|url|max:500",
+            "link_text": "nullable|string|max:100",
+            "image": "required|image|mimes:jpg,jpeg,png,webp,gif|max:5120",
+            "image_url": "nullable|url|max:500",
+            "display_order": "nullable|integer|min:0",
+            "background_color": "nullable|string|max:20",
+            "text_color": "nullable|string|max:20",
+            "starts_at": "nullable|date",
+            "ends_at": "nullable|date|after:starts_at",
+            "is_active": "boolean",
+            "metadata": "nullable|array"
+          },
+          "response": {
+            "status_code": 201,
+            "data": "Banner object"
+          }
+        },
+        {
+          "method": "PUT",
+          "path": "/{id}",
+          "action": "update",
+          "description": "Update a banner",
+          "content_type": "multipart/form-data",
+          "request_body": "Same as store, all fields optional",
+          "response": {
+            "data": "updated Banner object"
+          }
+        },
+        {
+          "method": "DELETE",
+          "path": "/{id}",
+          "action": "destroy",
+          "description": "Delete a banner"
+        },
+        {
+          "method": "PUT",
+          "path": "/{id}/toggle",
+          "action": "toggle",
+          "description": "Toggle banner active status"
+        },
+        {
+          "method": "PUT",
+          "path": "/{id}/move-up",
+          "action": "moveUp",
+          "description": "Move banner up in display order"
+        },
+        {
+          "method": "PUT",
+          "path": "/{id}/move-down",
+          "action": "moveDown",
+          "description": "Move banner down in display order"
+        }
+      ]
+    },
+    
+    "public_routes": {
+      "prefix": "/banners",
+      "middleware": ["throttle:public"],
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/",
+          "action": "index",
+          "description": "Get active banners (optionally filtered by position)",
+          "query_params": {
+            "position": "string - if provided, filter by position; otherwise returns grouped by position"
+          },
+          "response": {
+            "data": "array of active Banner objects or grouped by position"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/hero",
+          "action": "hero",
+          "description": "Get homepage hero banners"
+        },
+        {
+          "method": "GET",
+          "path": "/positions",
+          "action": "positions",
+          "description": "Get available positions"
+        },
+        {
+          "method": "GET",
+          "path": "/position/{position}",
+          "action": "byPosition",
+          "description": "Get active banners for a specific position"
+        }
+      ]
+    }
+  },
+
+  "newsletter": {
+    "overview": {
+      "description": "Newsletter subscription management with email verification",
+      "service": "App\\Services\\Marketing\\NewsletterService",
+      "model": "App\\Models\\NewsletterSubscriber"
+    },
+    
+    "database": {
+      "table": "newsletter_subscribers",
+      "columns": {
+        "id": "bigint unsigned, primary key",
+        "email": "string, unique - subscriber email",
+        "name": "string, nullable - subscriber name",
+        "source": "string(50), default 'website' - subscription source",
+        "verification_token": "string(100), nullable - email verification token",
+        "unsubscribe_token": "string(100), nullable - one-click unsubscribe token",
+        "verified_at": "timestamp, nullable - when email was verified",
+        "subscribed_at": "timestamp, nullable - initial subscription date",
+        "unsubscribed_at": "timestamp, nullable - when unsubscribed",
+        "resubscribed_at": "timestamp, nullable - when resubscribed",
+        "is_active": "boolean, default false - active subscription status",
+        "created_at": "timestamp",
+        "updated_at": "timestamp"
+      },
+      "indexes": ["email", "is_active", "source", "verification_token", "unsubscribe_token"]
+    },
+    
+    "subscription_sources": {
+      "values": ["website", "checkout", "popup", "import", "admin"],
+      "note": "Custom sources can be added"
+    },
+    
+    "admin_routes": {
+      "prefix": "/admin/newsletter",
+      "middleware": ["auth:sanctum", "role:admin,super_admin", "throttle:admin"],
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/subscribers",
+          "action": "index",
+          "description": "List all subscribers with filters",
+          "query_params": {
+            "status": "string (active|inactive|verified|unverified)",
+            "source": "string - filter by subscription source",
+            "search": "string - search in email or name",
+            "subscribed_from": "date",
+            "subscribed_to": "date",
+            "sort_by": "string (default: subscribed_at)",
+            "sort_direction": "string (default: desc)",
+            "per_page": "integer (default: 15)"
+          },
+          "response": {
+            "type": "paginated",
+            "data": "array of NewsletterSubscriber objects"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/stats",
+          "action": "stats",
+          "description": "Get newsletter statistics",
+          "response": {
+            "data": {
+              "total_subscribers": "integer",
+              "active_subscribers": "integer",
+              "verified_subscribers": "integer",
+              "unverified": "integer",
+              "unsubscribed": "integer",
+              "this_month": "integer - new subscribers this month",
+              "growth_rate": "decimal - month-over-month growth %",
+              "by_source": "object - counts per source",
+              "recent_subscribers": "array of 5 most recent subscribers"
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/export",
+          "action": "export",
+          "description": "Export subscribers to CSV",
+          "query_params": {
+            "status": "string - filter by status",
+            "source": "string - filter by source"
+          },
+          "response": {
+            "content_type": "text/csv",
+            "columns": ["Email", "Name", "Subscribed At", "Source"]
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/import",
+          "action": "import",
+          "description": "Import subscribers from CSV",
+          "content_type": "multipart/form-data",
+          "request_body": {
+            "file": "required|file|mimes:csv,txt|max:5120"
+          },
+          "csv_format": {
+            "columns": ["email (required)", "name (optional)"]
+          },
+          "response": {
+            "data": {
+              "imported_count": "integer",
+              "skipped_count": "integer",
+              "errors": "array of error messages"
+            }
+          }
+        },
+        {
+          "method": "DELETE",
+          "path": "/subscribers/bulk",
+          "action": "bulkDelete",
+          "description": "Bulk delete subscribers",
+          "request_body": {
+            "subscriber_ids": "required|array|min:1"
+          }
+        },
+        {
+          "method": "PUT",
+          "path": "/subscribers/bulk-unsubscribe",
+          "action": "bulkUnsubscribe",
+          "description": "Bulk unsubscribe subscribers",
+          "request_body": {
+            "subscriber_ids": "required|array|min:1"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/subscribers/{id}",
+          "action": "show",
+          "description": "Get subscriber details"
+        },
+        {
+          "method": "POST",
+          "path": "/subscribers",
+          "action": "store",
+          "description": "Add subscriber manually (admin)",
+          "request_body": {
+            "email": "required|email|unique:newsletter_subscribers,email",
+            "name": "nullable|string|max:255",
+            "skip_verification": "boolean (default: true for admin)"
+          }
+        },
+        {
+          "method": "PUT",
+          "path": "/subscribers/{id}",
+          "action": "update",
+          "description": "Update subscriber details",
+          "request_body": {
+            "name": "nullable|string|max:255",
+            "is_active": "boolean"
+          }
+        },
+        {
+          "method": "DELETE",
+          "path": "/subscribers/{id}",
+          "action": "destroy",
+          "description": "Delete a subscriber"
+        },
+        {
+          "method": "PUT",
+          "path": "/subscribers/{id}/unsubscribe",
+          "action": "adminUnsubscribe",
+          "description": "Unsubscribe a subscriber by admin"
+        },
+        {
+          "method": "PUT",
+          "path": "/subscribers/{id}/resubscribe",
+          "action": "resubscribe",
+          "description": "Resubscribe an unsubscribed user"
+        },
+        {
+          "method": "POST",
+          "path": "/subscribers/{id}/resend-verification",
+          "action": "resendVerification",
+          "description": "Resend verification email to unverified subscriber"
+        }
+      ]
+    },
+    
+    "public_routes": {
+      "prefix": "/newsletter",
+      "middleware": ["throttle:public"],
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/subscribe",
+          "action": "subscribe",
+          "description": "Subscribe to newsletter",
+          "request_body": {
+            "email": "required|email|max:255",
+            "name": "nullable|string|max:255"
+          },
+          "headers": {
+            "X-Source": "optional - subscription source"
+          },
+          "response": {
+            "success": {
+              "subscribed": true,
+              "verification_required": "boolean - true if email verification needed"
+            },
+            "already_subscribed": {
+              "already_subscribed": true
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/verify/{token}",
+          "action": "verify",
+          "description": "Verify email subscription",
+          "params": {
+            "token": "string - verification token"
+          },
+          "response": {
+            "data": {
+              "verified": true
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/unsubscribe",
+          "action": "unsubscribe",
+          "description": "Unsubscribe from newsletter",
+          "request_body": {
+            "email": "required_without:token|email",
+            "token": "required_without:email|string"
+          },
+          "response": {
+            "data": {
+              "unsubscribed": true
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/unsubscribe/{token}",
+          "action": "unsubscribeByToken",
+          "description": "One-click unsubscribe via email link",
+          "params": {
+            "token": "string - unsubscribe token"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/status",
+          "action": "status",
+          "description": "Check subscription status",
+          "query_params": {
+            "email": "required|email"
+          },
+          "response": {
+            "data": {
+              "is_subscribed": "boolean",
+              "is_verified": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    
+    "subscription_flow": {
+      "steps": [
+        "1. User submits email via /subscribe",
+        "2. System creates subscriber with verification_token",
+        "3. Verification email sent with link to /verify/{token}",
+        "4. User clicks link, email verified, is_active = true",
+        "5. Unsubscribe via token or email using /unsubscribe"
+      ],
+      "admin_override": "Admin can add subscribers with skip_verification=true"
+    }
+  },
+
+  "common_response_formats": {
+    "success_response": {
+      "success": true,
+      "message": "string",
+      "data": "mixed"
+    },
+    "error_response": {
+      "success": false,
+      "message": "string",
+      "errors": "object (validation errors)"
+    },
+    "paginated_response": {
+      "success": true,
+      "message": "string",
+      "data": "array",
+      "meta": {
+        "current_page": "integer",
+        "from": "integer",
+        "last_page": "integer",
+        "links": "array",
+        "path": "string",
+        "per_page": "integer",
+        "to": "integer",
+        "total": "integer"
+      },
+      "links": {
+        "first": "string",
+        "last": "string",
+        "prev": "string or null",
+        "next": "string or null"
+      }
+    }
+  },
+
+  "caching": {
+    "coupon_cache": {
+      "prefix": "coupon:",
+      "ttl": 3600,
+      "keys": ["code:{code}", "admin_stats"]
+    },
+    "flash_sale_cache": {
+      "prefix": "flash_sale:",
+      "ttl": 300,
+      "keys": ["active", "upcoming", "admin_stats"]
+    },
+    "banner_cache": {
+      "prefix": "banner:",
+      "ttl": 3600,
+      "keys": ["position:{position}", "all_active", "stats"]
+    },
+    "newsletter_cache": {
+      "prefix": "newsletter:",
+      "ttl": 3600,
+      "keys": ["stats"]
+    }
+  },
+
+  "frontend_implementation_notes": {
+    "coupons": {
+      "admin_pages": [
+        "Coupon list with filters (status, type, vendor)",
+        "Coupon create/edit form",
+        "Coupon detail with usage stats",
+        "Bulk coupon generator"
+      ],
+      "customer_flow": [
+        "Coupon input on cart/checkout",
+        "Real-time validation with error messages",
+        "Show applicable discount"
+      ]
+    },
+    "flash_sales": {
+      "admin_pages": [
+        "Flash sale list (active, upcoming, ended tabs)",
+        "Flash sale create/edit with date/time pickers",
+        "Product selector with flash price input",
+        "Real-time stats dashboard"
+      ],
+      "customer_display": [
+        "Countdown timer for active/upcoming sales",
+        "Flash price badge on products",
+        "Quantity remaining indicator"
+      ]
+    },
+    "banners": {
+      "admin_pages": [
+        "Banner list grouped by position",
+        "Drag-and-drop reordering",
+        "Image upload with preview",
+        "Schedule start/end dates"
+      ],
+      "customer_display": [
+        "Hero carousel",
+        "Position-based banner slots"
+      ]
+    },
+    "newsletter": {
+      "admin_pages": [
+        "Subscriber list with status filters",
+        "Import/export functionality",
+        "Stats dashboard with growth metrics"
+      ],
+      "customer_widgets": [
+        "Footer subscription form",
+        "Popup subscription modal",
+        "Inline form in checkout"
+      ]
+    }
+  }
+}

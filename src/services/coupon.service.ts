@@ -6,74 +6,78 @@ import api, { getRolePrefix } from './api'
 import type {
   Coupon,
   CouponDetail,
-  CouponStatus,
-  CouponType,
+  CouponStats,
   CreateCouponRequest,
   UpdateCouponRequest,
-  CouponListParams,
+  BulkCreateCouponRequest,
+  CouponFilters,
   CouponUsage,
+  ValidateCouponRequest,
+  ValidateCouponResponse,
+  ApplyCouponRequest,
+  ApplyCouponResponse,
 } from '@/types'
 import type { PaginatedResponse } from '@/types'
 
-const prefix = () => `${getRolePrefix()}/coupons`
-
-export interface CouponFilters extends CouponListParams {
-  vendor_id?: number
-  expired?: boolean
-}
-
-export interface CouponStats {
-  total: number
-  active: number
-  expired: number
-  total_usage: number
-  total_discount_given: number
-}
-
-export interface ValidateCouponRequest {
-  code: string
-  order_amount: number
-  product_ids?: number[]
-  category_ids?: number[]
-}
-
-export interface ValidateCouponResponse {
-  valid: boolean
-  coupon: Coupon | null
-  discount_amount: number
-  message?: string
-}
+export type { CouponFilters, CouponStats, ValidateCouponRequest, ValidateCouponResponse }
 
 export const couponService = {
+  // ═══════════════════════════════════════════════════════════════════
+  // Admin: Coupon Management — /admin/coupons
+  // ═══════════════════════════════════════════════════════════════════
+
   /**
    * Get paginated coupons
    */
   async getAll(params?: CouponFilters): Promise<PaginatedResponse<Coupon>> {
-    const response = await api.get<PaginatedResponse<Coupon>>(prefix(), { params })
+    const response = await api.get<PaginatedResponse<Coupon>>('/admin/coupons', { params })
     return response.data
-  },
-
-  /**
-   * Get single coupon
-   */
-  async getById(id: number): Promise<CouponDetail> {
-    const response = await api.get<{ data: CouponDetail }>(`${prefix()}/${id}`)
-    return response.data.data
-  },
-
-  /**
-   * Get coupon by code
-   */
-  async getByCode(code: string): Promise<CouponDetail> {
-    const response = await api.get<{ data: CouponDetail }>(`${prefix()}/code/${code}`)
-    return response.data.data
   },
 
   /**
    * Get coupon statistics
    */
   async getStats(): Promise<CouponStats> {
-    const response = await api.get<{ data: CouponStats }>(`${prefix()}/stats`)
+    const response = await api.get<{ data: CouponStats }>('/admin/coupons/stats')
+    return response.data.data
+  },
+
+  /**
+   * Generate unique coupon code
+   */
+  async generateCode(length: number = 8): Promise<string> {
+    const response = await api.get<{ data: { code: string } }>('/admin/coupons/generate-code', {
+      params: { length },
+    })
+    return response.data.data.code
+  },
+
+  /**
+   * Validate coupon code (admin testing)
+   */
+  async validate(data: ValidateCouponRequest): Promise<ValidateCouponResponse> {
+    const response = await api.post<{ data: ValidateCouponResponse }>('/admin/coupons/validate', data)
+    return response.data.data
+  },
+
+  /**
+   * Bulk create coupons with auto-generated codes
+   */
+  async bulkCreate(data: BulkCreateCouponRequest): Promise<{ count: number; coupons: Coupon[] }> {
+    const response = await api.post<{ data: { count: number; coupons: Coupon[] } }>(
+      '/admin/coupons/bulk',
+      data
+    )
+    return response.data.data
+  },
+
+  /**
+   * Get single coupon with usage stats
+   */
+  async getById(id: number): Promise<{ coupon: CouponDetail; stats: CouponDetail['stats'] }> {
+    const response = await api.get<{ data: { coupon: CouponDetail; stats: CouponDetail['stats'] } }>(
+      `/admin/coupons/${id}`
+    )
     return response.data.data
   },
 
@@ -81,15 +85,15 @@ export const couponService = {
    * Create coupon
    */
   async create(data: CreateCouponRequest): Promise<Coupon> {
-    const response = await api.post<{ data: Coupon }>(prefix(), data)
+    const response = await api.post<{ data: Coupon }>('/admin/coupons', data)
     return response.data.data
   },
 
   /**
    * Update coupon
    */
-  async update(id: number, data: Partial<UpdateCouponRequest>): Promise<Coupon> {
-    const response = await api.put<{ data: Coupon }>(`${prefix()}/${id}`, data)
+  async update(id: number, data: UpdateCouponRequest): Promise<Coupon> {
+    const response = await api.put<{ data: Coupon }>(`/admin/coupons/${id}`, data)
     return response.data.data
   },
 
@@ -97,103 +101,98 @@ export const couponService = {
    * Delete coupon
    */
   async delete(id: number): Promise<void> {
-    await api.delete(`${prefix()}/${id}`)
+    await api.delete(`/admin/coupons/${id}`)
   },
 
   /**
-   * Toggle active status
+   * Toggle coupon active status
    */
-  async toggleActive(id: number): Promise<Coupon> {
-    const response = await api.patch<{ data: Coupon }>(`${prefix()}/${id}/toggle-active`)
+  async toggle(id: number): Promise<Coupon> {
+    const response = await api.put<{ data: Coupon }>(`/admin/coupons/${id}/toggle`)
     return response.data.data
   },
 
-  /**
-   * Update status
-   */
-  async updateStatus(id: number, status: CouponStatus): Promise<Coupon> {
-    const response = await api.patch<{ data: Coupon }>(`${prefix()}/${id}/status`, { status })
-    return response.data.data
-  },
+  // ═══════════════════════════════════════════════════════════════════
+  // Customer: Coupon Usage — /customer/coupons
+  // ═══════════════════════════════════════════════════════════════════
 
   /**
-   * Validate coupon code
+   * Validate coupon for customer
    */
-  async validate(data: ValidateCouponRequest): Promise<ValidateCouponResponse> {
-    const response = await api.post<{ data: ValidateCouponResponse }>(`${prefix()}/validate`, data)
-    return response.data.data
-  },
-
-  /**
-   * Generate unique coupon code
-   */
-  async generateCode(type: CouponType = 'percentage'): Promise<string> {
-    const response = await api.get<{ data: { code: string } }>(`${prefix()}/generate-code`, {
-      params: { type },
+  async customerValidate(code: string, subtotal: number): Promise<ValidateCouponResponse> {
+    const response = await api.post<{ data: ValidateCouponResponse }>('/customer/coupons/validate', {
+      code,
+      subtotal,
     })
-    return response.data.data.code
+    return response.data.data
   },
 
   /**
-   * Get coupon usage history
+   * Apply coupon to cart
    */
-  async getUsageHistory(id: number, params?: { page?: number; per_page?: number }): Promise<PaginatedResponse<CouponUsage>> {
-    const response = await api.get<PaginatedResponse<CouponUsage>>(
-      `${prefix()}/${id}/usage`,
-      { params }
-    )
+  async apply(data: ApplyCouponRequest): Promise<ApplyCouponResponse> {
+    const response = await api.post<{ data: ApplyCouponResponse }>('/customer/coupons/apply', data)
+    return response.data.data
+  },
+
+  /**
+   * Get available coupons for customer
+   */
+  async getAvailable(subtotal?: number): Promise<Coupon[]> {
+    const response = await api.get<{ data: Coupon[] }>('/customer/coupons/available', {
+      params: subtotal ? { subtotal } : undefined,
+    })
+    return response.data.data
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Vendor: Coupon Management — /vendor/coupons
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Get vendor's coupons
+   */
+  async getVendorCoupons(params?: CouponFilters): Promise<PaginatedResponse<Coupon>> {
+    const response = await api.get<PaginatedResponse<Coupon>>('/vendor/coupons', { params })
     return response.data
   },
 
   /**
-   * Bulk delete coupons
+   * Get vendor coupon stats
    */
-  async bulkDelete(ids: number[]): Promise<{ success: number; failed: number }> {
-    const response = await api.post<{ data: { success: number; failed: number } }>(
-      `${prefix()}/bulk-delete`,
-      { ids }
-    )
+  async getVendorStats(): Promise<CouponStats> {
+    const response = await api.get<{ data: CouponStats }>('/vendor/coupons/stats')
     return response.data.data
   },
 
   /**
-   * Bulk activate coupons
+   * Create vendor coupon
    */
-  async bulkActivate(ids: number[]): Promise<{ success: number; failed: number }> {
-    const response = await api.post<{ data: { success: number; failed: number } }>(
-      `${prefix()}/bulk-activate`,
-      { ids }
-    )
+  async createVendorCoupon(data: CreateCouponRequest): Promise<Coupon> {
+    const response = await api.post<{ data: Coupon }>('/vendor/coupons', data)
     return response.data.data
   },
 
   /**
-   * Bulk deactivate coupons
+   * Update vendor coupon
    */
-  async bulkDeactivate(ids: number[]): Promise<{ success: number; failed: number }> {
-    const response = await api.post<{ data: { success: number; failed: number } }>(
-      `${prefix()}/bulk-deactivate`,
-      { ids }
-    )
+  async updateVendorCoupon(id: number, data: UpdateCouponRequest): Promise<Coupon> {
+    const response = await api.put<{ data: Coupon }>(`/vendor/coupons/${id}`, data)
     return response.data.data
   },
 
   /**
-   * Duplicate coupon
+   * Delete vendor coupon
    */
-  async duplicate(id: number): Promise<Coupon> {
-    const response = await api.post<{ data: Coupon }>(`${prefix()}/${id}/duplicate`)
-    return response.data.data
+  async deleteVendorCoupon(id: number): Promise<void> {
+    await api.delete(`/vendor/coupons/${id}`)
   },
 
   /**
-   * Export coupons
+   * Toggle vendor coupon status
    */
-  async export(params?: CouponFilters): Promise<Blob> {
-    const response = await api.get(`${prefix()}/export`, {
-      params,
-      responseType: 'blob',
-    })
-    return response.data
+  async toggleVendorCoupon(id: number): Promise<Coupon> {
+    const response = await api.put<{ data: Coupon }>(`/vendor/coupons/${id}/toggle`)
+    return response.data.data
   },
 }

@@ -199,6 +199,51 @@ const adminRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/admin/coupons/CouponForm.vue'),
         meta: { title: 'Edit Coupon' },
       },
+      // Flash Sales
+      {
+        path: 'flash-sales',
+        name: 'admin-flash-sales',
+        component: () => import('@/pages/admin/flash-sales/FlashSaleList.vue'),
+        meta: { title: 'Flash Sales' },
+      },
+      {
+        path: 'flash-sales/create',
+        name: 'admin-flash-sale-create',
+        component: () => import('@/pages/admin/flash-sales/FlashSaleForm.vue'),
+        meta: { title: 'Create Flash Sale' },
+      },
+      {
+        path: 'flash-sales/:id/edit',
+        name: 'admin-flash-sale-edit',
+        component: () => import('@/pages/admin/flash-sales/FlashSaleForm.vue'),
+        meta: { title: 'Edit Flash Sale' },
+      },
+      // Banners
+      {
+        path: 'banners',
+        name: 'admin-banners',
+        component: () => import('@/pages/admin/banners/BannerList.vue'),
+        meta: { title: 'Banners' },
+      },
+      {
+        path: 'banners/create',
+        name: 'admin-banner-create',
+        component: () => import('@/pages/admin/banners/BannerForm.vue'),
+        meta: { title: 'Create Banner' },
+      },
+      {
+        path: 'banners/:id/edit',
+        name: 'admin-banner-edit',
+        component: () => import('@/pages/admin/banners/BannerForm.vue'),
+        meta: { title: 'Edit Banner' },
+      },
+      // Newsletter
+      {
+        path: 'newsletter',
+        name: 'admin-newsletter',
+        component: () => import('@/pages/admin/newsletter/SubscriberList.vue'),
+        meta: { title: 'Newsletter Subscribers' },
+      },
       // Payments
       {
         path: 'payments',

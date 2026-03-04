@@ -78,17 +78,11 @@ async function fetchCustomers() {
       status: statusFilter.value as any || undefined,
     })
     
-    // Handle response - could be paginated or direct array
-    if (response.data) {
-      customers.value = response.data
-      totalItems.value = response.meta?.total || response.total || response.data.length
-    } else if (Array.isArray(response)) {
-      customers.value = response
-      totalItems.value = response.length
-    }
+    // Service now returns clean { data: [...], meta: {...} }
+    customers.value = Array.isArray(response.data) ? response.data : []
+    totalItems.value = response.meta?.total || customers.value.length
   } catch (error: any) {
     console.error('Failed to fetch customers:', error)
-    // Don't show error toast if API doesn't exist yet
     if (error.response?.status !== 404) {
       toast.error(error.response?.data?.message || 'Failed to load customers')
     }
@@ -137,8 +131,9 @@ function getStatusVariant(status: string) {
 }
 
 // Get initials
-function getInitials(name: string) {
-  return name.split(' ').map(n => n[0]).join('').substring(0, 2)
+function getInitials(name: string | undefined | null): string {
+  if (!name) return '?'
+  return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
 }
 </script>
 

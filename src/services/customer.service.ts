@@ -32,8 +32,13 @@ export const customerService = {
    * Get paginated customers
    */
   async getAll(filters?: CustomerFilters): Promise<PaginatedResponse<Customer>> {
-    const response = await api.get<PaginatedResponse<Customer>>(prefix(), { params: filters })
-    return response.data
+    const response = await api.get<any>(prefix(), { params: filters })
+    // Handle Laravel's successResponse wrapper: { success, message, data: { data, meta } }
+    const responseData = response.data?.data || response.data
+    return {
+      data: responseData?.data || responseData || [],
+      meta: responseData?.meta || { total: 0, current_page: 1, last_page: 1, per_page: 20 },
+    } as PaginatedResponse<Customer>
   },
 
   /**

@@ -85,9 +85,19 @@ async function fetchPayouts() {
       status: (statusFilter.value as PayoutStatus) || undefined,
       search: searchQuery.value || undefined,
     })
-    payouts.value = response.data
+    // Backend may return { data: [...], meta } or { data: { payouts: [...], pagination } }
+    const resData = response.data as any
+    if (Array.isArray(resData)) {
+      payouts.value = resData
+    } else if (resData?.payouts) {
+      payouts.value = resData.payouts
+    } else {
+      payouts.value = []
+    }
     if (response.meta) {
       pagination.setMeta(response.meta)
+    } else if (resData?.pagination) {
+      pagination.setMeta(resData.pagination)
     }
   } catch {
     toast.error('Failed to load payouts')

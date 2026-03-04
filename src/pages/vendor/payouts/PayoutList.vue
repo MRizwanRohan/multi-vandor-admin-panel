@@ -111,9 +111,20 @@ async function fetchPayouts() {
       per_page: pagination.perPage.value,
       status: (statusFilter.value || undefined) as any,
     })
-    payouts.value = response.data
+    // Backend may return { data: [...], meta } or { data: { payouts: [...], pagination } }
+    const resData = response.data as any
+    if (Array.isArray(resData)) {
+      payouts.value = resData
+    } else if (resData?.payouts) {
+      payouts.value = resData.payouts
+    } else {
+      payouts.value = []
+    }
+    // Handle pagination from meta or nested pagination object
     if (response.meta) {
       pagination.setMeta(response.meta)
+    } else if (resData?.pagination) {
+      pagination.setMeta(resData.pagination)
     }
   } catch (error) {
     toast.error('Failed to load payouts')

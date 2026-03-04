@@ -99,9 +99,20 @@ async function fetchVendors() {
       status: statusFilter.value || undefined,
       is_verified: verificationFilter.value ? verificationFilter.value === '1' : undefined,
     })
-    vendors.value = response.data
+    // Backend may return { data: [...], meta } or { data: { vendors: [...], pagination } }
+    const resData = response.data as any
+    if (Array.isArray(resData)) {
+      vendors.value = resData
+    } else if (resData?.vendors) {
+      vendors.value = resData.vendors
+    } else {
+      vendors.value = []
+    }
+    // Handle pagination from meta or nested pagination object
     if (response.meta) {
       pagination.setMeta(response.meta)
+    } else if (resData?.pagination) {
+      pagination.setMeta(resData.pagination)
     }
   } catch (error) {
     toast.error('Failed to load vendors')

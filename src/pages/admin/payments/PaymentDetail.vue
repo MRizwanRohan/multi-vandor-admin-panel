@@ -16,10 +16,8 @@ import FormInput from '@/components/form/FormInput.vue'
 import FormTextarea from '@/components/form/FormTextarea.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
 import type {
-  PaymentTransactionDetail,
-  PaymentRefund,
+  PaymentTransaction,
   CreateRefundRequest,
-  RefundReasonCategory,
 } from '@/types/payment'
 import {
   ArrowLeftIcon,
@@ -28,8 +26,6 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   ArrowPathIcon,
-  BanknotesIcon,
-  DocumentTextIcon,
   ExclamationTriangleIcon,
   ArrowTopRightOnSquareIcon,
   ClipboardDocumentIcon,
@@ -46,7 +42,7 @@ const confirm = useConfirm()
 const transactionId = computed(() => Number(route.params.id))
 
 // State
-const transaction = ref<PaymentTransactionDetail | null>(null)
+const transaction = ref<PaymentTransaction | null>(null)
 const isLoading = ref(true)
 const error = ref('')
 
@@ -54,22 +50,10 @@ const error = ref('')
 const showRefundModal = ref(false)
 const isProcessingRefund = ref(false)
 const refundForm = ref<CreateRefundRequest>({
-  transaction_id: 0,
+  payment_id: 0,
   amount: 0,
   reason: '',
-  reason_category: 'customer_request',
-  restock_items: true,
 })
-
-const refundReasonOptions = [
-  { value: 'customer_request', label: 'Customer Request' },
-  { value: 'defective_product', label: 'Defective Product' },
-  { value: 'wrong_item', label: 'Wrong Item Shipped' },
-  { value: 'not_received', label: 'Item Not Received' },
-  { value: 'duplicate_charge', label: 'Duplicate Charge' },
-  { value: 'fraudulent', label: 'Fraudulent Transaction' },
-  { value: 'other', label: 'Other' },
-]
 
 // Mounted
 onMounted(() => {
@@ -104,25 +88,19 @@ const canRefund = computed(() => {
 })
 
 const refundedAmount = computed(() => {
-  if (!transaction.value?.refunds) return 0
-  return transaction.value.refunds
-    .filter((r) => r.status === 'completed')
-    .reduce((sum, r) => sum + r.amount, 0)
+  return transaction.value?.refund_amount ?? 0
 })
 
 const refundableAmount = computed(() => {
-  if (!transaction.value) return 0
-  return transaction.value.amount - refundedAmount.value
+  return transaction.value?.refundable_amount ?? 0
 })
 
 // Open refund modal
 function openRefundModal() {
   refundForm.value = {
-    transaction_id: transactionId.value,
+    payment_id: transactionId.value,
     amount: refundableAmount.value,
     reason: '',
-    reason_category: 'customer_request',
-    restock_items: true,
   }
   showRefundModal.value = true
 }
@@ -221,30 +199,28 @@ function getGatewayLabel(gateway: string): string {
   return labels[gateway] || gateway
 }
 
-function getTimelineIcon(type: string) {
+function getTimelineIcon(status: string) {
   const icons: Record<string, typeof CheckCircleIcon> = {
-    created: ClockIcon,
+    pending: ClockIcon,
     processing: ArrowPathIcon,
     completed: CheckCircleIcon,
     failed: XCircleIcon,
     refunded: ArrowPathIcon,
-    webhook: DocumentTextIcon,
-    note: DocumentTextIcon,
+    partially_refunded: ArrowPathIcon,
   }
-  return icons[type] || ClockIcon
+  return icons[status] || ClockIcon
 }
 
-function getTimelineColor(type: string): string {
+function getTimelineColor(status: string): string {
   const colors: Record<string, string> = {
-    created: 'text-gray-500 bg-gray-100 dark:bg-gray-700',
+    pending: 'text-gray-500 bg-gray-100 dark:bg-gray-700',
     processing: 'text-blue-500 bg-blue-100 dark:bg-blue-900/30',
     completed: 'text-green-500 bg-green-100 dark:bg-green-900/30',
     failed: 'text-red-500 bg-red-100 dark:bg-red-900/30',
     refunded: 'text-amber-500 bg-amber-100 dark:bg-amber-900/30',
-    webhook: 'text-indigo-500 bg-indigo-100 dark:bg-indigo-900/30',
-    note: 'text-gray-500 bg-gray-100 dark:bg-gray-700',
+    partially_refunded: 'text-amber-500 bg-amber-100 dark:bg-amber-900/30',
   }
-  return colors[type] || 'text-gray-500 bg-gray-100'
+  return colors[status] || 'text-gray-500 bg-gray-100'
 }
 </script>
 
@@ -344,7 +320,7 @@ function getTimelineColor(type: string): string {
               <div>
                 <p class="text-sm text-gray-500 dark:text-gray-400">Gateway Fee</p>
                 <p class="text-lg font-semibold text-gray-700 dark:text-gray-300">
-                  {{ currency.format(transaction.fee) }}
+                  {{ currency.format(transaction.gateway_fee) }}
                 </p>
               </div>
               <div>
@@ -381,19 +357,13 @@ function getTimelineColor(type: string): string {
               <div class="flex justify-between">
                 <dt class="text-sm text-gray-500 dark:text-gray-400">Gateway</dt>
                 <dd class="text-sm font-medium text-gray-900 dark:text-white">
-                  {{ getGatewayLabel(transaction.gateway) }}
+                  {{ getGatewayLabel(transaction.payment_method) }}
                 </dd>
               </div>
               <div v-if="transaction.paid_at" class="flex justify-between">
                 <dt class="text-sm text-gray-500 dark:text-gray-400">Paid At</dt>
                 <dd class="text-sm text-gray-900 dark:text-white">
                   {{ date.format(transaction.paid_at, 'MMM D, YYYY · h:mm A') }}
-                </dd>
-              </div>
-              <div v-if="transaction.failed_at" class="flex justify-between">
-                <dt class="text-sm text-gray-500 dark:text-gray-400">Failed At</dt>
-                <dd class="text-sm text-red-600 dark:text-red-400">
-                  {{ date.format(transaction.failed_at, 'MMM D, YYYY · h:mm A') }}
                 </dd>
               </div>
               <div v-if="transaction.failure_reason" class="flex justify-between">
@@ -404,32 +374,32 @@ function getTimelineColor(type: string): string {
               </div>
 
               <!-- Gateway-specific data -->
-              <template v-if="transaction.gateway_data">
+              <template v-if="transaction.gateway_response">
                 <div class="border-t border-gray-200 dark:border-gray-700 pt-3 mt-3">
                   <p class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
-                    {{ getGatewayLabel(transaction.gateway) }} Details
+                    {{ getGatewayLabel(transaction.payment_method) }} Details
                   </p>
                 </div>
 
                 <!-- Stripe -->
-                <template v-if="transaction.gateway === 'stripe'">
-                  <div v-if="transaction.gateway_data.stripe_payment_intent_id" class="flex justify-between">
+                <template v-if="transaction.payment_method === 'stripe'">
+                  <div v-if="transaction.gateway_response.stripe_payment_intent_id" class="flex justify-between">
                     <dt class="text-sm text-gray-500 dark:text-gray-400">Payment Intent</dt>
                     <dd class="text-sm font-mono text-gray-900 dark:text-white">
-                      {{ transaction.gateway_data.stripe_payment_intent_id }}
+                      {{ transaction.gateway_response.stripe_payment_intent_id }}
                     </dd>
                   </div>
-                  <div v-if="transaction.gateway_data.stripe_charge_id" class="flex justify-between">
+                  <div v-if="transaction.gateway_response.stripe_charge_id" class="flex justify-between">
                     <dt class="text-sm text-gray-500 dark:text-gray-400">Charge ID</dt>
                     <dd class="text-sm font-mono text-gray-900 dark:text-white">
-                      {{ transaction.gateway_data.stripe_charge_id }}
+                      {{ transaction.gateway_response.stripe_charge_id }}
                     </dd>
                   </div>
-                  <div v-if="transaction.gateway_data.stripe_receipt_url" class="flex justify-between">
+                  <div v-if="transaction.gateway_response.stripe_receipt_url" class="flex justify-between">
                     <dt class="text-sm text-gray-500 dark:text-gray-400">Receipt</dt>
                     <dd>
                       <a
-                        :href="transaction.gateway_data.stripe_receipt_url as string"
+                        :href="transaction.gateway_response.stripe_receipt_url as string"
                         target="_blank"
                         rel="noopener noreferrer"
                         class="inline-flex items-center text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400"
@@ -442,39 +412,39 @@ function getTimelineColor(type: string): string {
                 </template>
 
                 <!-- PayPal -->
-                <template v-else-if="transaction.gateway === 'paypal'">
-                  <div v-if="transaction.gateway_data.paypal_order_id" class="flex justify-between">
+                <template v-else-if="transaction.payment_method === 'paypal'">
+                  <div v-if="transaction.gateway_response.paypal_order_id" class="flex justify-between">
                     <dt class="text-sm text-gray-500 dark:text-gray-400">PayPal Order</dt>
                     <dd class="text-sm font-mono text-gray-900 dark:text-white">
-                      {{ transaction.gateway_data.paypal_order_id }}
+                      {{ transaction.gateway_response.paypal_order_id }}
                     </dd>
                   </div>
-                  <div v-if="transaction.gateway_data.paypal_payer_email" class="flex justify-between">
+                  <div v-if="transaction.gateway_response.paypal_payer_email" class="flex justify-between">
                     <dt class="text-sm text-gray-500 dark:text-gray-400">Payer Email</dt>
                     <dd class="text-sm text-gray-900 dark:text-white">
-                      {{ transaction.gateway_data.paypal_payer_email }}
+                      {{ transaction.gateway_response.paypal_payer_email }}
                     </dd>
                   </div>
                 </template>
 
                 <!-- SSLCommerz -->
-                <template v-else-if="transaction.gateway === 'sslcommerz'">
-                  <div v-if="transaction.gateway_data.sslcommerz_tran_id" class="flex justify-between">
+                <template v-else-if="transaction.payment_method === 'sslcommerz'">
+                  <div v-if="transaction.gateway_response.sslcommerz_tran_id" class="flex justify-between">
                     <dt class="text-sm text-gray-500 dark:text-gray-400">Transaction ID</dt>
                     <dd class="text-sm font-mono text-gray-900 dark:text-white">
-                      {{ transaction.gateway_data.sslcommerz_tran_id }}
+                      {{ transaction.gateway_response.sslcommerz_tran_id }}
                     </dd>
                   </div>
-                  <div v-if="transaction.gateway_data.sslcommerz_card_type" class="flex justify-between">
+                  <div v-if="transaction.gateway_response.sslcommerz_card_type" class="flex justify-between">
                     <dt class="text-sm text-gray-500 dark:text-gray-400">Card Type</dt>
                     <dd class="text-sm text-gray-900 dark:text-white">
-                      {{ transaction.gateway_data.sslcommerz_card_type }}
+                      {{ transaction.gateway_response.sslcommerz_card_type }}
                     </dd>
                   </div>
-                  <div v-if="transaction.gateway_data.sslcommerz_card_brand" class="flex justify-between">
+                  <div v-if="transaction.gateway_response.sslcommerz_card_brand" class="flex justify-between">
                     <dt class="text-sm text-gray-500 dark:text-gray-400">Card Brand</dt>
                     <dd class="text-sm text-gray-900 dark:text-white">
-                      {{ transaction.gateway_data.sslcommerz_card_brand }}
+                      {{ transaction.gateway_response.sslcommerz_card_brand }}
                     </dd>
                   </div>
                 </template>
@@ -496,7 +466,7 @@ function getTimelineColor(type: string): string {
                 <div class="flex-1">
                   <div class="flex items-center gap-2">
                     <span class="font-mono text-sm text-gray-700 dark:text-gray-300">
-                      {{ refund.refund_id }}
+                      {{ refund.refund_number }}
                     </span>
                     <BaseBadge :variant="getRefundStatusVariant(refund.status)" size="sm" class="capitalize">
                       {{ refund.status }}
@@ -510,46 +480,9 @@ function getTimelineColor(type: string): string {
                   </p>
                 </div>
                 <p class="font-semibold text-gray-900 dark:text-white">
-                  {{ currency.format(refund.amount) }}
+                  {{ currency.format(refund.refund_amount) }}
                 </p>
               </div>
-            </div>
-          </BaseCard>
-
-          <!-- Webhook Events -->
-          <BaseCard v-if="transaction.webhook_events && transaction.webhook_events.length > 0">
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              Webhook Events
-            </h3>
-            <div class="overflow-x-auto">
-              <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead>
-                  <tr>
-                    <th class="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Event</th>
-                    <th class="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Status</th>
-                    <th class="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Time</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                  <tr v-for="event in transaction.webhook_events" :key="event.id">
-                    <td class="px-3 py-2 text-sm font-mono text-gray-900 dark:text-white">
-                      {{ event.event_type }}
-                    </td>
-                    <td class="px-3 py-2">
-                      <BaseBadge
-                        :variant="event.status === 'processed' ? 'success' : event.status === 'failed' ? 'danger' : 'warning'"
-                        size="sm"
-                        class="capitalize"
-                      >
-                        {{ event.status }}
-                      </BaseBadge>
-                    </td>
-                    <td class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
-                      {{ date.format(event.created_at, 'h:mm:ss A') }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
             </div>
           </BaseCard>
         </div>
@@ -584,7 +517,7 @@ function getTimelineColor(type: string): string {
               <div class="flex justify-between">
                 <dt class="text-sm text-gray-500 dark:text-gray-400">Items</dt>
                 <dd class="text-sm text-gray-900 dark:text-white">
-                  {{ transaction.order.item_count }} items
+                  {{ transaction.order.items_count }} items
                 </dd>
               </div>
               <div class="flex justify-between">
@@ -596,7 +529,7 @@ function getTimelineColor(type: string): string {
               <div class="flex justify-between">
                 <dt class="text-sm text-gray-500 dark:text-gray-400">Placed</dt>
                 <dd class="text-sm text-gray-900 dark:text-white">
-                  {{ date.format(transaction.order.placed_at, 'MMM D, YYYY') }}
+                  {{ date.format(transaction.order.created_at, 'MMM D, YYYY') }}
                 </dd>
               </div>
             </dl>
@@ -636,13 +569,6 @@ function getTimelineColor(type: string): string {
             </h3>
             <div class="flex items-center gap-3">
               <div
-                v-if="transaction.vendor.logo_url"
-                class="h-10 w-10 rounded-full overflow-hidden bg-gray-200"
-              >
-                <img :src="transaction.vendor.logo_url" :alt="transaction.vendor.store_name" class="h-full w-full object-cover" />
-              </div>
-              <div
-                v-else
                 class="flex h-10 w-10 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30"
               >
                 <span class="text-sm font-semibold text-primary-600 dark:text-primary-400">
@@ -672,25 +598,25 @@ function getTimelineColor(type: string): string {
               <div class="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200 dark:bg-gray-700"></div>
               <div class="space-y-4">
                 <div
-                  v-for="event in transaction.timeline"
-                  :key="event.id"
+                  v-for="(event, idx) in transaction.timeline"
+                  :key="idx"
                   class="relative flex gap-3 pl-10"
                 >
                   <div
                     class="absolute left-1.5 flex h-5 w-5 items-center justify-center rounded-full"
-                    :class="getTimelineColor(event.type)"
+                    :class="getTimelineColor(event.new_status)"
                   >
-                    <component :is="getTimelineIcon(event.type)" class="h-3 w-3" />
+                    <component :is="getTimelineIcon(event.new_status)" class="h-3 w-3" />
                   </div>
                   <div class="flex-1 min-w-0">
-                    <p class="text-sm font-medium text-gray-900 dark:text-white">
-                      {{ event.title }}
+                    <p class="text-sm font-medium text-gray-900 dark:text-white capitalize">
+                      {{ event.old_status ? `${event.old_status.replace('_', ' ')} → ${event.new_status.replace('_', ' ')}` : event.new_status.replace('_', ' ') }}
                     </p>
-                    <p v-if="event.description" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {{ event.description }}
+                    <p v-if="event.notes" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {{ event.notes }}
                     </p>
-                    <p v-if="event.amount" class="text-xs font-medium text-gray-700 dark:text-gray-300 mt-0.5">
-                      {{ currency.format(event.amount) }}
+                    <p v-if="event.changed_by" class="text-xs text-gray-400 mt-0.5">
+                      by {{ event.changed_by }}
                     </p>
                     <p class="text-xs text-gray-400 mt-0.5">
                       {{ date.format(event.created_at, 'MMM D, h:mm A') }}
@@ -734,14 +660,6 @@ function getTimelineColor(type: string): string {
           required
         />
 
-        <FormSelect
-          v-model="refundForm.reason_category"
-          name="reason_category"
-          label="Reason Category"
-          :options="refundReasonOptions"
-          required
-        />
-
         <FormTextarea
           v-model="refundForm.reason"
           name="reason"
@@ -750,18 +668,6 @@ function getTimelineColor(type: string): string {
           :rows="3"
           required
         />
-
-        <div class="flex items-center gap-2">
-          <input
-            id="restock"
-            v-model="refundForm.restock_items"
-            type="checkbox"
-            class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-          />
-          <label for="restock" class="text-sm text-gray-700 dark:text-gray-300">
-            Restock items back to inventory
-          </label>
-        </div>
       </div>
 
       <template #footer>

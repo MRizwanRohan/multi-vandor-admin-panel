@@ -50,7 +50,6 @@ const editForm = ref({
   carrier: '',
   shipped_at: '',
   estimated_delivery: '',
-  notes: '',
 })
 
 // Status options
@@ -88,7 +87,6 @@ function openEditModal() {
     carrier: shipment.value.carrier || '',
     shipped_at: shipment.value.shipped_at?.split('T')[0] || '',
     estimated_delivery: shipment.value.estimated_delivery?.split('T')[0] || '',
-    notes: shipment.value.notes || '',
   }
   showEditModal.value = true
 }
@@ -103,7 +101,6 @@ async function saveEdit() {
       carrier: editForm.value.carrier || undefined,
       shipped_at: editForm.value.shipped_at || undefined,
       estimated_delivery: editForm.value.estimated_delivery || undefined,
-      notes: editForm.value.notes || undefined,
     })
     toast.success('Shipment updated')
     showEditModal.value = false
@@ -474,14 +471,6 @@ onMounted(() => {
             type="date"
           />
         </div>
-
-        <FormTextarea
-          v-model="editForm.notes"
-          label="Notes (optional)"
-          name="notes"
-          placeholder="Internal notes about this shipment"
-          :rows="2"
-        />
       </div>
 
       <template #footer>

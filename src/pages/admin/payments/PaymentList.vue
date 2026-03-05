@@ -81,9 +81,9 @@ const columns: TableColumn[] = [
   { key: 'transactionId', label: 'Transaction', sortable: true },
   { key: 'order', label: 'Order', sortable: true },
   { key: 'customer', label: 'Customer', sortable: true },
-  { key: 'gateway', label: 'Gateway', sortable: true, align: 'center' },
+  { key: 'payment_method', label: 'Gateway', sortable: true, align: 'center' },
   { key: 'amount', label: 'Amount', sortable: true, align: 'right' },
-  { key: 'fee', label: 'Fee', sortable: true, align: 'right' },
+  { key: 'gateway_fee', label: 'Fee', sortable: true, align: 'right' },
   { key: 'status', label: 'Status', sortable: true, align: 'center' },
   { key: 'date', label: 'Date', sortable: true },
   { key: 'actions', label: '', align: 'right' },
@@ -98,13 +98,13 @@ async function fetchTransactions() {
       per_page: pagination.perPage.value,
       search: searchQuery.value || undefined,
       status: (statusFilter.value as TransactionStatus) || undefined,
-      gateway: (gatewayFilter.value as PaymentGatewayType) || undefined,
-      date_from: dateFrom.value || undefined,
-      date_to: dateTo.value || undefined,
+      payment_method: (gatewayFilter.value as PaymentGatewayType) || undefined,
+      from_date: dateFrom.value || undefined,
+      to_date: dateTo.value || undefined,
     }
     const response = await paymentService.getTransactions(filters)
-    transactions.value = response.data
-    pagination.total.value = response.meta.total
+    transactions.value = response.transactions || []
+    pagination.total.value = response.pagination?.total || 0
   } catch (error: any) {
     const message = error.response?.data?.message || 'Failed to load transactions'
     toast.error(message)
@@ -118,8 +118,8 @@ async function fetchTransactions() {
 async function fetchStatistics() {
   try {
     statistics.value = await paymentService.getStatistics({
-      date_from: dateFrom.value || undefined,
-      date_to: dateTo.value || undefined,
+      from_date: dateFrom.value || undefined,
+      to_date: dateTo.value || undefined,
     })
   } catch {
     // Stats are optional, silently fail
@@ -133,9 +133,9 @@ async function handleExport() {
     const blob = await paymentService.exportTransactions({
       search: searchQuery.value || undefined,
       status: (statusFilter.value as TransactionStatus) || undefined,
-      gateway: (gatewayFilter.value as PaymentGatewayType) || undefined,
-      date_from: dateFrom.value || undefined,
-      date_to: dateTo.value || undefined,
+      payment_method: (gatewayFilter.value as PaymentGatewayType) || undefined,
+      from_date: dateFrom.value || undefined,
+      to_date: dateTo.value || undefined,
     })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -203,10 +203,10 @@ function getGatewayLabel(gateway: string): string {
 }
 
 // Computed stats
-const totalRevenue = computed(() => statistics.value?.total_revenue ?? 0)
-const totalTransactions = computed(() => statistics.value?.total_transactions ?? 0)
-const successRate = computed(() => statistics.value?.success_rate ?? 0)
-const totalRefunded = computed(() => statistics.value?.total_refunded ?? 0)
+const totalRevenue = computed(() => statistics.value?.overview?.completed_amount ?? 0)
+const totalTransactions = computed(() => statistics.value?.overview?.total_transactions ?? 0)
+const successRate = computed(() => statistics.value?.overview?.success_rate ?? 0)
+const totalRefunded = computed(() => statistics.value?.overview?.total_refunded ?? 0)
 </script>
 
 <template>
@@ -312,11 +312,13 @@ const totalRefunded = computed(() => statistics.value?.total_refunded ?? 0)
 
         <template #cell-order="{ item }">
           <router-link
-            :to="`/admin/orders/${item.order_id}`"
+            v-if="item.order"
+            :to="`/admin/orders/${item.order.id}`"
             class="text-sm font-medium text-gray-900 hover:text-primary-600 dark:text-white dark:hover:text-primary-400"
           >
-            {{ item.order_number }}
+            {{ item.order.order_number }}
           </router-link>
+          <span v-else class="text-sm text-gray-400">—</span>
         </template>
 
         <template #cell-customer="{ item }">
@@ -330,13 +332,13 @@ const totalRefunded = computed(() => statistics.value?.total_refunded ?? 0)
           </div>
         </template>
 
-        <template #cell-gateway="{ item }">
+        <template #cell-payment_method="{ item }">
           <span
             class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
-            :class="getGatewayColor(item.gateway)"
+            :class="getGatewayColor(item.payment_method)"
           >
             <CreditCardIcon class="mr-1 h-3.5 w-3.5" />
-            {{ getGatewayLabel(item.gateway) }}
+            {{ getGatewayLabel(item.payment_method) }}
           </span>
         </template>
 
@@ -346,15 +348,15 @@ const totalRefunded = computed(() => statistics.value?.total_refunded ?? 0)
           </span>
         </template>
 
-        <template #cell-fee="{ item }">
+        <template #cell-gateway_fee="{ item }">
           <span class="text-sm text-gray-500 dark:text-gray-400">
-            {{ currency.format(item.fee) }}
+            {{ currency.format(item.gateway_fee) }}
           </span>
         </template>
 
         <template #cell-status="{ item }">
           <BaseBadge :variant="getStatusVariant(item.status)" class="capitalize">
-            {{ item.status.replace('_', ' ') }}
+            {{ item.status_label || item.status?.replace('_', ' ') }}
           </BaseBadge>
         </template>
 

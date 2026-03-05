@@ -15,8 +15,7 @@ import BaseBadge from '@/components/ui/BaseBadge.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import FormInput from '@/components/form/FormInput.vue'
 import FormTextarea from '@/components/form/FormTextarea.vue'
-import DataTable from '@/components/data/DataTable.vue'
-import type { PayoutDetail, Commission } from '@/types'
+import type { Payout } from '@/types'
 import {
   ArrowLeftIcon,
   CheckCircleIcon,
@@ -38,7 +37,7 @@ const confirm = useConfirm()
 
 // ── State ────────────────────────────────────────────────────────
 
-const payout = ref<PayoutDetail | null>(null)
+const payout = ref<Payout | null>(null)
 const isLoading = ref(true)
 const payoutId = computed(() => Number(route.params.id))
 
@@ -55,18 +54,6 @@ const completeReference = ref('')
 const completeNotes = ref('')
 const noteText = ref('')
 const isProcessing = ref(false)
-
-// ── Commission Table ─────────────────────────────────────────────
-
-const commissionColumns = [
-  { key: 'order_number', label: 'Order', sortable: true },
-  { key: 'product_name', label: 'Product' },
-  { key: 'gross_amount', label: 'Gross', align: 'right' as const },
-  { key: 'commission_rate', label: 'Rate', align: 'center' as const },
-  { key: 'commission_amount', label: 'Commission', align: 'right' as const },
-  { key: 'net_amount', label: 'Net', align: 'right' as const },
-  { key: 'status', label: 'Status', align: 'center' as const },
-]
 
 // ── Computed ─────────────────────────────────────────────────────
 
@@ -91,7 +78,7 @@ const statusConfig = computed(() => {
 async function fetchPayout() {
   isLoading.value = true
   try {
-    payout.value = await payoutService.getById(payoutId.value)
+    payout.value = await payoutService.getById(payoutId.value) as Payout
   } catch {
     toast.error('Failed to load payout details')
     router.push('/admin/payouts')
@@ -178,17 +165,6 @@ async function handleAddNote() {
   }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────
-
-function getCommissionStatusVariant(status: string): 'success' | 'warning' | 'info' {
-  const map: Record<string, 'success' | 'warning' | 'info'> = {
-    pending: 'warning',
-    available: 'info',
-    paid: 'success',
-  }
-  return map[status] || 'info'
-}
-
 // ── Init ─────────────────────────────────────────────────────────
 
 onMounted(() => {
@@ -260,7 +236,7 @@ onMounted(() => {
                 Payout #{{ payout.payout_number }}
               </h2>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Requested {{ formatDateTime(payout.requested_at || payout.created_at) }}
+                Requested {{ formatDateTime(payout.created_at) }}
               </p>
             </div>
             <BaseBadge :variant="statusConfig.variant" size="lg">
@@ -284,13 +260,8 @@ onMounted(() => {
             <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-700/50">
               <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Payment Method</p>
               <p class="mt-1 text-lg font-semibold capitalize text-gray-900 dark:text-white">
-                {{ payout.method }}
+                {{ payout.payment_method }}
               </p>
-              <div v-if="payout.account_details" class="mt-2 space-y-1 text-sm text-gray-500 dark:text-gray-400">
-                <p>{{ payout.account_details.account_name }}</p>
-                <p class="font-mono">{{ payout.account_details.account_number }}</p>
-                <p v-if="payout.account_details.bank_name">{{ payout.account_details.bank_name }}</p>
-              </div>
             </div>
           </div>
 
@@ -319,7 +290,7 @@ onMounted(() => {
                 </div>
                 <div>
                   <p class="text-sm font-medium text-gray-900 dark:text-white">Requested</p>
-                  <p class="text-xs text-gray-500">{{ formatDateTime(payout.requested_at || payout.created_at) }}</p>
+                  <p class="text-xs text-gray-500">{{ formatDateTime(payout.created_at) }}</p>
                 </div>
               </div>
               <div v-if="payout.processed_at" class="flex items-start gap-3">
@@ -343,22 +314,8 @@ onMounted(() => {
             </div>
             <div>
               <h3 class="font-semibold text-gray-900 dark:text-white">
-                {{ payout.vendor.store_name }}
+                {{ payout.vendor.name }}
               </h3>
-              <p class="text-sm text-gray-500 dark:text-gray-400">
-                {{ payout.vendor.owner_name }}
-              </p>
-            </div>
-          </div>
-
-          <div class="mt-4 space-y-3">
-            <div>
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Email</p>
-              <p class="text-sm text-gray-900 dark:text-white">{{ payout.vendor.email }}</p>
-            </div>
-            <div v-if="payout.vendor.phone">
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Phone</p>
-              <p class="text-sm text-gray-900 dark:text-white">{{ payout.vendor.phone }}</p>
             </div>
           </div>
 
@@ -374,7 +331,29 @@ onMounted(() => {
       </div>
 
       <!-- Payout Notes -->
-      <BaseCard v-if="payout.notes">
+      <BaseCard v-if="payout.payout_notes && payout.payout_notes.length > 0">
+        <div class="flex items-center gap-2 border-b border-gray-200 pb-3 dark:border-gray-700">
+          <DocumentTextIcon class="h-5 w-5 text-gray-500" />
+          <h3 class="font-semibold text-gray-900 dark:text-white">Notes</h3>
+        </div>
+        <div class="mt-3 space-y-3">
+          <div
+            v-for="note in payout.payout_notes"
+            :key="note.id"
+            class="rounded-lg border border-gray-200 p-3 dark:border-gray-700"
+          >
+            <p class="text-sm text-gray-700 dark:text-gray-300">{{ note.message }}</p>
+            <div class="mt-1 flex items-center gap-2 text-xs text-gray-400">
+              <span>{{ note.created_by }}</span>
+              <span>&middot;</span>
+              <span>{{ formatDateTime(note.created_at) }}</span>
+            </div>
+          </div>
+        </div>
+      </BaseCard>
+
+      <!-- Admin Notes -->
+      <BaseCard v-else-if="payout.notes">
         <div class="flex items-center gap-2 border-b border-gray-200 pb-3 dark:border-gray-700">
           <DocumentTextIcon class="h-5 w-5 text-gray-500" />
           <h3 class="font-semibold text-gray-900 dark:text-white">Notes</h3>
@@ -385,75 +364,18 @@ onMounted(() => {
       </BaseCard>
 
       <!-- Associated Commissions -->
-      <BaseCard padding="none">
-        <div class="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+      <BaseCard>
+        <div class="flex items-center gap-2">
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
             Associated Commissions
-            <span v-if="payout.commissions?.length" class="ml-2 text-sm font-normal text-gray-500">
-              ({{ payout.commissions.length }})
-            </span>
           </h3>
+          <BaseBadge variant="info" size="sm">
+            {{ payout.commission_count ?? 0 }}
+          </BaseBadge>
         </div>
-
-        <DataTable
-          v-if="payout.commissions?.length"
-          :columns="commissionColumns"
-          :data="payout.commissions"
-          :loading="false"
-          row-key="id"
-          :current-page="1"
-          :per-page="100"
-          :total="payout.commissions.length"
-        >
-          <template #cell-order_number="{ row }">
-            <RouterLink
-              :to="`/admin/orders/${row.order_id}`"
-              class="font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
-            >
-              #{{ row.order_number }}
-            </RouterLink>
-          </template>
-
-          <template #cell-product_name="{ row }">
-            <span class="text-sm text-gray-900 dark:text-white">
-              {{ row.product_name }}
-            </span>
-          </template>
-
-          <template #cell-gross_amount="{ row }">
-            <span class="text-sm text-gray-900 dark:text-white">
-              {{ formatCurrency(row.gross_amount) }}
-            </span>
-          </template>
-
-          <template #cell-commission_rate="{ row }">
-            <span class="text-sm text-gray-600 dark:text-gray-400">
-              {{ row.commission_rate }}%
-            </span>
-          </template>
-
-          <template #cell-commission_amount="{ row }">
-            <span class="text-sm font-medium text-danger-600 dark:text-danger-400">
-              -{{ formatCurrency(row.commission_amount) }}
-            </span>
-          </template>
-
-          <template #cell-net_amount="{ row }">
-            <span class="text-sm font-bold text-success-600 dark:text-success-400">
-              {{ formatCurrency(row.net_amount) }}
-            </span>
-          </template>
-
-          <template #cell-status="{ row }">
-            <BaseBadge :variant="getCommissionStatusVariant(row.status)">
-              {{ row.status }}
-            </BaseBadge>
-          </template>
-        </DataTable>
-
-        <div v-else class="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-          No commissions associated with this payout.
-        </div>
+        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+          This payout covers {{ payout.commission_count ?? 0 }} commission(s).
+        </p>
       </BaseCard>
     </template>
 

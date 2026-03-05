@@ -85,10 +85,10 @@ const stats = computed(() => [
 
 // Table columns
 const columns: TableColumn[] = [
-  { key: 'id', label: 'Payout ID', sortable: true },
+  { key: 'payout_number', label: 'Payout #', sortable: true },
   { key: 'amount', label: 'Amount', sortable: true },
-  { key: 'method', label: 'Method' },
-  { key: 'requested_at', label: 'Requested', sortable: true },
+  { key: 'payment_method', label: 'Method' },
+  { key: 'created_at', label: 'Requested', sortable: true },
   { key: 'processed_at', label: 'Processed', sortable: true },
   { key: 'status', label: 'Status' },
 ]
@@ -215,9 +215,9 @@ function getStatusVariant(status: string) {
         @update:currentPage="pagination.currentPage.value = $event"
         @update:perPage="pagination.perPage.value = $event"
       >
-        <template #cell-id="{ row }">
+        <template #cell-payout_number="{ row }">
           <span class="font-mono font-medium text-gray-900 dark:text-white">
-            #{{ row.id }}
+            {{ row.payout_number }}
           </span>
         </template>
 
@@ -227,18 +227,15 @@ function getStatusVariant(status: string) {
           </span>
         </template>
 
-        <template #cell-method="{ row }">
+        <template #cell-payment_method="{ row }">
           <div>
-            <div class="text-gray-900 dark:text-white capitalize">{{ row.method || row.payout_method || '-' }}</div>
-            <div v-if="row.bank_account" class="text-sm text-gray-500 dark:text-gray-400">
-              {{ row.bank_account.account_number?.slice(-4)?.padStart(8, '•') }}
-            </div>
+            <div class="text-gray-900 dark:text-white capitalize">{{ row.payment_method || '-' }}</div>
           </div>
         </template>
 
-        <template #cell-requested_at="{ row }">
+        <template #cell-created_at="{ row }">
           <span class="text-gray-600 dark:text-gray-400">
-            {{ formatDate(row.requested_at || row.created_at) }}
+            {{ formatDate(row.created_at) }}
           </span>
         </template>
 

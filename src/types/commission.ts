@@ -2,7 +2,7 @@
 // Commission & Payout Types
 // ═══════════════════════════════════════════════════════════════════
 
-export type PayoutStatus = 'pending' | 'processing' | 'completed' | 'rejected' | 'cancelled'
+export type PayoutStatus = 'pending' | 'processing' | 'completed' | 'rejected' | 'failed'
 export type PayoutMethod = 'bank' | 'bkash' | 'nagad' | 'rocket'
 
 export interface Commission {
@@ -25,43 +25,40 @@ export interface Commission {
 
 export interface Payout {
   id: number
-  vendor_id: number
-  vendor_name: string
   payout_number: string
+  vendor_id: number
   amount: number
   fee: number
   net_amount: number
-  method: PayoutMethod
-  account_details: PayoutAccountDetails
+  currency: string
   status: PayoutStatus
-  notes: string | null
-  requested_at: string
-  processed_at: string | null
-  processed_by: number | null
-  created_at: string
-}
-
-export interface PayoutDetail extends Payout {
-  commissions: Commission[]
-  vendor: PayoutVendor
+  status_label: string
+  payment_method: string
   transaction_reference: string | null
+  notes: string | null
+  processed_at: string | null
+  processed_by: { id: number; name: string } | null
+  vendor?: PayoutVendor
+  payout_notes?: PayoutNote[]
+  commission_count?: number
+  created_at: string
+  updated_at: string
 }
 
-export interface PayoutAccountDetails {
-  account_type: PayoutMethod
-  bank_name?: string
-  account_name: string
-  account_number: string
-  branch_name?: string
-  routing_number?: string
-}
+export type PayoutDetail = Payout
 
 export interface PayoutVendor {
   id: number
-  store_name: string
-  owner_name: string
-  email: string
-  phone: string | null
+  name: string
+  slug: string
+}
+
+export interface PayoutNote {
+  id: number
+  message: string
+  note_type: string
+  created_by: string
+  created_at: string
 }
 
 // ── DTOs ──
@@ -82,7 +79,7 @@ export interface PayoutListParams {
   per_page?: number
   vendor_id?: number
   status?: PayoutStatus
-  method?: PayoutMethod
+  search?: string
   date_from?: string
   date_to?: string
   min_amount?: number

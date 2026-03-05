@@ -123,7 +123,7 @@ async function refresh() {
 async function approvePayout(payout: Payout) {
   const confirmed = await confirm.require({
     title: 'Approve Payout',
-    message: `Approve payout of ${formatCurrency(payout.amount)} for ${payout.vendor_name}?`,
+    message: `Approve payout of ${formatCurrency(payout.amount)} for ${payout.vendor?.name ?? 'vendor'}?`,
     confirmText: 'Approve',
     cancelText: 'Cancel',
     variant: 'info',
@@ -267,7 +267,7 @@ onMounted(() => {
         <template #cell-vendor="{ row }">
           <div>
             <div class="font-medium text-gray-900 dark:text-white">
-              {{ row.vendor_name }}
+              {{ row.vendor?.name || '—' }}
             </div>
           </div>
         </template>
@@ -280,7 +280,7 @@ onMounted(() => {
 
         <template #cell-method="{ row }">
           <span class="capitalize text-gray-700 dark:text-gray-300">
-            {{ row.method }}
+            {{ row.payment_method }}
           </span>
         </template>
 

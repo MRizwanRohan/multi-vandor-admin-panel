@@ -122,7 +122,7 @@ function openEditMethod(method: ShippingMethod) {
   editingMethod.value = method
   methodForm.value = {
     name: method.name,
-    description: method.description || '',
+    description: '',
     zone_id: method.zone_id,
     type: method.type,
     base_rate: method.base_rate || 0,

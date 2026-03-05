@@ -296,9 +296,6 @@ onMounted(() => {
             <div class="font-medium text-gray-900 dark:text-white">
               {{ row.name }}
             </div>
-            <div v-if="row.description" class="text-sm text-gray-500 dark:text-gray-400 truncate max-w-xs">
-              {{ row.description }}
-            </div>
           </div>
         </template>
 

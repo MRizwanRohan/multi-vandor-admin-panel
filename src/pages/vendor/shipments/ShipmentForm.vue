@@ -253,12 +253,12 @@ onMounted(() => {
                       {{ item.product_name || item.product?.name || `Item #${item.id}` }}
                     </p>
                     <p class="text-xs text-gray-500 dark:text-gray-400">
-                      Qty: {{ item.quantity }} × {{ formatCurrency(item.unit_price || item.price) }}
+                      Qty: {{ item.quantity }} × {{ formatCurrency(item.unit_price) }}
                     </p>
                   </div>
                   <div class="text-right">
                     <p class="text-sm font-medium text-gray-900 dark:text-white">
-                      {{ formatCurrency(item.total || (item.quantity * (item.unit_price || item.price))) }}
+                      {{ formatCurrency(item.total_price || (item.quantity * item.unit_price)) }}
                     </p>
                   </div>
                 </div>
@@ -375,7 +375,7 @@ onMounted(() => {
                     {{ order.shipping_address.address_line_2 }}
                   </p>
                   <p>
-                    {{ order.shipping_address.city }}, {{ order.shipping_address.state }}
+                    {{ order.shipping_address.city }}, {{ order.shipping_address.district }}
                     {{ order.shipping_address.postal_code }}
                   </p>
                   <p>{{ order.shipping_address.country }}</p>

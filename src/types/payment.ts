@@ -1,9 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════
-// Payment Types — Payment Gateway, Transaction, Refund, Webhook
-// Strategy Pattern: Gateway interface + concrete implementations
+// Payment Types — Matches AdminPaymentController + PaymentTransactionResource
 // ═══════════════════════════════════════════════════════════════════
 
-// ── Payment Gateway (Strategy Pattern) ──
+// ── Enums ──
 
 export type PaymentGatewayType = 'stripe' | 'paypal' | 'sslcommerz' | 'cod'
 
@@ -12,7 +11,6 @@ export type TransactionStatus =
   | 'processing'
   | 'completed'
   | 'failed'
-  | 'cancelled'
   | 'refunded'
   | 'partially_refunded'
 
@@ -23,12 +21,7 @@ export type RefundStatus =
   | 'failed'
   | 'cancelled'
 
-export type WebhookStatus =
-  | 'received'
-  | 'processing'
-  | 'processed'
-  | 'failed'
-  | 'ignored'
+export type WebhookStatus = 'success' | 'failed'
 
 // ── Payment Gateway Config ──
 
@@ -50,38 +43,39 @@ export interface PaymentGatewayConfig {
   updated_at: string
 }
 
-// ── Payment Transaction ──
+// ── Payment Transaction (from PaymentTransactionResource) ──
 
 export interface PaymentTransaction {
   id: number
   transaction_id: string
-  order_id: number
-  order_number: string
-  gateway: PaymentGatewayType
-  gateway_display: string
-  status: TransactionStatus
+  gateway_payment_id: string | null
   amount: number
   currency: string
-  fee: number
+  refund_amount: number
+  gateway_fee: number
   net_amount: number
-  customer: PaymentCustomer
-  vendor: PaymentVendor | null
-  metadata: Record<string, unknown> | null
-  gateway_response: Record<string, unknown> | null
-  paid_at: string | null
-  failed_at: string | null
+  payment_method: PaymentGatewayType
+  status: TransactionStatus
+  status_label: string
   failure_reason: string | null
+  is_paid: boolean
+  is_refunded: boolean
+  refundable_amount: number
+  paid_at: string | null
   created_at: string
   updated_at: string
+  // Nested relations (loaded on list with basic info)
+  order?: PaymentOrderSummary
+  customer?: PaymentCustomer
+  vendor?: PaymentVendor | null
+  // Detail-only (loaded on show)
+  timeline?: PaymentTimelineEvent[]
+  refunds?: TransactionRefund[]
+  gateway_response?: Record<string, unknown> | null
 }
 
-export interface PaymentTransactionDetail extends PaymentTransaction {
-  order: PaymentOrderSummary
-  refunds: PaymentRefund[]
-  webhook_events: WebhookEvent[]
-  timeline: PaymentTimelineEvent[]
-  gateway_data: GatewaySpecificData | null
-}
+// Detail is same type, just with relations always loaded
+export type PaymentTransactionDetail = PaymentTransaction
 
 export interface PaymentCustomer {
   id: number
@@ -93,123 +87,87 @@ export interface PaymentCustomer {
 export interface PaymentVendor {
   id: number
   store_name: string
-  logo_url: string | null
+  store_slug: string
 }
 
 export interface PaymentOrderSummary {
   id: number
   order_number: string
-  status: string
+  total_amount: number
   subtotal: number
   tax_amount: number
   shipping_amount: number
   discount_amount: number
-  total_amount: number
-  item_count: number
-  placed_at: string
+  status: string
+  status_label: string
+  payment_status: string
+  payment_method: string
+  coupon_code: string | null
+  notes: string | null
+  created_at: string
+  items?: PaymentOrderItem[]
+  items_count?: number
+}
+
+export interface PaymentOrderItem {
+  id: number
+  product_id: number
+  product_name: string | null
+  product_slug: string | null
+  quantity: number
+  unit_price: number
+  total_price: number
 }
 
 export interface PaymentTimelineEvent {
-  id: number
-  type: 'created' | 'processing' | 'completed' | 'failed' | 'refunded' | 'webhook' | 'note'
-  title: string
-  description: string | null
-  amount: number | null
-  metadata: Record<string, unknown> | null
+  old_status: string | null
+  new_status: string
+  notes: string | null
+  changed_by: string | null
   created_at: string
 }
 
-// ── Gateway-Specific Data (Stripe, PayPal, SSLCommerz) ──
+// ── Embedded Refund (within PaymentTransactionResource.refunds[]) ──
 
-export interface GatewaySpecificData {
-  // Stripe
-  stripe_payment_intent_id?: string
-  stripe_charge_id?: string
-  stripe_customer_id?: string
-  stripe_payment_method_id?: string
-  stripe_receipt_url?: string
-
-  // PayPal
-  paypal_order_id?: string
-  paypal_capture_id?: string
-  paypal_payer_id?: string
-  paypal_payer_email?: string
-
-  // SSLCommerz
-  sslcommerz_session_key?: string
-  sslcommerz_tran_id?: string
-  sslcommerz_val_id?: string
-  sslcommerz_bank_tran_id?: string
-  sslcommerz_card_type?: string
-  sslcommerz_card_brand?: string
-
-  // Generic
-  [key: string]: unknown
+export interface TransactionRefund {
+  id: number
+  refund_number: string
+  refund_amount: number
+  status: RefundStatus
+  reason: string
+  notes: string | null
+  processed_by: string | null
+  processed_at: string | null
+  created_at: string
 }
 
-// ── Payment Refund ──
+// ── Payment Refund (from admin refunds list endpoint) ──
 
 export interface PaymentRefund {
   id: number
-  refund_id: string
-  transaction_id: number
-  transaction_ref: string
+  refund_number: string
   order_id: number
   order_number: string
-  gateway: PaymentGatewayType
+  refund_amount: number
   status: RefundStatus
-  amount: number
-  currency: string
-  reason: string
-  reason_category: RefundReasonCategory
-  items: RefundItem[] | null
-  restock_items: boolean
-  customer: PaymentCustomer
-  vendor: PaymentVendor | null
+  refund_reason: string
+  notes: string | null
   processed_by: string | null
   processed_at: string | null
-  gateway_refund_id: string | null
-  failure_reason: string | null
-  notes: string | null
+  items_count: number
   created_at: string
-  updated_at: string
 }
 
-export type RefundReasonCategory =
-  | 'customer_request'
-  | 'defective_product'
-  | 'wrong_item'
-  | 'not_received'
-  | 'duplicate_charge'
-  | 'fraudulent'
-  | 'other'
-
-export interface RefundItem {
-  order_item_id: number
-  product_name: string
-  quantity: number
-  amount: number
-}
-
-// ── Webhook Events ──
+// ── Webhook Log (from admin webhook-logs) ──
 
 export interface WebhookEvent {
   id: number
-  event_id: string
-  gateway: PaymentGatewayType
-  event_type: string
-  status: WebhookStatus
-  payload: Record<string, unknown>
+  gateway: PaymentGatewayType | null
+  event: string
+  status: WebhookStatus | null
+  payload: Record<string, unknown> | null
   response: Record<string, unknown> | null
-  ip_address: string | null
-  processed_at: string | null
-  failure_reason: string | null
-  retry_count: number
-  max_retries: number
-  related_transaction_id: number | null
-  related_order_id: number | null
   created_at: string
-  updated_at: string
 }
 
 // ── Request DTOs ──
@@ -234,113 +192,61 @@ export interface InitiatePaymentResponse {
 }
 
 export interface CreateRefundRequest {
-  transaction_id: number
+  payment_id: number
   amount: number
   reason: string
-  reason_category: RefundReasonCategory
-  items?: { order_item_id: number; quantity: number }[]
-  restock_items?: boolean
   notes?: string
-}
-
-export interface RetryWebhookRequest {
-  webhook_id: number
 }
 
 // ── Filter/Query Params ──
 
 export interface PaymentTransactionFilters {
   search?: string
-  gateway?: PaymentGatewayType
+  payment_method?: PaymentGatewayType
   status?: TransactionStatus
   customer_id?: number
-  vendor_id?: number
   order_id?: number
+  transaction_id?: string
   min_amount?: number
   max_amount?: number
-  date_from?: string
-  date_to?: string
+  from_date?: string
+  to_date?: string
   page?: number
   per_page?: number
   sort_by?: string
-  sort_direction?: 'asc' | 'desc'
+  sort_order?: 'asc' | 'desc'
 }
 
 export interface RefundFilters {
-  search?: string
-  gateway?: PaymentGatewayType
   status?: RefundStatus
-  reason_category?: RefundReasonCategory
-  customer_id?: number
-  vendor_id?: number
-  min_amount?: number
-  max_amount?: number
-  date_from?: string
-  date_to?: string
+  from_date?: string
+  to_date?: string
   page?: number
   per_page?: number
-  sort_by?: string
-  sort_direction?: 'asc' | 'desc'
 }
 
 export interface WebhookFilters {
   gateway?: PaymentGatewayType
   status?: WebhookStatus
-  event_type?: string
-  date_from?: string
-  date_to?: string
+  from_date?: string
+  to_date?: string
   page?: number
   per_page?: number
-  sort_by?: string
-  sort_direction?: 'asc' | 'desc'
 }
 
-// ── Statistics ──
+// ── Statistics (from admin payments/statistics) ──
 
 export interface PaymentStatistics {
-  total_transactions: number
-  total_revenue: number
-  total_fees: number
-  total_net: number
-  total_refunded: number
-  success_rate: number
-  by_gateway: GatewayStats[]
-  by_status: { status: TransactionStatus; count: number; amount: number }[]
-  revenue_by_day: { date: string; amount: number; count: number }[]
-  refund_rate: number
-  average_transaction: number
-}
-
-export interface GatewayStats {
-  gateway: PaymentGatewayType
-  display_name: string
-  transaction_count: number
-  total_amount: number
-  total_fees: number
-  success_rate: number
-  refund_count: number
-  refund_amount: number
-}
-
-export interface RefundStatistics {
-  total_refunds: number
-  total_amount: number
-  pending_count: number
-  pending_amount: number
-  completed_count: number
-  completed_amount: number
-  by_reason: { reason: RefundReasonCategory; count: number; amount: number }[]
-  by_gateway: { gateway: PaymentGatewayType; count: number; amount: number }[]
-  average_processing_time: number // in hours
-}
-
-export interface WebhookStatistics {
-  total_events: number
-  processed_count: number
-  failed_count: number
-  pending_count: number
-  by_gateway: { gateway: PaymentGatewayType; count: number }[]
-  by_event_type: { event_type: string; count: number }[]
-  success_rate: number
-  average_processing_time: number // in ms
+  overview: {
+    total_transactions: number
+    total_amount: number
+    completed_amount: number
+    total_refunded: number
+    total_gateway_fees: number
+    average_transaction_amount: number
+    success_rate: number
+  }
+  by_status: Record<string, { count: number; total_amount: number }>
+  by_gateway: Record<string, { count: number; total_amount: number }>
+  daily_trend: { date: string; count: number; total_amount: number }[]
 }

@@ -211,9 +211,9 @@ function goBack() {
                 </span>
               </div>
               
-              <div v-if="customer.last_order_at" class="pt-2 border-t border-gray-200 dark:border-gray-700">
+              <div v-if="customer.last_login_at" class="pt-2 border-t border-gray-200 dark:border-gray-700">
                 <span class="text-sm text-gray-500 dark:text-gray-400">
-                  Last order: {{ date.formatDate(customer.last_order_at) }}
+                  Last login: {{ date.formatDate(customer.last_login_at) }}
                 </span>
               </div>
             </div>

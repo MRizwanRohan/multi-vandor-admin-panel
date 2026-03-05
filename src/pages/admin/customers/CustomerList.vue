@@ -60,10 +60,10 @@ const columns = [
   { key: 'customer', label: 'Customer', sortable: true },
   { key: 'email', label: 'Email', sortable: true },
   { key: 'phone', label: 'Phone' },
-  { key: 'orders', label: 'Orders', sortable: true },
-  { key: 'totalSpent', label: 'Total Spent', sortable: true },
+  { key: 'order_count', label: 'Orders', sortable: true },
+  { key: 'total_spent', label: 'Total Spent', sortable: true },
   { key: 'status', label: 'Status' },
-  { key: 'createdAt', label: 'Joined', sortable: true },
+  { key: 'created_at', label: 'Joined', sortable: true },
   { key: 'actions', label: 'Actions', align: 'right' as const },
 ]
 
@@ -179,16 +179,16 @@ function getInitials(name: string | undefined | null): string {
               v-if="item.avatar"
               class="h-10 w-10 shrink-0 overflow-hidden rounded-full"
             >
-              <img :src="item.avatar" :alt="item.full_name || item.name" class="h-full w-full object-cover" />
+              <img :src="item.avatar" :alt="item.full_name" class="h-full w-full object-cover" />
             </div>
             <div
               v-else
               class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-400"
             >
-              {{ getInitials(item.full_name || item.name || item.email) }}
+              {{ getInitials(item.full_name || item.email) }}
             </div>
             <span class="font-medium text-gray-900 dark:text-white">
-              {{ item.full_name || item.name || item.email }}
+              {{ item.full_name || item.email }}
             </span>
           </div>
         </template>
@@ -205,15 +205,15 @@ function getInitials(name: string | undefined | null): string {
           </span>
         </template>
 
-        <template #cell-orders="{ item }">
+        <template #cell-order_count="{ item }">
           <span class="font-medium text-gray-900 dark:text-white">
-            {{ item.order_count ?? item.orders ?? 0 }}
+            {{ item.order_count ?? 0 }}
           </span>
         </template>
 
-        <template #cell-totalSpent="{ item }">
+        <template #cell-total_spent="{ item }">
           <span class="font-medium text-gray-900 dark:text-white">
-            {{ formatCurrency(item.total_spent ?? item.totalSpent ?? 0) }}
+            {{ formatCurrency(item.total_spent ?? 0) }}
           </span>
         </template>
 
@@ -223,9 +223,9 @@ function getInitials(name: string | undefined | null): string {
           </BaseBadge>
         </template>
 
-        <template #cell-createdAt="{ item }">
+        <template #cell-created_at="{ item }">
           <span class="text-gray-600 dark:text-gray-400">
-            {{ formatDate(item.created_at || item.createdAt) }}
+            {{ formatDate(item.created_at) }}
           </span>
         </template>
 

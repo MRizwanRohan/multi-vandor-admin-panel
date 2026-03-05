@@ -16,7 +16,7 @@ export interface Customer {
   status: UserStatus
   order_count: number
   total_spent: number
-  last_order_at: string | null
+  last_login_at: string | null
   created_at: string
   updated_at: string
 }

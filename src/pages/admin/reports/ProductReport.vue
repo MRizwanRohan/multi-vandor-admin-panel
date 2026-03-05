@@ -252,6 +252,18 @@ async function handleExport() {
           <span class="font-medium text-gray-900 dark:text-white">{{ row.product_name }}</span>
         </template>
 
+        <template #cell-category="{ row }">
+          <span class="text-sm text-gray-600 dark:text-gray-400">{{ row.category || '—' }}</span>
+        </template>
+
+        <template #cell-vendor_store="{ row }">
+          <span class="text-sm text-gray-600 dark:text-gray-400">{{ row.vendor_store || '—' }}</span>
+        </template>
+
+        <template #cell-total_sold="{ row }">
+          <span class="font-medium text-gray-900 dark:text-white">{{ row.total_sold?.toLocaleString() || '0' }}</span>
+        </template>
+
         <template #cell-total_revenue="{ row }">
           <span class="font-medium text-gray-900 dark:text-white">{{ formatCurrency(row.total_revenue) }}</span>
         </template>

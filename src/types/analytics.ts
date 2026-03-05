@@ -113,11 +113,12 @@ export interface AnalyticsTopProduct {
   product_id: number
   product_name: string
   product_slug: string
-  category: string
-  vendor_store: string
+  category: string | null
+  vendor_store: string | null
   total_sold: number
   total_revenue: number
   average_rating: number
+  image_url?: string | null
 }
 
 // ── Top Vendors ──

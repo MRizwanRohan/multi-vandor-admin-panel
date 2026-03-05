@@ -125,7 +125,7 @@ const productColumns = [
   { key: 'rank', label: '#', align: 'center' as const },
   { key: 'product_name', label: 'Product', sortable: true },
   { key: 'total_sold', label: 'Units Sold', sortable: true, align: 'right' as const },
-  { key: 'revenue', label: 'Revenue', sortable: true, align: 'right' as const },
+  { key: 'total_revenue', label: 'Revenue', sortable: true, align: 'right' as const },
 ]
 
 async function handleExport() {
@@ -259,8 +259,8 @@ async function handleExport() {
           <span class="font-medium text-gray-900 dark:text-white">{{ row.total_sold?.toLocaleString() }}</span>
         </template>
 
-        <template #cell-revenue="{ row }">
-          <span class="font-medium text-gray-900 dark:text-white">{{ formatCurrency(row.revenue) }}</span>
+        <template #cell-total_revenue="{ row }">
+          <span class="font-medium text-gray-900 dark:text-white">{{ formatCurrency(row.total_revenue) }}</span>
         </template>
       </DataTable>
     </BaseCard>

@@ -110,14 +110,14 @@ onMounted(() => loadData())
                   {{ p.product_name }}
                 </RouterLink>
               </td>
-              <td class="px-6 py-4 text-gray-600 dark:text-gray-400">{{ p.category }}</td>
-              <td class="px-6 py-4 text-gray-600 dark:text-gray-400">{{ p.vendor_store }}</td>
-              <td class="px-6 py-4 text-right font-medium text-gray-900 dark:text-white">{{ p.total_sold.toLocaleString() }}</td>
+              <td class="px-6 py-4 text-gray-600 dark:text-gray-400">{{ p.category || '—' }}</td>
+              <td class="px-6 py-4 text-gray-600 dark:text-gray-400">{{ p.vendor_store || '—' }}</td>
+              <td class="px-6 py-4 text-right font-medium text-gray-900 dark:text-white">{{ (p.total_sold || 0).toLocaleString() }}</td>
               <td class="px-6 py-4 text-right font-medium text-gray-900 dark:text-white">{{ formatCurrency(p.total_revenue) }}</td>
               <td class="px-6 py-4 text-right">
                 <div class="flex items-center justify-end gap-1">
                   <StarIcon class="h-4 w-4 text-yellow-400" />
-                  <span class="text-gray-900 dark:text-white">{{ p.average_rating?.toFixed(1) || '—' }}</span>
+                  <span class="text-gray-900 dark:text-white">{{ p.average_rating != null ? Number(p.average_rating).toFixed(1) : '—' }}</span>
                 </div>
               </td>
             </tr>

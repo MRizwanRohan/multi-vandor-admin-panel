@@ -90,4 +90,3 @@ export function keysToSnake(obj: unknown, seen?: WeakSet<object>): unknown {
 
   return obj
 }
-}

@@ -35,6 +35,9 @@ import {
   BoltIcon,
   PhotoIcon,
   EnvelopeIcon,
+  DocumentTextIcon,
+  NewspaperIcon,
+  InboxIcon,
 } from '@heroicons/vue/24/outline'
 
 interface NavItem {
@@ -185,6 +188,17 @@ const adminNavItems: NavItem[] = [
       { name: 'Sales Report', to: '/admin/reports/sales' },
       { name: 'Vendor Report', to: '/admin/reports/vendors' },
       { name: 'Product Report', to: '/admin/reports/products' },
+    ],
+  },
+  {
+    name: 'CMS',
+    to: '/admin/cms',
+    icon: DocumentTextIcon,
+    children: [
+      { name: 'Static Pages', to: '/admin/cms/pages' },
+      { name: 'FAQs', to: '/admin/cms/faqs' },
+      { name: 'Blog', to: '/admin/cms/blog' },
+      { name: 'Contact Messages', to: '/admin/cms/contact' },
     ],
   },
   {

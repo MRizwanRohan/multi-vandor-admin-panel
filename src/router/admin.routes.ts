@@ -344,6 +344,100 @@ const adminRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/admin/reports/ProductReport.vue'),
         meta: { title: 'Product Report' },
       },
+      // CMS - Static Pages
+      {
+        path: 'cms/pages',
+        name: 'admin-cms-pages',
+        component: () => import('@/pages/admin/cms/pages/PageList.vue'),
+        meta: { title: 'Static Pages' },
+      },
+      {
+        path: 'cms/pages/create',
+        name: 'admin-cms-page-create',
+        component: () => import('@/pages/admin/cms/pages/PageForm.vue'),
+        meta: { title: 'Create Page' },
+      },
+      {
+        path: 'cms/pages/:id/edit',
+        name: 'admin-cms-page-edit',
+        component: () => import('@/pages/admin/cms/pages/PageForm.vue'),
+        meta: { title: 'Edit Page' },
+      },
+      // CMS - FAQs
+      {
+        path: 'cms/faqs',
+        name: 'admin-cms-faqs',
+        component: () => import('@/pages/admin/cms/faqs/FaqList.vue'),
+        meta: { title: 'FAQs' },
+      },
+      {
+        path: 'cms/faqs/create',
+        name: 'admin-cms-faq-create',
+        component: () => import('@/pages/admin/cms/faqs/FaqForm.vue'),
+        meta: { title: 'Create FAQ' },
+      },
+      {
+        path: 'cms/faqs/:id/edit',
+        name: 'admin-cms-faq-edit',
+        component: () => import('@/pages/admin/cms/faqs/FaqForm.vue'),
+        meta: { title: 'Edit FAQ' },
+      },
+      {
+        path: 'cms/faqs/categories/create',
+        name: 'admin-cms-faq-category-create',
+        component: () => import('@/pages/admin/cms/faqs/FaqCategoryForm.vue'),
+        meta: { title: 'Create FAQ Category' },
+      },
+      {
+        path: 'cms/faqs/categories/:id/edit',
+        name: 'admin-cms-faq-category-edit',
+        component: () => import('@/pages/admin/cms/faqs/FaqCategoryForm.vue'),
+        meta: { title: 'Edit FAQ Category' },
+      },
+      // CMS - Blog
+      {
+        path: 'cms/blog',
+        name: 'admin-cms-blog',
+        component: () => import('@/pages/admin/cms/blog/BlogList.vue'),
+        meta: { title: 'Blog' },
+      },
+      {
+        path: 'cms/blog/create',
+        name: 'admin-cms-blog-create',
+        component: () => import('@/pages/admin/cms/blog/BlogForm.vue'),
+        meta: { title: 'Create Blog Post' },
+      },
+      {
+        path: 'cms/blog/:id/edit',
+        name: 'admin-cms-blog-edit',
+        component: () => import('@/pages/admin/cms/blog/BlogForm.vue'),
+        meta: { title: 'Edit Blog Post' },
+      },
+      {
+        path: 'cms/blog/categories/create',
+        name: 'admin-cms-blog-category-create',
+        component: () => import('@/pages/admin/cms/blog/BlogCategoryForm.vue'),
+        meta: { title: 'Create Blog Category' },
+      },
+      {
+        path: 'cms/blog/categories/:id/edit',
+        name: 'admin-cms-blog-category-edit',
+        component: () => import('@/pages/admin/cms/blog/BlogCategoryForm.vue'),
+        meta: { title: 'Edit Blog Category' },
+      },
+      // CMS - Contact Messages
+      {
+        path: 'cms/contact',
+        name: 'admin-cms-contact',
+        component: () => import('@/pages/admin/cms/contact/ContactList.vue'),
+        meta: { title: 'Contact Messages' },
+      },
+      {
+        path: 'cms/contact/:id',
+        name: 'admin-cms-contact-detail',
+        component: () => import('@/pages/admin/cms/contact/ContactDetail.vue'),
+        meta: { title: 'Message Details' },
+      },
       // System
       {
         path: 'system/activity',

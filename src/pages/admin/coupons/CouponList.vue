@@ -89,8 +89,9 @@ const columns = [
 async function fetchStats() {
   try {
     stats.value = await couponService.getStats()
-  } catch (error: any) {
-    console.error('Failed to load stats:', error)
+  } catch {
+    // Stats endpoint may not be available — silently ignore
+    stats.value = null
   }
 }
 

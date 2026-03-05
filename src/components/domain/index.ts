@@ -19,6 +19,8 @@ export { default as CategoryBreadcrumb } from './CategoryBreadcrumb.vue'
 // Order
 export { default as OrderTimeline } from './OrderTimeline.vue'
 export { default as OrderSummary } from './OrderSummary.vue'
+export { default as RefundModal } from './RefundModal.vue'
+export { default as RefundHistory } from './RefundHistory.vue'
 
 // Vendor
 export { default as VendorCard } from './VendorCard.vue'

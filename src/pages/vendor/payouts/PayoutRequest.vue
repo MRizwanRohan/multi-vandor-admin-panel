@@ -48,8 +48,8 @@ const bankAccounts = ref<Array<{
   id: number
   account_type: string
   bank_name: string | null
-  account_name: string
-  account_number: string
+  account_holder_name: string
+  account_number_masked: string
   is_primary: boolean
   is_verified: boolean
 }>>([])
@@ -84,7 +84,7 @@ const [notes, notesAttrs] = defineField('notes')
 const bankAccountOptions = computed(() => 
   bankAccounts.value.map(acc => ({
     value: acc.id,
-    label: `${getAccountTypeLabel(acc.account_type)} - ${acc.account_number.slice(-4).padStart(acc.account_number.length, '•')}`,
+    label: `${getAccountTypeLabel(acc.account_type)} - ${acc.account_number_masked}`,
   }))
 )
 
@@ -276,7 +276,7 @@ function goBack() {
                     </BaseBadge>
                   </div>
                   <p class="text-sm text-gray-600 dark:text-gray-400">
-                    {{ selectedAccount.account_name }} · {{ selectedAccount.account_number }}
+                    {{ selectedAccount.account_holder_name }} · {{ selectedAccount.account_number_masked }}
                   </p>
                   <p v-if="selectedAccount.bank_name" class="text-sm text-gray-500">
                     {{ selectedAccount.bank_name }}

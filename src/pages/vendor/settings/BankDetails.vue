@@ -44,31 +44,17 @@ const isSaving = ref(false)
 // ── Options ──────────────────────────────────────────────────────
 
 const accountTypeOptions = [
-  { value: 'bank', label: 'Bank Account' },
-  { value: 'bkash', label: 'bKash' },
-  { value: 'nagad', label: 'Nagad' },
-  { value: 'rocket', label: 'Rocket' },
-]
-
-const bankOptions = [
-  { value: 'Dutch Bangla Bank Ltd', label: 'Dutch Bangla Bank Ltd (DBBL)' },
-  { value: 'BRAC Bank', label: 'BRAC Bank' },
-  { value: 'Eastern Bank Ltd', label: 'Eastern Bank Ltd (EBL)' },
-  { value: 'City Bank', label: 'City Bank' },
-  { value: 'United Commercial Bank', label: 'United Commercial Bank (UCB)' },
-  { value: 'Standard Chartered Bank', label: 'Standard Chartered Bank' },
-  { value: 'HSBC Bangladesh', label: 'HSBC Bangladesh' },
-  { value: 'Mutual Trust Bank', label: 'Mutual Trust Bank' },
-  { value: 'Prime Bank', label: 'Prime Bank' },
-  { value: 'Islami Bank Bangladesh', label: 'Islami Bank Bangladesh' },
+  { value: 'savings', label: 'Savings Account' },
+  { value: 'current', label: 'Current Account' },
+  { value: 'salary', label: 'Salary Account' },
 ]
 
 // ── Form ─────────────────────────────────────────────────────────
 
 const bankSchema = toTypedSchema(z.object({
-  account_type: z.enum(['bank', 'bkash', 'nagad', 'rocket']),
-  bank_name: z.string().optional(),
-  account_name: z.string().min(2, 'Account name must be at least 2 characters'),
+  account_type: z.enum(['savings', 'current', 'salary']).optional(),
+  bank_name: z.string().min(1, 'Bank name is required'),
+  account_holder_name: z.string().min(2, 'Account holder name must be at least 2 characters'),
   account_number: z.string().min(5, 'Invalid account number'),
   branch_name: z.string().optional(),
   routing_number: z.string().optional(),
@@ -85,9 +71,9 @@ const {
 } = useForm({
   validationSchema: bankSchema,
   initialValues: {
-    account_type: 'bank' as 'bank' | 'bkash' | 'nagad' | 'rocket',
+    account_type: 'savings' as 'savings' | 'current' | 'salary',
     bank_name: '',
-    account_name: '',
+    account_holder_name: '',
     account_number: '',
     branch_name: '',
     routing_number: '',
@@ -97,13 +83,13 @@ const {
 
 const [accountType, accountTypeAttrs] = defineField('account_type')
 const [bankName, bankNameAttrs] = defineField('bank_name')
-const [accountName, accountNameAttrs] = defineField('account_name')
+const [accountHolderName, accountHolderNameAttrs] = defineField('account_holder_name')
 const [accountNumber, accountNumberAttrs] = defineField('account_number')
 const [branchName, branchNameAttrs] = defineField('branch_name')
 const [routingNumber, routingNumberAttrs] = defineField('routing_number')
 const [isPrimary, isPrimaryAttrs] = defineField('is_primary')
 
-const isBankType = computed(() => accountType.value === 'bank')
+const isBankType = computed(() => true) // all types are bank accounts
 const modalTitle = computed(() => editingAccount.value ? 'Edit Account' : 'Add Bank Account')
 
 // ── Fetch ────────────────────────────────────────────────────────
@@ -130,10 +116,10 @@ function openAddModal() {
 function openEditModal(account: BankAccount) {
   editingAccount.value = account
   setValues({
-    account_type: account.account_type,
+    account_type: (account.account_type as 'savings' | 'current' | 'salary') || 'savings',
     bank_name: account.bank_name || '',
-    account_name: account.account_name,
-    account_number: account.account_number,
+    account_holder_name: account.account_holder_name,
+    account_number: '', // backend never returns raw account_number
     branch_name: account.branch_name || '',
     routing_number: account.routing_number || '',
     is_primary: account.is_primary,
@@ -163,7 +149,7 @@ const onSubmit = handleSubmit(async (values) => {
 async function deleteAccount(account: BankAccount) {
   const confirmed = await confirm.require({
     title: 'Delete Bank Account',
-    message: `Are you sure you want to delete "${account.account_name}" (****${account.account_number.slice(-4)})?`,
+    message: `Are you sure you want to delete "${account.account_holder_name}" (${account.account_number_masked})?`,
     confirmText: 'Delete',
     cancelText: 'Cancel',
     variant: 'danger',
@@ -193,17 +179,16 @@ async function setPrimary(account: BankAccount) {
 
 function getAccountTypeLabel(type: string): string {
   const map: Record<string, string> = {
-    bank: 'Bank',
-    bkash: 'bKash',
-    nagad: 'Nagad',
-    rocket: 'Rocket',
+    savings: 'Savings',
+    current: 'Current',
+    salary: 'Salary',
   }
   return map[type] || type
 }
 
-function maskNumber(num: string): string {
-  if (num.length <= 4) return num
-  return '****' + num.slice(-4)
+function maskNumber(num: string | undefined | null): string {
+  if (!num) return '****'
+  return num // already masked by backend
 }
 
 // ── Init ─────────────────────────────────────────────────────────
@@ -283,7 +268,7 @@ onMounted(() => {
             <div>
               <div class="flex items-center gap-2">
                 <h4 class="font-semibold text-gray-900 dark:text-white">
-                  {{ account.account_name }}
+                  {{ account.account_holder_name }}
                 </h4>
                 <BaseBadge v-if="account.is_primary" variant="primary" size="sm">
                   Primary
@@ -298,7 +283,7 @@ onMounted(() => {
                 <template v-if="account.bank_name"> — {{ account.bank_name }}</template>
               </p>
               <p class="mt-1 font-mono text-sm text-gray-700 dark:text-gray-300">
-                {{ maskNumber(account.account_number) }}
+                {{ account.account_number_masked }}
               </p>
               <p v-if="account.branch_name" class="mt-0.5 text-xs text-gray-400">
                 {{ account.branch_name }}
@@ -354,41 +339,39 @@ onMounted(() => {
           name="account_type"
           :options="accountTypeOptions"
           :error="errors.account_type"
-          required
         />
 
-        <FormSelect
-          v-if="isBankType"
+        <FormInput
           v-model="bankName"
           v-bind="bankNameAttrs"
           label="Bank Name"
           name="bank_name"
-          :options="bankOptions"
           :error="errors.bank_name"
+          placeholder="Enter bank name"
+          required
         />
 
         <FormInput
-          v-model="accountName"
-          v-bind="accountNameAttrs"
+          v-model="accountHolderName"
+          v-bind="accountHolderNameAttrs"
           label="Account Holder Name"
-          name="account_name"
-          :error="errors.account_name"
-          :hint="isBankType ? 'Name as it appears on your bank account' : 'Registered name'"
+          name="account_holder_name"
+          :error="errors.account_holder_name"
+          hint="Name as it appears on your bank account"
           required
         />
 
         <FormInput
           v-model="accountNumber"
           v-bind="accountNumberAttrs"
-          :label="isBankType ? 'Account Number' : 'Wallet Number'"
+          label="Account Number"
           name="account_number"
           :error="errors.account_number"
-          :placeholder="isBankType ? 'Enter account number' : 'e.g. 01XXXXXXXXX'"
+          placeholder="Enter account number"
           required
         />
 
-        <template v-if="isBankType">
-          <div class="grid gap-4 sm:grid-cols-2">
+        <div class="grid gap-4 sm:grid-cols-2">
             <FormInput
               v-model="branchName"
               v-bind="branchNameAttrs"
@@ -406,7 +389,6 @@ onMounted(() => {
               hint="9-digit routing number"
             />
           </div>
-        </template>
 
         <div class="flex items-center gap-2">
           <input

@@ -35,25 +35,26 @@ export interface PayoutStats {
 
 export interface BankAccount {
   id: number
-  vendor_id: number
-  account_type: PayoutMethod
+  account_holder_name: string
+  account_number_masked: string
   bank_name: string | null
-  account_name: string
-  account_number: string
   branch_name: string | null
   routing_number: string | null
+  account_type: string // 'savings' | 'current' | 'salary'
   is_primary: boolean
   is_verified: boolean
-  created_at: string
+  verified_at: string | null
+  created_at: string | null
 }
 
 export interface CreateBankAccountRequest {
-  account_type: PayoutMethod
-  bank_name?: string
-  account_name: string
+  account_holder_name: string
   account_number: string
+  bank_name: string
   branch_name?: string
   routing_number?: string
+  swift_code?: string
+  account_type?: 'savings' | 'current' | 'salary'
   is_primary?: boolean
 }
 
@@ -233,8 +234,8 @@ export const payoutService = {
    * Backend route: /vendor/bank-accounts (not under /payouts)
    */
   async getBankAccounts(): Promise<BankAccount[]> {
-    const response = await api.get<{ data: BankAccount[] }>(`/vendor/bank-accounts`)
-    return response.data.data
+    const response = await api.get<{ data: { bank_accounts: BankAccount[] } }>(`/vendor/bank-accounts`)
+    return response.data.data.bank_accounts
   },
 
   /**

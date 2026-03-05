@@ -14,11 +14,14 @@ import BaseBadge from '@/components/ui/BaseBadge.vue'
 import PageLoader from '@/components/ui/PageLoader.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
 import FormTextarea from '@/components/form/FormTextarea.vue'
+import RefundModal from '@/components/domain/RefundModal.vue'
+import RefundHistory from '@/components/domain/RefundHistory.vue'
 import type { OrderDetail as OrderDetailType, OrderStatus } from '@/types'
 import {
   ArrowLeftIcon,
   PrinterIcon,
   CubeIcon,
+  BanknotesIcon,
 } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
@@ -35,6 +38,8 @@ const isLoading = ref(true)
 const isUpdating = ref(false)
 const newStatus = ref<OrderStatus | ''>('')
 const statusNotes = ref('')
+const showRefundModal = ref(false)
+const refundHistoryRef = ref<InstanceType<typeof RefundHistory> | null>(null)
 
 const orderId = computed(() => {
   const id = Number(route.params.id)
@@ -173,6 +178,25 @@ const canCancel = computed(() => {
   if (!order.value) return false
   return ['pending', 'confirmed', 'processing'].includes(order.value.status)
 })
+
+// Check if order can be refunded
+const canRefund = computed(() => {
+  if (!order.value) return false
+  // Can refund if order is delivered, completed, or payment is partially_refunded
+  // and not already fully refunded
+  const refundableStatuses = ['delivered', 'completed']
+  const refundablePaymentStatuses = ['paid', 'partially_refunded']
+  return (
+    refundableStatuses.includes(order.value.status) &&
+    refundablePaymentStatuses.includes(order.value.payment_status)
+  )
+})
+
+// Handle refund completion
+function onRefundComplete() {
+  fetchOrder()
+  refundHistoryRef.value?.refresh()
+}
 </script>
 
 <template>
@@ -207,6 +231,15 @@ const canCancel = computed(() => {
         <BaseButton variant="secondary" size="sm">
           <PrinterIcon class="mr-2 h-4 w-4" />
           Print
+        </BaseButton>
+        <BaseButton
+          v-if="canRefund"
+          variant="primary"
+          size="sm"
+          @click="showRefundModal = true"
+        >
+          <BanknotesIcon class="mr-2 h-4 w-4" />
+          Process Refund
         </BaseButton>
         <BaseButton
           v-if="canCancel"
@@ -477,6 +510,14 @@ const canCancel = computed(() => {
           </div>
         </BaseCard>
 
+        <!-- Refund History -->
+        <RefundHistory
+          v-if="order.payment_status === 'paid' || order.payment_status === 'partially_refunded' || order.payment_status === 'refunded'"
+          ref="refundHistoryRef"
+          :order-id="order.id"
+          :on-refund-click="canRefund ? () => showRefundModal = true : undefined"
+        />
+
         <!-- Customer notes -->
         <BaseCard v-if="order.notes">
           <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
@@ -488,5 +529,14 @@ const canCancel = computed(() => {
         </BaseCard>
       </div>
     </div>
+
+    <!-- Refund Modal -->
+    <RefundModal
+      v-if="order"
+      v-model="showRefundModal"
+      :order-id="order.id"
+      :order-number="order.order_number"
+      @refunded="onRefundComplete"
+    />
   </div>
 </template>

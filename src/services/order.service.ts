@@ -11,6 +11,7 @@ import type {
   ApiResponse,
   VendorOrderStats,
 } from '@/types'
+import type { OrderRefundHistory } from '@/types/payment'
 
 const prefix = () => `${getRolePrefix()}/orders`
 
@@ -90,5 +91,14 @@ export const orderService = {
       responseType: 'blob',
     })
     return response.data
+  },
+
+  /**
+   * Get refund history for an order
+   * Admin: GET /admin/orders/{id}/refunds
+   */
+  async getRefundHistory(id: number): Promise<OrderRefundHistory> {
+    const response = await api.get<{ data: OrderRefundHistory }>(`${prefix()}/${id}/refunds`)
+    return response.data.data
   },
 }

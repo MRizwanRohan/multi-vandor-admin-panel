@@ -12,6 +12,8 @@ import type {
   CreateRefundRequest,
   WebhookEvent,
   WebhookFilters,
+  RefundEligibility,
+  ProcessRefundRequest,
 } from '@/types/payment'
 
 const prefix = () => `${getRolePrefix()}/payments`
@@ -94,12 +96,35 @@ export const refundService = {
   },
 
   /**
-   * Process a refund
+   * Check refund eligibility for an order
+   * GET /payments/{orderId}/refund-eligibility
+   */
+  async checkEligibility(orderId: number): Promise<RefundEligibility> {
+    const response = await api.get<{ data: RefundEligibility }>(
+      `/api/v1/payments/${orderId}/refund-eligibility`
+    )
+    return response.data.data
+  },
+
+  /**
+   * Process a refund (legacy - uses payment_id)
    * POST /admin/payments/refunds
    */
   async create(data: CreateRefundRequest): Promise<{ refund: any; payment: PaymentTransaction }> {
     const response = await api.post<{ data: { refund: any; payment: PaymentTransaction } }>(
       `${prefix()}/refunds`,
+      data
+    )
+    return response.data.data
+  },
+
+  /**
+   * Process a refund for an order
+   * POST /payments/refund
+   */
+  async processRefund(data: ProcessRefundRequest): Promise<any> {
+    const response = await api.post<{ data: any }>(
+      '/api/v1/payments/refund',
       data
     )
     return response.data.data

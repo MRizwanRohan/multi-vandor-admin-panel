@@ -250,3 +250,52 @@ export interface PaymentStatistics {
   by_gateway: Record<string, { count: number; total_amount: number }>
   daily_trend: { date: string; count: number; total_amount: number }[]
 }
+
+// ── Refund Eligibility (from GET /payments/{orderId}/refund-eligibility) ──
+
+export interface RefundEligibility {
+  eligible: boolean
+  order_id: number
+  order_number: string
+  total_amount: number
+  total_refunded: number
+  refundable_amount: number
+  payment_status: string
+  order_status: string
+  reasons?: string[]
+  message?: string
+}
+
+// ── Order Refund History (from GET /admin/orders/{id}/refunds) ──
+
+export interface OrderRefundHistoryItem {
+  id: number
+  refund_number: string
+  refund_amount: number
+  status: RefundStatus
+  reason: string
+  notes: string | null
+  processed_by: {
+    id: number
+    name: string
+  } | null
+  processed_at: string | null
+  created_at: string
+}
+
+export interface OrderRefundHistory {
+  order_id: number
+  order_number: string
+  total_amount: number
+  total_refunded: number
+  refunds: OrderRefundHistoryItem[]
+}
+
+// ── Process Refund Request ──
+
+export interface ProcessRefundRequest {
+  order_id: number
+  amount: number
+  reason: string
+  notes?: string
+}

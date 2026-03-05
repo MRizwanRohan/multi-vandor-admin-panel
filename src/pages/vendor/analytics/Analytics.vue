@@ -1,124 +1,123 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<!-- Vendor Analytics — Analytics dashboard page -->
+<!-- Vendor Analytics — Analytics dashboard page (Dynamic API)         -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useBreadcrumbStore } from '@/stores'
-import { useCurrency, useDate } from '@/composables'
+import { useCurrency } from '@/composables'
+import { analyticsService } from '@/services'
+import type { VendorDashboardStats, AnalyticsTopProduct, SalesChartResponse, LowStockAlert } from '@/types'
 import BaseCard from '@/components/ui/BaseCard.vue'
-import BaseButton from '@/components/ui/BaseButton.vue'
+import BaseSpinner from '@/components/ui/BaseSpinner.vue'
 import StatCard from '@/components/ui/StatCard.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
-import { LineChart, BarChart, DoughnutChart } from '@/components/charts'
+import { LineChart, BarChart } from '@/components/charts'
 import {
   CurrencyDollarIcon,
   ShoppingCartIcon,
-  EyeIcon,
-  UserGroupIcon,
-  ArrowTrendingUpIcon,
+  CubeIcon,
+  StarIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/vue/24/outline'
 
 const breadcrumbStore = useBreadcrumbStore()
 const { formatCurrency } = useCurrency()
-const { formatDate } = useDate()
 
-// Set page info
-onMounted(() => {
-  breadcrumbStore.setPageInfo('Analytics', [
-    { label: 'Analytics' },
-  ], 'Track your shop performance')
-})
+// State
+const isLoading = ref(true)
+const error = ref<string | null>(null)
+const dateRange = ref<'week' | 'month' | 'quarter' | 'year'>('month')
 
-// Date range
-const dateRange = ref('7days')
+const dashboard = ref<VendorDashboardStats | null>(null)
+const salesChart = ref<SalesChartResponse | null>(null)
+const topProducts = ref<AnalyticsTopProduct[]>([])
+const lowStockAlerts = ref<LowStockAlert[]>([])
 
 const dateRangeOptions = [
-  { value: '7days', label: 'Last 7 Days' },
-  { value: '30days', label: 'Last 30 Days' },
-  { value: '90days', label: 'Last 90 Days' },
+  { value: 'week', label: 'Last 7 Days' },
+  { value: 'month', label: 'Last 30 Days' },
+  { value: 'quarter', label: 'Last 90 Days' },
   { value: 'year', label: 'This Year' },
 ]
 
-// Stats
-const stats = computed(() => [
-  {
-    title: 'Total Revenue',
-    value: formatCurrency(285000),
-    icon: CurrencyDollarIcon,
-    trend: { value: 12.5, type: 'up' as const },
-    color: 'primary' as const,
-  },
-  {
-    title: 'Total Orders',
-    value: '156',
-    icon: ShoppingCartIcon,
-    trend: { value: 8.2, type: 'up' as const },
-    color: 'success' as const,
-  },
-  {
-    title: 'Product Views',
-    value: '4,523',
-    icon: EyeIcon,
-    trend: { value: 15.3, type: 'up' as const },
-    color: 'info' as const,
-  },
-  {
-    title: 'Unique Visitors',
-    value: '1,245',
-    icon: UserGroupIcon,
-    trend: { value: 3.1, type: 'down' as const },
-    color: 'warning' as const,
-  },
-])
+// Computed stats from API response
+const stats = computed(() => {
+  if (!dashboard.value) return []
+  const d = dashboard.value
+  return [
+    {
+      title: 'Total Revenue',
+      value: d.revenue.formatted,
+      icon: CurrencyDollarIcon,
+      trend: { value: Math.abs(d.revenue.change), type: d.revenue.change_type === 'increase' ? 'up' as const : d.revenue.change_type === 'decrease' ? 'down' as const : 'neutral' as const },
+      color: 'primary' as const,
+    },
+    {
+      title: 'Total Orders',
+      value: d.orders.formatted,
+      icon: ShoppingCartIcon,
+      trend: { value: Math.abs(d.orders.change), type: d.orders.change_type === 'increase' ? 'up' as const : d.orders.change_type === 'decrease' ? 'down' as const : 'neutral' as const },
+      color: 'success' as const,
+    },
+    {
+      title: 'Total Products',
+      value: d.products.formatted,
+      icon: CubeIcon,
+      trend: { value: Math.abs(d.products.change), type: d.products.change_type === 'increase' ? 'up' as const : d.products.change_type === 'decrease' ? 'down' as const : 'neutral' as const },
+      color: 'info' as const,
+    },
+    {
+      title: 'Average Rating',
+      value: d.rating.formatted,
+      icon: StarIcon,
+      trend: { value: Math.abs(d.rating.change), type: d.rating.change_type === 'increase' ? 'up' as const : d.rating.change_type === 'decrease' ? 'down' as const : 'neutral' as const },
+      color: 'warning' as const,
+    },
+  ]
+})
 
-// Revenue chart data
-const revenueChartLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const revenueChartDatasets = [
-  {
-    label: 'Revenue',
-    data: [35000, 42000, 38000, 55000, 48000, 62000, 58000],
-    borderColor: '#6366f1',
-    backgroundColor: 'rgba(99, 102, 241, 0.1)',
-    fill: true,
-  },
-]
+// Chart data
+const revenueChartLabels = computed(() => salesChart.value?.labels || [])
+const revenueChartDatasets = computed(() => salesChart.value?.datasets || [])
 
-// Orders chart data
-const ordersChartLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const ordersChartDatasets = [
-  {
-    label: 'Orders',
-    data: [12, 19, 15, 25, 22, 30, 28],
-    backgroundColor: '#10b981',
-  },
-]
+// Fetch data
+async function fetchData() {
+  isLoading.value = true
+  error.value = null
+  try {
+    const [dashboardRes, chartRes, productsRes, alertsRes] = await Promise.all([
+      analyticsService.getVendorDashboardStats({ period: dateRange.value }),
+      analyticsService.getSalesChart({ period: dateRange.value }),
+      analyticsService.getTopProducts({ period: dateRange.value, limit: 5 }),
+      analyticsService.getLowStockAlerts(5),
+    ])
+    dashboard.value = dashboardRes
+    salesChart.value = chartRes
+    topProducts.value = Array.isArray(productsRes) ? productsRes : []
+    lowStockAlerts.value = Array.isArray(alertsRes) ? alertsRes : []
+  } catch (e: any) {
+    error.value = e.response?.data?.message || 'Failed to load analytics'
+  } finally {
+    isLoading.value = false
+  }
+}
 
-// Category sales data
-const categorySalesLabels = ['Electronics', 'Fashion', 'Home', 'Beauty', 'Sports']
-const categorySalesData = [35, 25, 20, 12, 8]
+watch(dateRange, fetchData)
 
-// Top products
-const topProducts = ref([
-  { id: '1', name: 'স্মার্ট ওয়াচ প্রো', sales: 45, revenue: 202500 },
-  { id: '2', name: 'ওয়্যারলেস হেডফোন', sales: 38, revenue: 95000 },
-  { id: '3', name: 'ব্লুটুথ স্পিকার', sales: 32, revenue: 64000 },
-  { id: '4', name: 'ফোন কেস', sales: 28, revenue: 14000 },
-  { id: '5', name: 'USB কেবল', sales: 25, revenue: 6250 },
-])
-
-// Traffic sources
-const trafficSources = ref([
-  { source: 'Direct', visits: 1250, percentage: 35 },
-  { source: 'Search', visits: 980, percentage: 27 },
-  { source: 'Social', visits: 750, percentage: 21 },
-  { source: 'Referral', visits: 450, percentage: 13 },
-  { source: 'Other', visits: 150, percentage: 4 },
-])
+onMounted(() => {
+  breadcrumbStore.setPageInfo('Analytics', [{ label: 'Analytics' }], 'Track your shop performance')
+  fetchData()
+})
 </script>
 
 <template>
   <div class="space-y-6">
+    <!-- Error Banner -->
+    <div v-if="error" class="rounded-lg bg-red-50 p-4 text-red-700 dark:bg-red-900/20 dark:text-red-400">
+      {{ error }}
+    </div>
+
     <!-- Header with date range -->
     <div class="flex items-center justify-between">
       <div />
@@ -130,108 +129,115 @@ const trafficSources = ref([
       />
     </div>
 
-    <!-- Stats -->
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <StatCard
-        v-for="stat in stats"
-        :key="stat.title"
-        :title="stat.title"
-        :value="stat.value"
-        :icon="stat.icon"
-        :trend="stat.trend"
-        :color="stat.color"
-      />
+    <!-- Loading -->
+    <div v-if="isLoading" class="flex items-center justify-center py-12">
+      <BaseSpinner size="lg" />
     </div>
 
-    <!-- Charts -->
-    <div class="grid gap-6 lg:grid-cols-2">
-      <!-- Revenue chart -->
-      <BaseCard title="Revenue Trend">
-        <LineChart
-          :labels="revenueChartLabels"
-          :datasets="revenueChartDatasets"
-          :height="300"
+    <template v-else-if="dashboard">
+      <!-- Stats -->
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          v-for="stat in stats"
+          :key="stat.title"
+          :title="stat.title"
+          :value="stat.value"
+          :icon="stat.icon"
+          :trend="stat.trend"
+          :color="stat.color"
         />
-      </BaseCard>
+      </div>
 
-      <!-- Orders chart -->
-      <BaseCard title="Orders Overview">
-        <BarChart
-          :labels="ordersChartLabels"
-          :datasets="ordersChartDatasets"
-          :height="300"
-        />
-      </BaseCard>
-    </div>
-
-    <!-- Bottom section -->
-    <div class="grid gap-6 lg:grid-cols-3">
-      <!-- Category sales -->
-      <BaseCard title="Sales by Category">
-        <DoughnutChart
-          :labels="categorySalesLabels"
-          :data="categorySalesData"
-          :height="250"
-        />
-      </BaseCard>
-
-      <!-- Top products -->
-      <BaseCard title="Top Products">
-        <div class="space-y-4">
-          <div
-            v-for="(product, index) in topProducts"
-            :key="product.id"
-            class="flex items-center gap-3"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium"
-              :class="[
-                index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                index === 1 ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' :
-                index === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
-                'bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-              ]"
-            >
-              {{ index + 1 }}
-            </div>
-            <div class="flex-1">
-              <p class="font-medium text-gray-900 dark:text-white">
-                {{ product.name }}
-              </p>
-              <p class="text-sm text-gray-500 dark:text-gray-400">
-                {{ product.sales }} sales
-              </p>
-            </div>
-            <span class="font-semibold text-gray-900 dark:text-white">
-              {{ formatCurrency(product.revenue) }}
-            </span>
+      <!-- Quick Info Cards -->
+      <div class="grid gap-4 sm:grid-cols-3">
+        <BaseCard>
+          <div class="text-center">
+            <p class="text-sm text-gray-500 dark:text-gray-400">Pending Orders</p>
+            <p class="mt-1 text-2xl font-bold text-orange-600">{{ dashboard.pending_orders }}</p>
           </div>
-        </div>
-      </BaseCard>
+        </BaseCard>
+        <BaseCard>
+          <div class="text-center">
+            <p class="text-sm text-gray-500 dark:text-gray-400">Available Balance</p>
+            <p class="mt-1 text-2xl font-bold text-green-600">{{ formatCurrency(dashboard.available_balance) }}</p>
+          </div>
+        </BaseCard>
+        <BaseCard>
+          <div class="text-center">
+            <p class="text-sm text-gray-500 dark:text-gray-400">Pending Balance</p>
+            <p class="mt-1 text-2xl font-bold text-yellow-600">{{ formatCurrency(dashboard.pending_balance) }}</p>
+          </div>
+        </BaseCard>
+      </div>
 
-      <!-- Traffic sources -->
-      <BaseCard title="Traffic Sources">
-        <div class="space-y-4">
-          <div
-            v-for="source in trafficSources"
-            :key="source.source"
-            class="space-y-2"
-          >
-            <div class="flex items-center justify-between text-sm">
-              <span class="text-gray-900 dark:text-white">{{ source.source }}</span>
-              <span class="text-gray-500 dark:text-gray-400">
-                {{ source.visits.toLocaleString() }} visits ({{ source.percentage }}%)
+      <!-- Charts -->
+      <div class="grid gap-6 lg:grid-cols-2">
+        <!-- Revenue chart -->
+        <BaseCard title="Sales Trend">
+          <LineChart
+            :labels="revenueChartLabels"
+            :datasets="revenueChartDatasets"
+            :height="300"
+          />
+        </BaseCard>
+
+        <!-- Top products -->
+        <BaseCard title="Top Products">
+          <div v-if="topProducts.length" class="space-y-4">
+            <div
+              v-for="(product, index) in topProducts"
+              :key="product.id"
+              class="flex items-center gap-3"
+            >
+              <div
+                class="flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium"
+                :class="[
+                  index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                  index === 1 ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' :
+                  index === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
+                  'bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                ]"
+              >
+                {{ index + 1 }}
+              </div>
+              <div class="flex-1">
+                <p class="font-medium text-gray-900 dark:text-white">{{ product.name }}</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400">{{ product.total_sold || 0 }} sold</p>
+              </div>
+              <span class="font-semibold text-gray-900 dark:text-white">
+                {{ formatCurrency(product.total_revenue) }}
               </span>
             </div>
-            <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
-              <div
-                class="h-full rounded-full bg-primary-500"
-                :style="{ width: `${source.percentage}%` }"
-              />
+          </div>
+          <p v-else class="py-8 text-center text-gray-500 dark:text-gray-400">No products yet</p>
+        </BaseCard>
+      </div>
+
+      <!-- Low Stock Alerts -->
+      <BaseCard v-if="lowStockAlerts.length">
+        <template #header>
+          <div class="flex items-center gap-2">
+            <ExclamationTriangleIcon class="h-5 w-5 text-orange-500" />
+            <span class="font-semibold text-gray-900 dark:text-white">Low Stock Alerts</span>
+          </div>
+        </template>
+        <div class="space-y-3">
+          <div
+            v-for="alert in lowStockAlerts"
+            :key="alert.id"
+            class="flex items-center justify-between rounded-lg border border-orange-100 bg-orange-50 p-3 dark:border-orange-900/50 dark:bg-orange-900/20"
+          >
+            <div>
+              <p class="font-medium text-gray-900 dark:text-white">{{ alert.name }}</p>
+              <p class="text-sm text-gray-500 dark:text-gray-400">SKU: {{ alert.sku }}</p>
+            </div>
+            <div class="text-right">
+              <p class="text-lg font-bold text-orange-600">{{ alert.stock_quantity }}</p>
+              <p class="text-xs text-gray-500">Threshold: {{ alert.low_stock_threshold }}</p>
             </div>
           </div>
         </div>
       </BaseCard>
-    </div>
+    </template>
   </div>
 </template>

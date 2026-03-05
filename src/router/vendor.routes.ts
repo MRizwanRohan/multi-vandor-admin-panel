@@ -74,6 +74,12 @@ const vendorRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/vendor/analytics/Analytics.vue'),
         meta: { title: 'Analytics' },
       },
+      {
+        path: 'analytics/sales',
+        name: 'vendor-analytics-sales',
+        component: () => import('@/pages/vendor/analytics/SalesAnalytics.vue'),
+        meta: { title: 'Sales Analytics' },
+      },
       // Categories
       {
         path: 'categories',
@@ -202,6 +208,31 @@ const vendorRoutes: RouteRecordRaw[] = [
         name: 'vendor-reports',
         component: () => import('@/pages/vendor/reports/VendorReports.vue'),
         meta: { title: 'Reports' },
+      },
+      {
+        path: 'reports/sales',
+        name: 'vendor-reports-sales',
+        component: () => import('@/pages/vendor/reports/SalesReport.vue'),
+        meta: { title: 'Sales Report' },
+      },
+      {
+        path: 'reports/orders',
+        name: 'vendor-reports-orders',
+        component: () => import('@/pages/vendor/reports/OrderReport.vue'),
+        meta: { title: 'Order Report' },
+      },
+      // Export / Import
+      {
+        path: 'export',
+        name: 'vendor-export',
+        component: () => import('@/pages/vendor/export/ExportCenter.vue'),
+        meta: { title: 'Export Center' },
+      },
+      {
+        path: 'import/products',
+        name: 'vendor-import-products',
+        component: () => import('@/pages/vendor/import/ImportProducts.vue'),
+        meta: { title: 'Import Products' },
       },
       // Help & Support
       {

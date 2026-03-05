@@ -95,9 +95,15 @@ const salesChartDatasets = computed(() => {
   ]
 })
 
-// Payment methods doughnut
-const paymentLabels = computed(() => salesData.value?.payment_methods?.map(p => p.method) || [])
-const paymentData = computed(() => salesData.value?.payment_methods?.map(p => p.total) || [])
+// Payment methods doughnut (backend may return object instead of array)
+const paymentLabels = computed(() => {
+  const pm = salesData.value?.payment_methods
+  return Array.isArray(pm) ? pm.map(p => p.method) : []
+})
+const paymentData = computed(() => {
+  const pm = salesData.value?.payment_methods
+  return Array.isArray(pm) ? pm.map(p => p.total) : []
+})
 
 // Revenue by status bar
 const statusLabels = computed(() => salesData.value ? Object.keys(salesData.value.revenue_by_status).map(s => s.charAt(0).toUpperCase() + s.slice(1)) : [])

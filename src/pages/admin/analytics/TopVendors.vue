@@ -105,7 +105,7 @@ onMounted(() => loadData())
               <td class="px-6 py-4 text-right">
                 <div class="flex items-center justify-end gap-1">
                   <StarIcon class="h-4 w-4 text-yellow-400" />
-                  <span class="text-gray-900 dark:text-white">{{ v.average_rating?.toFixed(1) || '—' }}</span>
+                  <span class="text-gray-900 dark:text-white">{{ v.average_rating != null ? Number(v.average_rating).toFixed(1) : '—' }}</span>
                 </div>
               </td>
               <td class="px-6 py-4 text-right">

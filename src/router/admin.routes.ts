@@ -344,6 +344,12 @@ const adminRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/admin/reports/ProductReport.vue'),
         meta: { title: 'Product Report' },
       },
+      {
+        path: 'reports/orders',
+        name: 'admin-report-orders',
+        component: () => import('@/pages/admin/reports/OrderReport.vue'),
+        meta: { title: 'Order Report' },
+      },
       // Analytics
       {
         path: 'analytics/sales',

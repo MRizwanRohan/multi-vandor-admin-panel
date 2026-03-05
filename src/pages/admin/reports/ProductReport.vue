@@ -3,9 +3,11 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useBreadcrumbStore } from '@/stores'
 import { useCurrency } from '@/composables/useCurrency'
+import { analyticsService } from '@/services'
+import type { AnalyticsTopProduct, InventoryOverviewResponse, RevenueByCategory, AnalyticsParams } from '@/types'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import StatCard from '@/components/ui/StatCard.vue'
 import FormInput from '@/components/form/FormInput.vue'
@@ -20,77 +22,114 @@ import {
   ArchiveBoxXMarkIcon,
   MagnifyingGlassIcon,
   ArrowDownTrayIcon,
+  ExclamationCircleIcon,
 } from '@heroicons/vue/24/outline'
 
 const breadcrumbStore = useBreadcrumbStore()
 const { formatCurrency } = useCurrency()
 
 const searchQuery = ref('')
-const categoryFilter = ref('all')
-const stockFilter = ref('all')
-const activeTab = ref<'performance' | 'low-stock' | 'top-rated'>('performance')
-const isLoading = ref(false)
+const period = ref('month')
+const activeTab = ref<'performance' | 'low-stock'>('performance')
+const isLoading = ref(true)
+const error = ref<string | null>(null)
 
-const stats = [
-  { title: 'Total Products', value: '3,428', icon: CubeIcon, change: 156, trend: 'up' as const, changeLabel: 'new this month', color: 'primary' as const },
-  { title: 'Low Stock Items', value: '47', icon: ExclamationTriangleIcon, change: 12, trend: 'up' as const, changeLabel: 'vs last week', color: 'danger' as const },
-  { title: 'Avg. Rating', value: '4.2', icon: StarIcon, change: 0.1, trend: 'up' as const, changeLabel: 'vs last month', color: 'warning' as const },
-  { title: 'Out of Stock', value: '23', icon: ArchiveBoxXMarkIcon, change: -5, trend: 'down' as const, changeLabel: 'vs last week', color: 'info' as const },
+const topProducts = ref<AnalyticsTopProduct[]>([])
+const inventory = ref<InventoryOverviewResponse | null>(null)
+const categoryRevenue = ref<RevenueByCategory[]>([])
+
+const periodOptions = [
+  { label: 'Today', value: 'today' },
+  { label: 'This Week', value: 'week' },
+  { label: 'This Month', value: 'month' },
+  { label: 'This Quarter', value: 'quarter' },
+  { label: 'This Year', value: 'year' },
 ]
 
-// Category distribution
-const categoryLabels = ['Electronics', 'Fashion', 'Home', 'Baby', 'Sports', 'Food', 'Books']
-const categoryProductCount = [680, 820, 540, 390, 320, 410, 268]
+async function loadData() {
+  isLoading.value = true
+  error.value = null
+  try {
+    const params: AnalyticsParams = { period: period.value as any, limit: 50 }
+    const [products, inv, cats] = await Promise.allSettled([
+      analyticsService.getTopProducts(params),
+      analyticsService.getInventoryOverview(),
+      analyticsService.getRevenueByCategory(params),
+    ])
+    topProducts.value = products.status === 'fulfilled' && Array.isArray(products.value) ? products.value : []
+    inventory.value = inv.status === 'fulfilled' ? inv.value : null
+    categoryRevenue.value = cats.status === 'fulfilled' && Array.isArray(cats.value) ? cats.value : []
+  } catch (e: any) {
+    error.value = e?.response?.data?.message || 'Failed to load product report'
+    console.error('Failed to load product report', e)
+  } finally {
+    isLoading.value = false
+  }
+}
 
-// Status distribution
-const statusLabels = ['Active', 'Draft', 'Pending', 'Inactive']
-const statusData = [2890, 245, 178, 115]
-
-// Performance data
-const products = ref([
-  { id: 1, name: 'Wireless Bluetooth Earbuds Pro', sku: 'WBE-001', category: 'Electronics', vendor: 'TechMart', price: 2500, stock: 145, sold: 423, revenue: 1057500, rating: 4.8, status: 'active' },
-  { id: 2, name: 'Premium Cotton T-Shirt', sku: 'PCT-012', category: 'Fashion', vendor: 'FashionHub', price: 800, stock: 520, sold: 387, revenue: 309600, rating: 4.5, status: 'active' },
-  { id: 3, name: 'Stainless Water Bottle 1L', sku: 'SWB-045', category: 'Home', vendor: 'HomeLiving', price: 650, stock: 230, sold: 312, revenue: 202800, rating: 4.6, status: 'active' },
-  { id: 4, name: 'Baby Organic Milk Formula', sku: 'BMF-007', category: 'Baby', vendor: 'KidZone', price: 1500, stock: 78, sold: 289, revenue: 433500, rating: 4.7, status: 'active' },
-  { id: 5, name: 'Running Shoes Ultra', sku: 'RSU-023', category: 'Sports', vendor: 'SportGear', price: 3500, stock: 45, sold: 198, revenue: 693000, rating: 4.3, status: 'active' },
-  { id: 6, name: 'LED Smart Bulb Pack', sku: 'LSB-089', category: 'Electronics', vendor: 'TechMart', price: 1200, stock: 8, sold: 156, revenue: 187200, rating: 4.1, status: 'active' },
-  { id: 7, name: 'Organic Green Tea Box', sku: 'OGT-034', category: 'Food', vendor: 'FoodFresh', price: 450, stock: 3, sold: 145, revenue: 65250, rating: 4.4, status: 'active' },
-])
-
-const lowStockProducts = ref([
-  { id: 6, name: 'LED Smart Bulb Pack', sku: 'LSB-089', category: 'Electronics', vendor: 'TechMart', stock: 8, reorder_level: 25, last_restocked: '2026-01-15' },
-  { id: 7, name: 'Organic Green Tea Box', sku: 'OGT-034', category: 'Food', vendor: 'FoodFresh', stock: 3, reorder_level: 20, last_restocked: '2026-02-01' },
-  { id: 8, name: 'Yoga Mat Premium', sku: 'YMP-056', category: 'Sports', vendor: 'SportGear', stock: 5, reorder_level: 15, last_restocked: '2026-01-28' },
-  { id: 9, name: 'Baby Diaper Pack XL', sku: 'BDP-078', category: 'Baby', vendor: 'KidZone', stock: 12, reorder_level: 30, last_restocked: '2026-02-10' },
-  { id: 10, name: 'USB-C Charging Cable', sku: 'UCC-100', category: 'Electronics', vendor: 'GadgetStore', stock: 0, reorder_level: 50, last_restocked: '2026-01-20' },
-])
-
-const performanceColumns = [
-  { key: 'name', label: 'Product', sortable: true },
-  { key: 'category', label: 'Category' },
-  { key: 'vendor', label: 'Vendor' },
-  { key: 'price', label: 'Price', align: 'right' as const },
-  { key: 'sold', label: 'Units Sold', align: 'right' as const, sortable: true },
-  { key: 'revenue', label: 'Revenue', align: 'right' as const, sortable: true },
-  { key: 'rating', label: 'Rating', align: 'center' as const, sortable: true },
-]
-
-const lowStockColumns = [
-  { key: 'name', label: 'Product', sortable: true },
-  { key: 'sku', label: 'SKU' },
-  { key: 'category', label: 'Category' },
-  { key: 'vendor', label: 'Vendor' },
-  { key: 'stock', label: 'In Stock', align: 'right' as const, sortable: true },
-  { key: 'reorder_level', label: 'Reorder At', align: 'right' as const },
-  { key: 'last_restocked', label: 'Last Restocked' },
-]
-
+watch(period, () => loadData())
 onMounted(() => {
+  loadData()
   breadcrumbStore.setPageInfo('Product Report', [
     { label: 'Reports' },
     { label: 'Products' },
   ], 'Product performance, stock levels, and ratings')
 })
+
+// Stats
+const stats = computed(() => {
+  const inv = inventory.value
+  return [
+    { title: 'Total Products', value: inv ? inv.total_products.toLocaleString() : '—', icon: CubeIcon, color: 'primary' as const },
+    { title: 'Low Stock Items', value: inv ? inv.low_stock.toLocaleString() : '—', icon: ExclamationTriangleIcon, color: 'danger' as const },
+    { title: 'Out of Stock', value: inv ? inv.out_of_stock.toLocaleString() : '—', icon: ArchiveBoxXMarkIcon, color: 'warning' as const },
+    { title: 'Stock Value', value: inv ? formatCurrency(inv.total_stock_value) : '—', icon: StarIcon, color: 'info' as const },
+  ]
+})
+
+// Category chart
+const catLabels = computed(() => categoryRevenue.value.map(c => c.category_name))
+const catData = computed(() => categoryRevenue.value.map(c => c.total_items))
+
+// Filtered products
+const filteredProducts = computed(() => {
+  if (!searchQuery.value) return topProducts.value
+  const q = searchQuery.value.toLowerCase()
+  return topProducts.value.filter(p =>
+    p.product_name.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q) || p.vendor_store?.toLowerCase().includes(q)
+  )
+})
+
+const performanceColumns = [
+  { key: 'product_name', label: 'Product', sortable: true },
+  { key: 'category', label: 'Category' },
+  { key: 'vendor_store', label: 'Vendor' },
+  { key: 'total_sold', label: 'Units Sold', align: 'right' as const, sortable: true },
+  { key: 'total_revenue', label: 'Revenue', align: 'right' as const, sortable: true },
+  { key: 'average_rating', label: 'Rating', align: 'center' as const, sortable: true },
+]
+
+const lowStockColumns = [
+  { key: 'product_name', label: 'Product', sortable: true },
+  { key: 'sku', label: 'SKU' },
+  { key: 'current_stock', label: 'In Stock', align: 'right' as const, sortable: true },
+  { key: 'threshold', label: 'Threshold', align: 'right' as const },
+  { key: 'status', label: 'Status', align: 'center' as const },
+]
+
+async function handleExport() {
+  try {
+    const blob = await analyticsService.exportProducts({ period: period.value })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `product-report-${period.value}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (_e) {
+    console.error('Export failed', _e)
+  }
+}
 </script>
 
 <template>
@@ -101,13 +140,26 @@ onMounted(() => {
         <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Product Report</h2>
         <p class="text-sm text-gray-500 dark:text-gray-400">Product performance metrics and stock analysis</p>
       </div>
-      <button
-        type="button"
-        class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-      >
-        <ArrowDownTrayIcon class="h-4 w-4" />
-        Export
-      </button>
+      <div class="flex items-center gap-3">
+        <FormSelect v-model="period" :options="periodOptions" class="w-40" />
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          @click="handleExport"
+        >
+          <ArrowDownTrayIcon class="h-4 w-4" />
+          Export
+        </button>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div v-if="error" class="rounded-lg border border-danger-200 bg-danger-50 p-4 dark:border-danger-800 dark:bg-danger-900/20">
+      <div class="flex items-center gap-2">
+        <ExclamationCircleIcon class="h-5 w-5 text-danger-500" />
+        <p class="text-sm text-danger-700 dark:text-danger-400">{{ error }}</p>
+        <button class="ml-auto text-sm font-medium text-danger-600 hover:text-danger-500" @click="loadData">Retry</button>
+      </div>
     </div>
 
     <!-- Stats -->
@@ -118,10 +170,8 @@ onMounted(() => {
         :title="stat.title"
         :value="stat.value"
         :icon="stat.icon"
-        :change="stat.change"
-        :trend="stat.trend"
-        :change-label="stat.changeLabel"
         :color="stat.color"
+        :loading="isLoading"
       />
     </div>
 
@@ -130,19 +180,29 @@ onMounted(() => {
       <BaseCard>
         <h3 class="mb-4 text-base font-semibold text-gray-900 dark:text-white">Products by Category</h3>
         <BarChart
-          :labels="categoryLabels"
-          :datasets="[{ label: 'Products', data: categoryProductCount }]"
+          v-if="!isLoading && catLabels.length"
+          :labels="catLabels"
+          :datasets="[{ label: 'Products', data: catData }]"
           :height="280"
           :show-legend="false"
         />
+        <div v-else-if="isLoading" class="flex h-64 items-center justify-center">
+          <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
+        </div>
+        <div v-else class="flex h-64 items-center justify-center text-gray-400">No data</div>
       </BaseCard>
       <BaseCard>
-        <h3 class="mb-4 text-base font-semibold text-gray-900 dark:text-white">Product Status</h3>
+        <h3 class="mb-4 text-base font-semibold text-gray-900 dark:text-white">Revenue by Category</h3>
         <DoughnutChart
-          :labels="statusLabels"
-          :data="statusData"
+          v-if="!isLoading && catLabels.length"
+          :labels="catLabels"
+          :data="categoryRevenue.map(c => c.total_revenue)"
           :height="280"
         />
+        <div v-else-if="isLoading" class="flex h-64 items-center justify-center">
+          <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
+        </div>
+        <div v-else class="flex h-64 items-center justify-center text-gray-400">No data</div>
       </BaseCard>
     </div>
 
@@ -151,7 +211,7 @@ onMounted(() => {
       <div class="mb-4 border-b border-gray-200 dark:border-gray-700">
         <nav class="-mb-px flex gap-4" aria-label="Tabs">
           <button
-            v-for="tab in (['performance', 'low-stock', 'top-rated'] as const)"
+            v-for="tab in (['performance', 'low-stock'] as const)"
             :key="tab"
             :class="[
               activeTab === tab
@@ -176,49 +236,30 @@ onMounted(() => {
             class="pl-10"
           />
         </div>
-        <FormSelect
-          v-model="categoryFilter"
-          :options="[
-            { label: 'All Categories', value: 'all' },
-            { label: 'Electronics', value: 'electronics' },
-            { label: 'Fashion', value: 'fashion' },
-            { label: 'Home & Living', value: 'home' },
-            { label: 'Baby & Kids', value: 'baby' },
-            { label: 'Sports', value: 'sports' },
-          ]"
-          class="w-40"
-        />
       </div>
 
       <!-- Performance table -->
       <DataTable
-        v-if="activeTab === 'performance' || activeTab === 'top-rated'"
+        v-if="activeTab === 'performance'"
         :columns="performanceColumns"
-        :data="products"
+        :data="filteredProducts"
         :loading="isLoading"
-        :total="products.length"
+        :total="filteredProducts.length"
         :current-page="1"
         :per-page="20"
       >
-        <template #cell-name="{ row }">
-          <div>
-            <p class="font-medium text-gray-900 dark:text-white">{{ row.name }}</p>
-            <p class="text-xs text-gray-500 dark:text-gray-400">{{ row.sku }}</p>
-          </div>
+        <template #cell-product_name="{ row }">
+          <span class="font-medium text-gray-900 dark:text-white">{{ row.product_name }}</span>
         </template>
 
-        <template #cell-price="{ row }">
-          <span class="text-sm text-gray-700 dark:text-gray-300">{{ formatCurrency(row.price) }}</span>
+        <template #cell-total_revenue="{ row }">
+          <span class="font-medium text-gray-900 dark:text-white">{{ formatCurrency(row.total_revenue) }}</span>
         </template>
 
-        <template #cell-revenue="{ row }">
-          <span class="font-medium text-gray-900 dark:text-white">{{ formatCurrency(row.revenue) }}</span>
-        </template>
-
-        <template #cell-rating="{ row }">
+        <template #cell-average_rating="{ row }">
           <div class="flex items-center justify-center gap-1">
             <StarIcon class="h-4 w-4 text-yellow-400" />
-            <span class="text-sm font-medium">{{ row.rating }}</span>
+            <span class="text-sm font-medium">{{ row.average_rating != null ? Number(row.average_rating).toFixed(1) : '—' }}</span>
           </div>
         </template>
       </DataTable>
@@ -227,21 +268,30 @@ onMounted(() => {
       <DataTable
         v-if="activeTab === 'low-stock'"
         :columns="lowStockColumns"
-        :data="lowStockProducts"
+        :data="inventory?.recent_stock_alerts || []"
         :loading="isLoading"
-        :total="lowStockProducts.length"
+        :total="inventory?.recent_stock_alerts?.length || 0"
         :current-page="1"
         :per-page="20"
       >
-        <template #cell-name="{ row }">
-          <span class="font-medium text-gray-900 dark:text-white">{{ row.name }}</span>
+        <template #cell-product_name="{ row }">
+          <span class="font-medium text-gray-900 dark:text-white">{{ row.product_name }}</span>
         </template>
 
-        <template #cell-stock="{ row }">
+        <template #cell-current_stock="{ row }">
           <span
-            :class="row.stock === 0 ? 'text-danger-600 dark:text-danger-400 font-bold' : row.stock < 10 ? 'text-warning-600 dark:text-warning-400 font-medium' : 'text-gray-700 dark:text-gray-300'"
+            :class="row.current_stock === 0 ? 'text-danger-600 dark:text-danger-400 font-bold' : row.current_stock < 10 ? 'text-warning-600 dark:text-warning-400 font-medium' : 'text-gray-700 dark:text-gray-300'"
           >
-            {{ row.stock === 0 ? 'Out of stock' : row.stock }}
+            {{ row.current_stock === 0 ? 'Out of stock' : row.current_stock }}
+          </span>
+        </template>
+
+        <template #cell-status="{ row }">
+          <span
+            :class="row.status === 'out_of_stock' ? 'bg-danger-50 text-danger-700 dark:bg-danger-900/30 dark:text-danger-400' : 'bg-warning-50 text-warning-700 dark:bg-warning-900/30 dark:text-warning-400'"
+            class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize"
+          >
+            {{ row.status === 'out_of_stock' ? 'Out of Stock' : 'Low Stock' }}
           </span>
         </template>
       </DataTable>

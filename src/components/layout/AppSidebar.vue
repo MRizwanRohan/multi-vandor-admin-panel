@@ -188,6 +188,7 @@ const adminNavItems: NavItem[] = [
     icon: DocumentChartBarIcon,
     children: [
       { name: 'Sales Report', to: '/admin/reports/sales' },
+      { name: 'Order Report', to: '/admin/reports/orders' },
       { name: 'Vendor Report', to: '/admin/reports/vendors' },
       { name: 'Product Report', to: '/admin/reports/products' },
     ],
@@ -287,6 +288,10 @@ const vendorNavItems: NavItem[] = [
     name: 'Analytics',
     to: '/vendor/analytics',
     icon: ChartBarIcon,
+    children: [
+      { name: 'Overview', to: '/vendor/analytics' },
+      { name: 'Sales Analytics', to: '/vendor/analytics/sales' },
+    ],
   },
   {
     name: 'Earnings',
@@ -317,6 +322,19 @@ const vendorNavItems: NavItem[] = [
     name: 'Reports',
     to: '/vendor/reports',
     icon: DocumentChartBarIcon,
+    children: [
+      { name: 'Sales Report', to: '/vendor/reports/sales' },
+      { name: 'Order Report', to: '/vendor/reports/orders' },
+    ],
+  },
+  {
+    name: 'Export / Import',
+    to: '/vendor/export',
+    icon: ArrowDownTrayIcon,
+    children: [
+      { name: 'Export Center', to: '/vendor/export' },
+      { name: 'Import Products', to: '/vendor/import/products' },
+    ],
   },
   {
     name: 'Shop Settings',

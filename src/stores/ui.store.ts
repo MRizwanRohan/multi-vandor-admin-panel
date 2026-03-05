@@ -77,16 +77,22 @@ export const useUIStore = defineStore('ui', () => {
     return activeModals.value.includes(id)
   }
 
+  // Track if already initialized
+  let initialized = false
+
   // Initialize theme on load
   function initUI() {
     applyTheme()
     
-    // Listen for system theme changes
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-      if (theme.value === 'system') {
-        applyTheme()
-      }
-    })
+    // Only add listener once
+    if (!initialized) {
+      initialized = true
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (theme.value === 'system') {
+          applyTheme()
+        }
+      })
+    }
   }
 
   return {

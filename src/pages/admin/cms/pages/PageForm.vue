@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
 import { useToast } from '@/composables'
 import { pageService } from '@/services'
+import { sanitizeHtml } from '@/utils/sanitize'
 import type { Page } from '@/types'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
@@ -328,7 +329,7 @@ function goBack() {
         <h3 class="mb-4 font-medium text-gray-900 dark:text-white">Content Preview</h3>
         <div 
           class="prose max-w-none dark:prose-invert"
-          v-html="content"
+          v-html="sanitizeHtml(content)"
         ></div>
       </BaseCard>
     </template>

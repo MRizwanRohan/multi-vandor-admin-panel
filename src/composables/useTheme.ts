@@ -2,7 +2,7 @@
 // useTheme Composable — Dark/Light mode management
 // ═══════════════════════════════════════════════════════════════════
 
-import { computed, watch, onMounted } from 'vue'
+import { computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useStorage } from '@vueuse/core'
 
 export type Theme = 'light' | 'dark' | 'system'
@@ -43,12 +43,22 @@ export function useTheme() {
   )
 
   // Listen for system theme changes
+  let mediaListener: ((e: MediaQueryListEvent) => void) | null = null
+
   onMounted(() => {
-    prefersDark.addEventListener('change', (e) => {
+    mediaListener = (e: MediaQueryListEvent) => {
       if (storedTheme.value === 'system') {
         applyTheme(e.matches ? 'dark' : 'light')
       }
-    })
+    }
+    prefersDark.addEventListener('change', mediaListener)
+  })
+
+  onBeforeUnmount(() => {
+    if (mediaListener) {
+      prefersDark.removeEventListener('change', mediaListener)
+      mediaListener = null
+    }
   })
 
   // Set theme

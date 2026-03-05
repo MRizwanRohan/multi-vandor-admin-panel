@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
 import { useToast } from '@/composables'
 import { faqService } from '@/services'
+import { sanitizeHtml } from '@/utils/sanitize'
 import type { Faq, FaqCategory } from '@/types'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
@@ -223,7 +224,7 @@ function goBack() {
             <h3 class="mb-4 font-medium text-gray-900 dark:text-white">Answer Preview</h3>
             <div 
               class="prose max-w-none dark:prose-invert text-sm"
-              v-html="answer"
+              v-html="sanitizeHtml(answer)"
             ></div>
           </BaseCard>
         </div>

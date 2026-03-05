@@ -12,6 +12,7 @@ import { useBreadcrumbStore } from '@/stores'
 import { productService, categoryService } from '@/services'
 import { attributeTemplateService } from '@/services/attribute-template.service'
 import { useToast, useDragDrop, useConfirm } from '@/composables'
+import { sanitizeHtml } from '@/utils/sanitize'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import FormInput from '@/components/form/FormInput.vue'
@@ -1841,7 +1842,7 @@ const onSubmit = handleSubmit(async (values) => {
                   <div
                     v-if="description"
                     class="prose prose-sm max-w-none dark:prose-invert"
-                    v-html="description"
+                    v-html="sanitizeHtml(description)"
                   />
                   <p v-else class="text-gray-500">No description provided.</p>
                 </div>

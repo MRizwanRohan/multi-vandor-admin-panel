@@ -17,9 +17,6 @@ import App from './App.vue'
 import router from './router'
 import i18n from './i18n'
 
-// Import stores
-import { useUIStore } from '@/stores/ui.store'
-
 // Create Vue app
 const app = createApp(App)
 
@@ -71,10 +68,6 @@ app.use(router)
 app.use(i18n)
 app.use(Toast, toastOptions)
 app.use(FloatingVue)
-
-// Initialize UI store (theme, locale)
-const uiStore = useUIStore()
-uiStore.initUI()
 
 // Mount app
 app.mount('#app')

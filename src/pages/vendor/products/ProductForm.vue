@@ -9,6 +9,7 @@ import { useBreadcrumbStore } from '@/stores'
 import { productService, categoryService } from '@/services'
 import { vendorTemplateService } from '@/services/attribute-template.service'
 import { useToast, useDragDrop, useConfirm } from '@/composables'
+import { sanitizeHtml } from '@/utils/sanitize'
 import { useForm } from 'vee-validate'
 import { toTypedSchema } from '@vee-validate/zod'
 import { z } from 'zod'
@@ -2380,7 +2381,7 @@ function cancel() {
                 <div
                   v-if="values.description"
                   class="prose prose-sm max-w-none dark:prose-invert"
-                  v-html="values.description"
+                  v-html="sanitizeHtml(values.description)"
                 />
                 <p v-else class="text-gray-500">No description provided.</p>
               </div>

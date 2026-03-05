@@ -17,6 +17,7 @@ export { flashSaleService, type FlashSaleFilters, type FlashSaleStats } from './
 export { bannerService, type BannerFilters, type BannerPositionInfo } from './banner.service'
 export { newsletterService, type SubscriberFilters, type NewsletterStats } from './newsletter.service'
 export { analyticsService, type DateRange, type SalesReport, type VendorReport, type ProductReport } from './analytics.service'
+export type { ExportFilters, ExportStatus, ImportResult } from '@/types'
 export { payoutService, type PayoutFilters, type PayoutStats, type BankAccount, type CreateBankAccountRequest } from './payout.service'
 export { uploadService, type UploadedFile, type UploadProgress, type UploadOptions, type ChunkedUploadSession } from './upload.service'
 export { notificationService, type NotificationFilters } from './notification.service'

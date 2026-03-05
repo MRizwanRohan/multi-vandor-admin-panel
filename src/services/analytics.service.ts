@@ -1,274 +1,222 @@
 // ═══════════════════════════════════════════════════════════════════
-// Analytics Service — Dashboard & Reports API calls
+// Analytics Service — Dashboard & Analytics API calls (Phase 1 + 2)
 // ═══════════════════════════════════════════════════════════════════
 
 import api, { getRolePrefix } from './api'
 import type {
-  DashboardStats,
+  DashboardResponse,
+  DashboardPeriod,
+  AnalyticsParams,
+  SalesAnalyticsResponse,
+  SalesChartResponse,
+  AnalyticsTopProduct,
+  AnalyticsTopVendor,
+  RevenueByCategory,
+  CustomerInsightsResponse,
+  InventoryOverviewResponse,
+  PlatformSummaryResponse,
+  ExportFilters,
+  ExportStatus,
+  ImportResult,
   VendorDashboardStats,
-  ChartData,
-  RevenueChartData,
-  TopProduct,
-  TopVendor,
-  TopCategory,
-  PendingAction,
-  ActivityItem,
   LowStockAlert,
   ReportParams,
 } from '@/types'
 
-const prefix = () => `${getRolePrefix()}/analytics`
-
-export interface DateRange {
-  from: string
-  to: string
-}
-
+// Keep for backward compat with existing report pages
+export interface DateRange { from: string; to: string }
 export interface SalesReport {
-  summary: {
-    total_revenue: number
-    total_orders: number
-    average_order_value: number
-    total_commission: number
-    net_revenue: number
-  }
-  chart: RevenueChartData
+  summary: { total_revenue: number; total_orders: number; average_order_value: number; total_commission: number; net_revenue: number }
+  chart: { labels: string[]; datasets: { label: string; data: number[] }[] }
   by_category: { category: string; revenue: number; orders: number }[]
   by_vendor: { vendor: string; revenue: number; orders: number }[]
   by_payment_method: { method: string; revenue: number; count: number }[]
 }
-
 export interface VendorReport {
-  vendor_id: number
-  store_name: string
-  summary: {
-    total_revenue: number
-    total_orders: number
-    total_products: number
-    average_rating: number
-    commission_paid: number
-    payout_received: number
-  }
-  performance: ChartData
-  top_products: TopProduct[]
+  vendor_id: number; store_name: string
+  summary: { total_revenue: number; total_orders: number; total_products: number; average_rating: number; commission_paid: number; payout_received: number }
+  performance: { labels: string[]; datasets: { label: string; data: number[] }[] }
+  top_products: { id: number; name: string; slug: string; image: string | null; revenue: number; units_sold: number }[]
 }
-
 export interface ProductReport {
-  product_id: number
-  product_name: string
-  summary: {
-    total_revenue: number
-    units_sold: number
-    average_price: number
-    review_count: number
-    average_rating: number
-  }
-  sales_trend: ChartData
+  product_id: number; product_name: string
+  summary: { total_revenue: number; units_sold: number; average_price: number; review_count: number; average_rating: number }
+  sales_trend: { labels: string[]; datasets: { label: string; data: number[] }[] }
   by_variant: { variant: string; units: number; revenue: number }[]
 }
 
 export const analyticsService = {
-  // ─────────────────────────────────────────────────────────────────
-  // Dashboard Stats
-  // ─────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // Phase 1: Admin Dashboard
+  // ═══════════════════════════════════════════════════════════════
 
-  /**
-   * Get admin dashboard stats
-   */
-  async getDashboardStats(params?: ReportParams): Promise<DashboardStats> {
-    const response = await api.get<{ data: DashboardStats }>(`${prefix()}/dashboard`, { params })
+  /** GET /admin/dashboard?period=month */
+  async getDashboard(period: DashboardPeriod = 'month', fresh = false): Promise<DashboardResponse> {
+    const response = await api.get<{ data: DashboardResponse }>(`${getRolePrefix()}/dashboard`, {
+      params: { period, ...(fresh ? { fresh: true } : {}) },
+    })
     return response.data.data
   },
 
-  /**
-   * Get vendor dashboard stats
-   */
+  // ═══════════════════════════════════════════════════════════════
+  // Phase 1: Analytics Endpoints
+  // ═══════════════════════════════════════════════════════════════
+
+  /** GET /admin/analytics/sales */
+  async getSalesAnalytics(params?: AnalyticsParams): Promise<SalesAnalyticsResponse> {
+    const response = await api.get<{ data: SalesAnalyticsResponse }>(`${getRolePrefix()}/analytics/sales`, { params })
+    return response.data.data
+  },
+
+  /** GET /admin/analytics/sales-chart */
+  async getSalesChart(params?: AnalyticsParams): Promise<SalesChartResponse> {
+    const response = await api.get<{ data: SalesChartResponse }>(`${getRolePrefix()}/analytics/sales-chart`, { params })
+    return response.data.data
+  },
+
+  /** GET /admin/analytics/top-products */
+  async getTopProducts(params?: AnalyticsParams): Promise<AnalyticsTopProduct[]> {
+    const response = await api.get<{ data: AnalyticsTopProduct[] }>(`${getRolePrefix()}/analytics/top-products`, { params })
+    return response.data.data
+  },
+
+  /** GET /admin/analytics/top-vendors */
+  async getTopVendors(params?: AnalyticsParams): Promise<AnalyticsTopVendor[]> {
+    const response = await api.get<{ data: AnalyticsTopVendor[] }>(`${getRolePrefix()}/analytics/top-vendors`, { params })
+    return response.data.data
+  },
+
+  /** GET /admin/analytics/revenue-by-category */
+  async getRevenueByCategory(params?: AnalyticsParams): Promise<RevenueByCategory[]> {
+    const response = await api.get<{ data: RevenueByCategory[] }>(`${getRolePrefix()}/analytics/revenue-by-category`, { params })
+    return response.data.data
+  },
+
+  /** GET /admin/analytics/customer-insights */
+  async getCustomerInsights(params?: AnalyticsParams): Promise<CustomerInsightsResponse> {
+    const response = await api.get<{ data: CustomerInsightsResponse }>(`${getRolePrefix()}/analytics/customer-insights`, { params })
+    return response.data.data
+  },
+
+  /** GET /admin/analytics/inventory-overview */
+  async getInventoryOverview(): Promise<InventoryOverviewResponse> {
+    const response = await api.get<{ data: InventoryOverviewResponse }>(`${getRolePrefix()}/analytics/inventory-overview`)
+    return response.data.data
+  },
+
+  /** GET /admin/analytics/platform-summary */
+  async getPlatformSummary(params?: AnalyticsParams): Promise<PlatformSummaryResponse> {
+    const response = await api.get<{ data: PlatformSummaryResponse }>(`${getRolePrefix()}/analytics/platform-summary`, { params })
+    return response.data.data
+  },
+
+  // ═══════════════════════════════════════════════════════════════
+  // Phase 2: Export
+  // ═══════════════════════════════════════════════════════════════
+
+  /** GET /admin/orders/export */
+  async exportOrders(filters?: ExportFilters): Promise<Blob> {
+    const response = await api.get(`${getRolePrefix()}/orders/export`, {
+      params: filters,
+      responseType: 'blob',
+    })
+    return response.data
+  },
+
+  /** GET /admin/products/export */
+  async exportProducts(filters?: ExportFilters): Promise<Blob> {
+    const response = await api.get(`${getRolePrefix()}/products/export`, {
+      params: filters,
+      responseType: 'blob',
+    })
+    return response.data
+  },
+
+  /** GET /admin/customers/export */
+  async exportCustomers(filters?: ExportFilters): Promise<Blob> {
+    const response = await api.get(`${getRolePrefix()}/customers/export`, {
+      params: filters,
+      responseType: 'blob',
+    })
+    return response.data
+  },
+
+  /** GET /admin/vendors/export */
+  async exportVendors(filters?: ExportFilters): Promise<Blob> {
+    const response = await api.get(`${getRolePrefix()}/vendors/export`, {
+      params: filters,
+      responseType: 'blob',
+    })
+    return response.data
+  },
+
+  /** GET /admin/exports/{id}/status */
+  async getExportStatus(id: number): Promise<ExportStatus> {
+    const response = await api.get<{ data: ExportStatus }>(`${getRolePrefix()}/exports/${id}/status`)
+    return response.data.data
+  },
+
+  /** GET /admin/exports/{id}/download */
+  async downloadExport(id: number): Promise<Blob> {
+    const response = await api.get(`${getRolePrefix()}/exports/${id}/download`, {
+      responseType: 'blob',
+    })
+    return response.data
+  },
+
+  // ═══════════════════════════════════════════════════════════════
+  // Phase 2: Import
+  // ═══════════════════════════════════════════════════════════════
+
+  /** POST /admin/products/import */
+  async importProducts(file: File, vendorId?: number): Promise<ImportResult> {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (vendorId) formData.append('vendor_id', String(vendorId))
+    const response = await api.post<{ data: ImportResult }>(`${getRolePrefix()}/products/import`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data.data
+  },
+
+  /** GET /admin/products/import/template */
+  async downloadImportTemplate(): Promise<Blob> {
+    const response = await api.get(`${getRolePrefix()}/products/import/template`, {
+      responseType: 'blob',
+    })
+    return response.data
+  },
+
+  // ═══════════════════════════════════════════════════════════════
+  // Legacy — backward-compat with existing report pages
+  // ═══════════════════════════════════════════════════════════════
+
+  async getDashboardStats(params?: ReportParams) {
+    return this.getDashboard((params?.period as DashboardPeriod) || 'month')
+  },
+
   async getVendorDashboardStats(params?: ReportParams): Promise<VendorDashboardStats> {
-    const response = await api.get<{ data: VendorDashboardStats }>(`${prefix()}/vendor-dashboard`, {
-      params,
-    })
+    const response = await api.get<{ data: VendorDashboardStats }>(`${getRolePrefix()}/analytics/vendor-dashboard`, { params })
     return response.data.data
   },
 
-  /**
-   * Get pending actions for dashboard
-   */
-  async getPendingActions(): Promise<PendingAction[]> {
-    const response = await api.get<{ data: PendingAction[] }>(`${prefix()}/pending-actions`)
+  async getLowStockAlerts(limit = 10): Promise<LowStockAlert[]> {
+    const response = await api.get<{ data: LowStockAlert[] }>(`${getRolePrefix()}/analytics/low-stock`, { params: { limit } })
     return response.data.data
   },
 
-  /**
-   * Get recent activity
-   */
-  async getRecentActivity(limit: number = 10): Promise<ActivityItem[]> {
-    const response = await api.get<{ data: ActivityItem[] }>(`${prefix()}/activity`, {
-      params: { limit },
-    })
-    return response.data.data
-  },
-
-  // ─────────────────────────────────────────────────────────────────
-  // Charts
-  // ─────────────────────────────────────────────────────────────────
-
-  /**
-   * Get revenue chart data
-   */
-  async getRevenueChart(params?: ReportParams): Promise<RevenueChartData> {
-    const response = await api.get<{ data: RevenueChartData }>(`${prefix()}/charts/revenue`, {
-      params,
-    })
-    return response.data.data
-  },
-
-  /**
-   * Get orders chart data
-   */
-  async getOrdersChart(params?: ReportParams): Promise<ChartData> {
-    const response = await api.get<{ data: ChartData }>(`${prefix()}/charts/orders`, { params })
-    return response.data.data
-  },
-
-  /**
-   * Get category distribution chart
-   */
-  async getCategoryChart(): Promise<ChartData> {
-    const response = await api.get<{ data: ChartData }>(`${prefix()}/charts/categories`)
-    return response.data.data
-  },
-
-  /**
-   * Get vendor comparison chart
-   */
-  async getVendorChart(params?: ReportParams): Promise<ChartData> {
-    const response = await api.get<{ data: ChartData }>(`${prefix()}/charts/vendors`, { params })
-    return response.data.data
-  },
-
-  // ─────────────────────────────────────────────────────────────────
-  // Top Lists
-  // ─────────────────────────────────────────────────────────────────
-
-  /**
-   * Get top products
-   */
-  async getTopProducts(limit: number = 10, params?: ReportParams): Promise<TopProduct[]> {
-    const response = await api.get<{ data: TopProduct[] }>(`${prefix()}/top-products`, {
-      params: { limit, ...params },
-    })
-    return response.data.data
-  },
-
-  /**
-   * Get top vendors
-   */
-  async getTopVendors(limit: number = 10, params?: ReportParams): Promise<TopVendor[]> {
-    const response = await api.get<{ data: TopVendor[] }>(`${prefix()}/top-vendors`, {
-      params: { limit, ...params },
-    })
-    return response.data.data
-  },
-
-  /**
-   * Get top categories
-   */
-  async getTopCategories(limit: number = 10, params?: ReportParams): Promise<TopCategory[]> {
-    const response = await api.get<{ data: TopCategory[] }>(`${prefix()}/top-categories`, {
-      params: { limit, ...params },
-    })
-    return response.data.data
-  },
-
-  // ─────────────────────────────────────────────────────────────────
-  // Vendor Specific
-  // ─────────────────────────────────────────────────────────────────
-
-  /**
-   * Get low stock alerts for vendor
-   */
-  async getLowStockAlerts(limit: number = 10): Promise<LowStockAlert[]> {
-    const response = await api.get<{ data: LowStockAlert[] }>(`${prefix()}/low-stock`, {
-      params: { limit },
-    })
-    return response.data.data
-  },
-
-  // ─────────────────────────────────────────────────────────────────
-  // Reports
-  // ─────────────────────────────────────────────────────────────────
-
-  /**
-   * Get sales report
-   */
   async getSalesReport(params?: ReportParams): Promise<SalesReport> {
-    const response = await api.get<{ data: SalesReport }>(`${prefix()}/reports/sales`, { params })
+    const response = await api.get<{ data: SalesReport }>(`${getRolePrefix()}/analytics/reports/sales`, { params })
     return response.data.data
   },
 
-  /**
-   * Get vendor report
-   */
   async getVendorReport(vendorId: number, params?: ReportParams): Promise<VendorReport> {
-    const response = await api.get<{ data: VendorReport }>(
-      `${prefix()}/reports/vendor/${vendorId}`,
-      { params }
-    )
+    const response = await api.get<{ data: VendorReport }>(`${getRolePrefix()}/analytics/reports/vendor/${vendorId}`, { params })
     return response.data.data
   },
 
-  /**
-   * Get product report
-   */
   async getProductReport(productId: number, params?: ReportParams): Promise<ProductReport> {
-    const response = await api.get<{ data: ProductReport }>(
-      `${prefix()}/reports/product/${productId}`,
-      { params }
-    )
-    return response.data.data
-  },
-
-  /**
-   * Export sales report
-   */
-  async exportSalesReport(params?: ReportParams, format: 'csv' | 'xlsx' | 'pdf' = 'xlsx'): Promise<Blob> {
-    const response = await api.get(`${prefix()}/reports/sales/export`, {
-      params: { ...params, format },
-      responseType: 'blob',
-    })
-    return response.data
-  },
-
-  /**
-   * Export vendor report
-   */
-  async exportVendorReport(vendorId: number, params?: ReportParams, format: 'csv' | 'xlsx' | 'pdf' = 'xlsx'): Promise<Blob> {
-    const response = await api.get(`${prefix()}/reports/vendor/${vendorId}/export`, {
-      params: { ...params, format },
-      responseType: 'blob',
-    })
-    return response.data
-  },
-
-  // ─────────────────────────────────────────────────────────────────
-  // Comparison
-  // ─────────────────────────────────────────────────────────────────
-
-  /**
-   * Compare periods (e.g., this month vs last month)
-   */
-  async comparePeriods(currentRange: DateRange, previousRange: DateRange): Promise<{
-    current: DashboardStats
-    previous: DashboardStats
-    changes: Record<string, number>
-  }> {
-    const response = await api.post<{
-      data: {
-        current: DashboardStats
-        previous: DashboardStats
-        changes: Record<string, number>
-      }
-    }>(`${prefix()}/compare`, { current_range: currentRange, previous_range: previousRange })
+    const response = await api.get<{ data: ProductReport }>(`${getRolePrefix()}/analytics/reports/product/${productId}`, { params })
     return response.data.data
   },
 }

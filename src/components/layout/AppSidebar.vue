@@ -38,6 +38,8 @@ import {
   DocumentTextIcon,
   NewspaperIcon,
   InboxIcon,
+  ArrowDownTrayIcon,
+  PresentationChartLineIcon,
 } from '@heroicons/vue/24/outline'
 
 interface NavItem {
@@ -188,6 +190,29 @@ const adminNavItems: NavItem[] = [
       { name: 'Sales Report', to: '/admin/reports/sales' },
       { name: 'Vendor Report', to: '/admin/reports/vendors' },
       { name: 'Product Report', to: '/admin/reports/products' },
+    ],
+  },
+  {
+    name: 'Analytics',
+    to: '/admin/analytics',
+    icon: PresentationChartLineIcon,
+    children: [
+      { name: 'Sales Analytics', to: '/admin/analytics/sales' },
+      { name: 'Top Products', to: '/admin/analytics/top-products' },
+      { name: 'Top Vendors', to: '/admin/analytics/top-vendors' },
+      { name: 'Category Revenue', to: '/admin/analytics/categories' },
+      { name: 'Customer Insights', to: '/admin/analytics/customers' },
+      { name: 'Inventory', to: '/admin/analytics/inventory' },
+      { name: 'Platform Summary', to: '/admin/analytics/platform' },
+    ],
+  },
+  {
+    name: 'Export / Import',
+    to: '/admin/export',
+    icon: ArrowDownTrayIcon,
+    children: [
+      { name: 'Export Center', to: '/admin/export' },
+      { name: 'Import Products', to: '/admin/import/products' },
     ],
   },
   {

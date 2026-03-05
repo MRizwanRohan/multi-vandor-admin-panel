@@ -344,6 +344,62 @@ const adminRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/admin/reports/ProductReport.vue'),
         meta: { title: 'Product Report' },
       },
+      // Analytics
+      {
+        path: 'analytics/sales',
+        name: 'admin-analytics-sales',
+        component: () => import('@/pages/admin/analytics/SalesAnalytics.vue'),
+        meta: { title: 'Sales Analytics' },
+      },
+      {
+        path: 'analytics/top-products',
+        name: 'admin-analytics-top-products',
+        component: () => import('@/pages/admin/analytics/TopProducts.vue'),
+        meta: { title: 'Top Products' },
+      },
+      {
+        path: 'analytics/top-vendors',
+        name: 'admin-analytics-top-vendors',
+        component: () => import('@/pages/admin/analytics/TopVendors.vue'),
+        meta: { title: 'Top Vendors' },
+      },
+      {
+        path: 'analytics/categories',
+        name: 'admin-analytics-categories',
+        component: () => import('@/pages/admin/analytics/CategoryRevenue.vue'),
+        meta: { title: 'Revenue by Category' },
+      },
+      {
+        path: 'analytics/customers',
+        name: 'admin-analytics-customers',
+        component: () => import('@/pages/admin/analytics/CustomerInsights.vue'),
+        meta: { title: 'Customer Insights' },
+      },
+      {
+        path: 'analytics/inventory',
+        name: 'admin-analytics-inventory',
+        component: () => import('@/pages/admin/analytics/InventoryAnalytics.vue'),
+        meta: { title: 'Inventory Analytics' },
+      },
+      {
+        path: 'analytics/platform',
+        name: 'admin-analytics-platform',
+        component: () => import('@/pages/admin/analytics/PlatformSummary.vue'),
+        meta: { title: 'Platform Summary' },
+      },
+      // Export / Import
+      {
+        path: 'export',
+        name: 'admin-export',
+        component: () => import('@/pages/admin/export-import/ExportCenter.vue'),
+        meta: { title: 'Export Center' },
+      },
+      {
+        path: 'import/products',
+        name: 'admin-import-products',
+        component: () => import('@/pages/admin/export-import/ProductImport.vue'),
+        meta: { title: 'Import Products' },
+      },
       // CMS - Static Pages
       {
         path: 'cms/pages',

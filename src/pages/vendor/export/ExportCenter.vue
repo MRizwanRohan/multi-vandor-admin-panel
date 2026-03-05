@@ -12,7 +12,7 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
-import FormDatePicker from '@/components/form/FormDatePicker.vue'
+import FormInput from '@/components/form/FormInput.vue'
 import {
   ArrowDownTrayIcon,
   DocumentArrowDownIcon,
@@ -254,15 +254,17 @@ onUnmounted(() => {
           label="File Format"
           :options="formatOptions"
         />
-        <FormDatePicker
+        <FormInput
           v-model="dateFrom"
           name="dateFrom"
+          type="date"
           label="From Date"
           placeholder="Start date"
         />
-        <FormDatePicker
+        <FormInput
           v-model="dateTo"
           name="dateTo"
+          type="date"
           label="To Date"
           placeholder="End date"
         />

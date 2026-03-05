@@ -8,7 +8,7 @@ import { useBreadcrumbStore } from '@/stores'
 import { useCurrency, useDate } from '@/composables'
 import api from '@/services/api'
 import BaseCard from '@/components/ui/BaseCard.vue'
-import BaseSpinner from '@/components/ui/BaseSpinner.vue'
+import AppSpinner from '@/components/ui/AppSpinner.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import StatCard from '@/components/ui/StatCard.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
@@ -154,7 +154,7 @@ onMounted(() => {
 
     <!-- Loading -->
     <div v-if="isLoading" class="flex items-center justify-center py-12">
-      <BaseSpinner size="lg" />
+      <AppSpinner size="lg" />
     </div>
 
     <template v-else-if="reportData">

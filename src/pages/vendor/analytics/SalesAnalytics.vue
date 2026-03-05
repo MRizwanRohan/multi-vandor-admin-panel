@@ -9,10 +9,9 @@ import { useCurrency, useDate } from '@/composables'
 import { analyticsService } from '@/services'
 import type { SalesAnalyticsResponse, SalesChartResponse } from '@/types'
 import BaseCard from '@/components/ui/BaseCard.vue'
-import BaseSpinner from '@/components/ui/BaseSpinner.vue'
+import AppSpinner from '@/components/ui/AppSpinner.vue'
 import StatCard from '@/components/ui/StatCard.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
-import FormDatePicker from '@/components/form/FormDatePicker.vue'
 import { LineChart, BarChart, DoughnutChart } from '@/components/charts'
 import {
   CurrencyDollarIcon,
@@ -56,36 +55,47 @@ const stats = computed(() => {
       title: 'Total Revenue',
       value: formatCurrency(o.total_revenue),
       icon: CurrencyDollarIcon,
-      trend: { value: Math.abs(o.revenue_change || 0), type: (o.revenue_change || 0) >= 0 ? 'up' as const : 'down' as const },
+      change: Math.abs(o.revenue_change || 0),
+      trend: (o.revenue_change || 0) >= 0 ? 'up' as const : 'down' as const,
       color: 'primary' as const,
     },
     {
       title: 'Total Orders',
       value: String(o.total_orders),
       icon: ShoppingCartIcon,
-      trend: { value: Math.abs(o.orders_change || 0), type: (o.orders_change || 0) >= 0 ? 'up' as const : 'down' as const },
+      change: Math.abs(o.orders_change || 0),
+      trend: (o.orders_change || 0) >= 0 ? 'up' as const : 'down' as const,
       color: 'success' as const,
     },
     {
       title: 'Average Order Value',
       value: formatCurrency(o.average_order_value),
       icon: ReceiptPercentIcon,
-      trend: { value: Math.abs(o.aov_change || 0), type: (o.aov_change || 0) >= 0 ? 'up' as const : 'down' as const },
+      change: Math.abs(o.aov_change || 0),
+      trend: (o.aov_change || 0) >= 0 ? 'up' as const : 'down' as const,
       color: 'info' as const,
     },
     {
       title: 'Conversion Rate',
       value: `${(o.conversion_rate || 0).toFixed(2)}%`,
       icon: ArrowTrendingUpIcon,
-      trend: { value: Math.abs(o.conversion_change || 0), type: (o.conversion_change || 0) >= 0 ? 'up' as const : 'down' as const },
+      change: Math.abs(o.conversion_change || 0),
+      trend: (o.conversion_change || 0) >= 0 ? 'up' as const : 'down' as const,
       color: 'warning' as const,
     },
   ]
 })
 
-// Chart data
+// Chart data - transform API response to chart format
 const chartLabels = computed(() => chartData.value?.labels || [])
-const chartDatasets = computed(() => chartData.value?.datasets || [])
+const chartDatasets = computed(() => {
+  if (!chartData.value?.datasets) return []
+  const ds = chartData.value.datasets
+  return [
+    { label: 'Revenue', data: ds.revenue || [], borderColor: '#6366f1', backgroundColor: 'rgba(99, 102, 241, 0.1)', fill: true },
+    { label: 'Orders', data: ds.orders || [], borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: false },
+  ]
+})
 
 // Payment methods pie chart
 const paymentMethodLabels = computed(() => {
@@ -142,7 +152,7 @@ onMounted(() => {
 
     <!-- Loading -->
     <div v-if="isLoading" class="flex items-center justify-center py-12">
-      <BaseSpinner size="lg" />
+      <AppSpinner size="lg" />
     </div>
 
     <template v-else-if="salesData">
@@ -154,6 +164,7 @@ onMounted(() => {
           :title="stat.title"
           :value="stat.value"
           :icon="stat.icon"
+          :change="stat.change"
           :trend="stat.trend"
           :color="stat.color"
         />

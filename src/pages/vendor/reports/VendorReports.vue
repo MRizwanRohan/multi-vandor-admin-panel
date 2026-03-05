@@ -9,7 +9,7 @@ import { useCurrency } from '@/composables/useCurrency'
 import { analyticsService } from '@/services'
 import type { VendorDashboardStats, AnalyticsTopProduct, SalesChartResponse } from '@/types'
 import BaseCard from '@/components/ui/BaseCard.vue'
-import BaseSpinner from '@/components/ui/BaseSpinner.vue'
+import AppSpinner from '@/components/ui/AppSpinner.vue'
 import StatCard from '@/components/ui/StatCard.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
 import DataTable from '@/components/data/DataTable.vue'
@@ -47,17 +47,25 @@ const dateRangeOptions = [
 const stats = computed(() => {
   if (!dashboard.value) return []
   const d = dashboard.value
+  const mapTrend = (ct: string) => ct === 'increase' ? 'up' as const : ct === 'decrease' ? 'down' as const : 'neutral' as const
   return [
-    { title: 'Total Revenue', value: d.revenue.formatted, icon: CurrencyDollarIcon, change: Math.abs(d.revenue.change), trend: d.revenue.change_type === 'increase' ? 'up' as const : 'down' as const, changeLabel: 'vs last period', color: 'primary' as const },
-    { title: 'Total Orders', value: d.orders.formatted, icon: ShoppingCartIcon, change: Math.abs(d.orders.change), trend: d.orders.change_type === 'increase' ? 'up' as const : 'down' as const, changeLabel: 'vs last period', color: 'success' as const },
-    { title: 'Total Products', value: d.products.formatted, icon: EyeIcon, change: Math.abs(d.products.change), trend: d.products.change_type === 'increase' ? 'up' as const : 'down' as const, changeLabel: 'vs last period', color: 'info' as const },
-    { title: 'Average Rating', value: d.rating.formatted, icon: ArrowTrendingUpIcon, change: Math.abs(d.rating.change), trend: d.rating.change_type === 'increase' ? 'up' as const : 'down' as const, changeLabel: 'vs last period', color: 'warning' as const },
+    { title: 'Total Revenue', value: d.revenue?.formatted || '৳0', icon: CurrencyDollarIcon, change: Math.abs(d.revenue?.change || 0), trend: mapTrend(d.revenue?.change_type || 'neutral'), changeLabel: 'vs last period', color: 'primary' as const },
+    { title: 'Total Orders', value: d.orders?.formatted || '0', icon: ShoppingCartIcon, change: Math.abs(d.orders?.change || 0), trend: mapTrend(d.orders?.change_type || 'neutral'), changeLabel: 'vs last period', color: 'success' as const },
+    { title: 'Total Products', value: d.products?.formatted || '0', icon: EyeIcon, change: Math.abs(d.products?.change || 0), trend: mapTrend(d.products?.change_type || 'neutral'), changeLabel: 'vs last period', color: 'info' as const },
+    { title: 'Average Rating', value: d.rating?.formatted || '0', icon: ArrowTrendingUpIcon, change: Math.abs(d.rating?.change || 0), trend: mapTrend(d.rating?.change_type || 'neutral'), changeLabel: 'vs last period', color: 'warning' as const },
   ]
 })
 
-// Chart data
+// Chart data - transform API response to chart format
 const revenueLabels = computed(() => chartData.value?.labels || [])
-const revenueDatasets = computed(() => chartData.value?.datasets || [])
+const revenueDatasets = computed(() => {
+  if (!chartData.value?.datasets) return []
+  const ds = chartData.value.datasets
+  return [
+    { label: 'Revenue', data: ds.revenue || [], borderColor: '#6366f1', fill: true },
+    { label: 'Orders', data: ds.orders || [], borderColor: '#10b981', fill: false },
+  ]
+})
 
 // Top products for bar chart
 const topProductLabels = computed(() => topProducts.value.slice(0, 5).map(p => p.name.substring(0, 15)))
@@ -148,7 +156,7 @@ onMounted(() => {
 
     <!-- Loading -->
     <div v-if="isLoading" class="flex items-center justify-center py-12">
-      <BaseSpinner size="lg" />
+      <AppSpinner size="lg" />
     </div>
 
     <template v-else-if="dashboard">

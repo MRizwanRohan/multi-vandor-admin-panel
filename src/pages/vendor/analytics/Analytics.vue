@@ -9,7 +9,7 @@ import { useCurrency } from '@/composables'
 import { analyticsService } from '@/services'
 import type { VendorDashboardStats, AnalyticsTopProduct, SalesChartResponse, LowStockAlert } from '@/types'
 import BaseCard from '@/components/ui/BaseCard.vue'
-import BaseSpinner from '@/components/ui/BaseSpinner.vue'
+import AppSpinner from '@/components/ui/AppSpinner.vue'
 import StatCard from '@/components/ui/StatCard.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
 import { LineChart, BarChart } from '@/components/charts'
@@ -45,41 +45,53 @@ const dateRangeOptions = [
 const stats = computed(() => {
   if (!dashboard.value) return []
   const d = dashboard.value
+  const mapTrend = (ct: string) => ct === 'increase' ? 'up' as const : ct === 'decrease' ? 'down' as const : 'neutral' as const
   return [
     {
       title: 'Total Revenue',
-      value: d.revenue.formatted,
+      value: d.revenue?.formatted || '৳0',
       icon: CurrencyDollarIcon,
-      trend: { value: Math.abs(d.revenue.change), type: d.revenue.change_type === 'increase' ? 'up' as const : d.revenue.change_type === 'decrease' ? 'down' as const : 'neutral' as const },
+      change: Math.abs(d.revenue?.change || 0),
+      trend: mapTrend(d.revenue?.change_type || 'neutral'),
       color: 'primary' as const,
     },
     {
       title: 'Total Orders',
-      value: d.orders.formatted,
+      value: d.orders?.formatted || '0',
       icon: ShoppingCartIcon,
-      trend: { value: Math.abs(d.orders.change), type: d.orders.change_type === 'increase' ? 'up' as const : d.orders.change_type === 'decrease' ? 'down' as const : 'neutral' as const },
+      change: Math.abs(d.orders?.change || 0),
+      trend: mapTrend(d.orders?.change_type || 'neutral'),
       color: 'success' as const,
     },
     {
       title: 'Total Products',
-      value: d.products.formatted,
+      value: d.products?.formatted || '0',
       icon: CubeIcon,
-      trend: { value: Math.abs(d.products.change), type: d.products.change_type === 'increase' ? 'up' as const : d.products.change_type === 'decrease' ? 'down' as const : 'neutral' as const },
+      change: Math.abs(d.products?.change || 0),
+      trend: mapTrend(d.products?.change_type || 'neutral'),
       color: 'info' as const,
     },
     {
       title: 'Average Rating',
-      value: d.rating.formatted,
+      value: d.rating?.formatted || '0',
       icon: StarIcon,
-      trend: { value: Math.abs(d.rating.change), type: d.rating.change_type === 'increase' ? 'up' as const : d.rating.change_type === 'decrease' ? 'down' as const : 'neutral' as const },
+      change: Math.abs(d.rating?.change || 0),
+      trend: mapTrend(d.rating?.change_type || 'neutral'),
       color: 'warning' as const,
     },
   ]
 })
 
-// Chart data
+// Chart data - transform API response to chart format
 const revenueChartLabels = computed(() => salesChart.value?.labels || [])
-const revenueChartDatasets = computed(() => salesChart.value?.datasets || [])
+const revenueChartDatasets = computed(() => {
+  if (!salesChart.value?.datasets) return []
+  const ds = salesChart.value.datasets
+  return [
+    { label: 'Revenue', data: ds.revenue || [], borderColor: '#6366f1', backgroundColor: 'rgba(99, 102, 241, 0.1)', fill: true },
+    { label: 'Orders', data: ds.orders || [], borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: false },
+  ]
+})
 
 // Fetch data
 async function fetchData() {
@@ -131,7 +143,7 @@ onMounted(() => {
 
     <!-- Loading -->
     <div v-if="isLoading" class="flex items-center justify-center py-12">
-      <BaseSpinner size="lg" />
+      <AppSpinner size="lg" />
     </div>
 
     <template v-else-if="dashboard">
@@ -143,6 +155,7 @@ onMounted(() => {
           :title="stat.title"
           :value="stat.value"
           :icon="stat.icon"
+          :change="stat.change"
           :trend="stat.trend"
           :color="stat.color"
         />

@@ -25,6 +25,7 @@ onMounted(() => {
 })
 
 const isLoading = ref(true)
+const error = ref<string | null>(null)
 const period = ref('month')
 const categories = ref<RevenueByCategory[]>([])
 
@@ -38,10 +39,13 @@ const periodOptions = [
 
 async function loadData() {
   isLoading.value = true
+  error.value = null
   try {
     const params: AnalyticsParams = { period: period.value as any }
-    categories.value = await analyticsService.getRevenueByCategory(params)
-  } catch (e) {
+    const result = await analyticsService.getRevenueByCategory(params)
+    categories.value = Array.isArray(result) ? result : []
+  } catch (e: any) {
+    error.value = e?.response?.data?.message || 'Failed to load category revenue'
     console.error('Failed to load category revenue', e)
   } finally {
     isLoading.value = false
@@ -60,6 +64,15 @@ const barDatasets = computed(() => [
 
 <template>
   <div class="space-y-6">
+    <!-- Error -->
+    <div v-if="error" class="rounded-lg border border-danger-200 bg-danger-50 p-4 dark:border-danger-800 dark:bg-danger-900/20">
+      <div class="flex items-center gap-2">
+        <svg class="h-5 w-5 text-danger-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg>
+        <p class="text-sm text-danger-700 dark:text-danger-400">{{ error }}</p>
+        <button class="ml-auto text-sm font-medium text-danger-600 hover:text-danger-500" @click="loadData">Retry</button>
+      </div>
+    </div>
+
     <div class="flex flex-wrap items-center gap-3">
       <FormSelect v-model="period" :options="periodOptions" class="w-40" />
     </div>

@@ -1,5 +1,5 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<!-- Vendor Order List — Vendor's order management page -->
+<!-- Vendor Order List — Vendor's order management page                -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
@@ -9,7 +9,6 @@ import { useBreadcrumbStore } from '@/stores'
 import { orderService } from '@/services'
 import { useCurrency, usePagination, useDate, useToast } from '@/composables'
 import BaseCard from '@/components/ui/BaseCard.vue'
-import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
 import DataTable from '@/components/data/DataTable.vue'
@@ -22,8 +21,8 @@ import {
 
 const router = useRouter()
 const breadcrumbStore = useBreadcrumbStore()
-const currency = useCurrency()
-const date = useDate()
+const { formatCurrency } = useCurrency()
+const { formatDate } = useDate()
 const toast = useToast()
 const pagination = usePagination()
 
@@ -46,9 +45,11 @@ const statusFilter = ref('')
 const statusOptions = [
   { value: '', label: 'All Status' },
   { value: 'pending', label: 'Pending' },
+  { value: 'confirmed', label: 'Confirmed' },
   { value: 'processing', label: 'Processing' },
   { value: 'shipped', label: 'Shipped' },
   { value: 'delivered', label: 'Delivered' },
+  { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' },
 ]
 
@@ -57,8 +58,9 @@ const columns: TableColumn[] = [
   { key: 'orderNumber', label: 'Order', sortable: true },
   { key: 'customer', label: 'Customer', sortable: true },
   { key: 'items', label: 'Items', align: 'center' },
-  { key: 'total', label: 'Your Earnings', sortable: true, align: 'right' },
+  { key: 'total', label: 'Total', sortable: true, align: 'right' },
   { key: 'status', label: 'Status', sortable: true, align: 'center' },
+  { key: 'payment', label: 'Payment', align: 'center' },
   { key: 'date', label: 'Date', sortable: true },
   { key: 'actions', label: '', align: 'right' },
 ]
@@ -70,54 +72,14 @@ async function fetchOrders() {
     const response = await orderService.getAll({
       page: pagination.currentPage.value,
       per_page: pagination.perPage.value,
-      search: searchQuery.value,
+      search: searchQuery.value || undefined,
       status: statusFilter.value || undefined,
     })
     orders.value = response.data
-    pagination.totalItems.value = response.meta.total
+    pagination.total.value = response.meta.total
   } catch (error) {
-    // Mock data
-    orders.value = [
-      {
-        id: '1',
-        orderNumber: 'ORD-2024-001',
-        customer: { id: '1', name: 'John Doe', email: 'john@example.com' },
-        items: [
-          { id: '1', productId: '1', productName: 'T-Shirt', quantity: 2, price: 1500, total: 3000 },
-        ],
-        subtotal: 3000,
-        tax: 0,
-        shipping: 0,
-        discount: 0,
-        total: 2700, // After commission
-        status: 'pending',
-        paymentStatus: 'paid',
-        paymentMethod: 'card',
-        shippingAddress: { street: '123 Main St', city: 'Dhaka', state: 'Dhaka', postalCode: '1205', country: 'Bangladesh' },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: '2',
-        orderNumber: 'ORD-2024-002',
-        customer: { id: '2', name: 'Jane Smith', email: 'jane@example.com' },
-        items: [
-          { id: '1', productId: '2', productName: 'Jeans', quantity: 1, price: 3500, total: 3500 },
-        ],
-        subtotal: 3500,
-        tax: 0,
-        shipping: 0,
-        discount: 0,
-        total: 3150,
-        status: 'processing',
-        paymentStatus: 'paid',
-        paymentMethod: 'bkash',
-        shippingAddress: { street: '456 Fashion Ave', city: 'Chittagong', state: 'Chittagong', postalCode: '4000', country: 'Bangladesh' },
-        createdAt: new Date(Date.now() - 86400000).toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    ] as any[]
-    pagination.totalItems.value = 2
+    toast.error('Failed to load orders')
+    orders.value = []
   } finally {
     isLoading.value = false
   }
@@ -142,12 +104,23 @@ function viewOrder(order: Order) {
 function getStatusVariant(status: string): 'success' | 'warning' | 'danger' | 'info' | 'primary' | 'secondary' {
   const variants: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'primary' | 'secondary'> = {
     pending: 'warning',
+    confirmed: 'info',
     processing: 'info',
     shipped: 'primary',
     delivered: 'success',
+    completed: 'success',
     cancelled: 'danger',
   }
   return variants[status] || 'secondary'
+}
+
+function getPaymentVariant(status: string): 'success' | 'warning' | 'danger' {
+  const variants: Record<string, 'success' | 'warning' | 'danger'> = {
+    paid: 'success',
+    pending: 'warning',
+    failed: 'danger',
+  }
+  return variants[status] || 'warning'
 }
 </script>
 
@@ -184,56 +157,62 @@ function getStatusVariant(status: string): 'success' | 'warning' | 'danger' | 'i
         row-key="id"
         :current-page="pagination.currentPage.value"
         :per-page="pagination.perPage.value"
-        :total="pagination.totalItems.value"
+        :total="pagination.total.value"
         @update:currentPage="pagination.currentPage.value = $event"
         @update:perPage="pagination.perPage.value = $event"
       >
-        <template #cell-orderNumber="{ row }">
+        <template #cell-orderNumber="{ item }">
           <span class="font-medium text-gray-900 dark:text-white">
-            {{ row.order_number }}
+            {{ item.order_number }}
           </span>
         </template>
 
-        <template #cell-customer="{ row }">
+        <template #cell-customer="{ item }">
           <div>
             <p class="font-medium text-gray-900 dark:text-white">
-              {{ row.customer?.name || 'Guest' }}
+              {{ item.customer?.name || 'Guest' }}
             </p>
             <p class="text-sm text-gray-500 dark:text-gray-400">
-              {{ row.customer?.email }}
+              {{ item.customer?.email }}
             </p>
           </div>
         </template>
 
-        <template #cell-items="{ row }">
+        <template #cell-items="{ item }">
           <span class="text-gray-900 dark:text-white">
-            {{ row.item_count || 0 }}
+            {{ item.items_count ?? 0 }}
           </span>
         </template>
 
-        <template #cell-total="{ row }">
-          <span class="font-medium text-success-600 dark:text-success-400">
-            {{ currency.formatCurrency(row.total_amount) }}
+        <template #cell-total="{ item }">
+          <span class="font-medium text-gray-900 dark:text-white">
+            {{ formatCurrency(item.total_amount) }}
           </span>
         </template>
 
-        <template #cell-status="{ row }">
-          <BaseBadge :variant="getStatusVariant(row.status)" class="capitalize">
-            {{ row.status }}
+        <template #cell-status="{ item }">
+          <BaseBadge :variant="getStatusVariant(item.status)" class="capitalize">
+            {{ item.status_label || item.status }}
           </BaseBadge>
         </template>
 
-        <template #cell-date="{ row }">
+        <template #cell-payment="{ item }">
+          <BaseBadge :variant="getPaymentVariant(item.payment_status)" size="sm" class="capitalize">
+            {{ item.payment_status }}
+          </BaseBadge>
+        </template>
+
+        <template #cell-date="{ item }">
           <span class="text-gray-500 dark:text-gray-400">
-            {{ date.format(row.created_at, 'MMM D, YYYY') }}
+            {{ formatDate(item.created_at, 'MMM D, YYYY') }}
           </span>
         </template>
 
-        <template #cell-actions="{ row }">
+        <template #cell-actions="{ item }">
           <button
             type="button"
             class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
-            @click="viewOrder(row)"
+            @click="viewOrder(item)"
           >
             <EyeIcon class="h-5 w-5" />
           </button>

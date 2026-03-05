@@ -1,10 +1,10 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<!-- Admin Order Detail — View order details page -->
+<!-- Admin Order Detail — View & manage order details                  -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
 import { orderService } from '@/services'
 import { useCurrency, useDate, useConfirm, useToast } from '@/composables'
@@ -13,14 +13,19 @@ import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
 import PageLoader from '@/components/ui/PageLoader.vue'
 import FormSelect from '@/components/form/FormSelect.vue'
+import FormTextarea from '@/components/form/FormTextarea.vue'
 import type { OrderDetail as OrderDetailType, OrderStatus } from '@/types'
-import type { OrderStatusUpdate } from '@/services/order.service'
-import { ArrowLeftIcon, PrinterIcon } from '@heroicons/vue/24/outline'
+import {
+  ArrowLeftIcon,
+  PrinterIcon,
+  CubeIcon,
+} from '@heroicons/vue/24/outline'
 
 const route = useRoute()
+const router = useRouter()
 const breadcrumbStore = useBreadcrumbStore()
-const currency = useCurrency()
-const date = useDate()
+const { formatCurrency } = useCurrency()
+const { formatDate } = useDate()
 const confirm = useConfirm()
 const toast = useToast()
 
@@ -28,24 +33,42 @@ const toast = useToast()
 const order = ref<OrderDetailType | null>(null)
 const isLoading = ref(true)
 const isUpdating = ref(false)
+const newStatus = ref<OrderStatus | ''>('')
+const statusNotes = ref('')
+
 const orderId = computed(() => {
   const id = Number(route.params.id)
   return isNaN(id) ? null : id
 })
 
-// Status options
+// All statuses — admin can force any status
 const statusOptions = [
   { value: 'pending', label: 'Pending' },
+  { value: 'confirmed', label: 'Confirmed' },
   { value: 'processing', label: 'Processing' },
   { value: 'shipped', label: 'Shipped' },
   { value: 'delivered', label: 'Delivered' },
+  { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' },
+  { value: 'refunded', label: 'Refunded' },
 ]
+
+// Computed
+const totalCommission = computed(() => {
+  if (!order.value?.items) return 0
+  return order.value.items.reduce((sum, item) => sum + Number(item.commission_amount || 0), 0)
+})
+
+const vendorEarning = computed(() => {
+  if (!order.value) return 0
+  return Number(order.value.total_amount) - totalCommission.value
+})
 
 // Set page info
 onMounted(() => {
   if (!orderId.value) {
     toast.error('Invalid order ID')
+    router.push('/admin/orders')
     return
   }
   fetchOrder()
@@ -55,82 +78,34 @@ onMounted(() => {
 async function fetchOrder() {
   isLoading.value = true
   try {
-    order.value = await orderService.getById(orderId.value!) as OrderDetailType
+    order.value = await orderService.getById(orderId.value!)
+    newStatus.value = order.value.status
     breadcrumbStore.setPageInfo(`Order ${order.value.order_number}`, [
       { label: 'Orders', to: '/admin/orders' },
       { label: order.value.order_number },
     ])
   } catch (error) {
     toast.error('Failed to fetch order')
-    // Mock data
-    order.value = {
-      id: orderId.value!,
-      order_number: 'ORD-2024-001',
-      customer: {
-        id: 1,
-        name: 'John Doe',
-        email: 'john@example.com',
-        phone: '+880123456789',
-      },
-      items: [
-        { id: 1, product_id: 1, product_name: 'Premium T-Shirt', variant_name: 'Red / M', quantity: 2, unit_price: 1500, total_price: 3000, product_image: 'https://placehold.co/100x100?text=T-Shirt' },
-        { id: 2, product_id: 2, product_name: 'Classic Jeans', variant_name: 'Blue / 32', quantity: 1, unit_price: 3500, total_price: 3500, product_image: 'https://placehold.co/100x100?text=Jeans' },
-      ],
-      subtotal: 6500,
-      tax_amount: 325,
-      shipping_amount: 100,
-      discount_amount: 500,
-      total_amount: 6425,
-      status: 'processing',
-      payment_status: 'paid',
-      payment_method: 'bkash',
-      shipping_address: {
-        name: 'John Doe',
-        phone: '+880123456789',
-        address_line_1: '123 Fashion Street',
-        address_line_2: null,
-        city: 'Dhaka',
-        district: 'Dhaka',
-        postal_code: '1205',
-        country: 'Bangladesh',
-      },
-      billing_address: {
-        name: 'John Doe',
-        phone: '+880123456789',
-        address_line_1: '123 Fashion Street',
-        address_line_2: null,
-        city: 'Dhaka',
-        district: 'Dhaka',
-        postal_code: '1205',
-        country: 'Bangladesh',
-      },
-      notes: 'Please deliver before 5 PM',
-      status_history: [
-        { id: 1, from_status: null, to_status: 'pending', notes: 'Order was placed by customer', changed_by: 'system', changed_at: '2024-01-15T10:30:00Z' },
-        { id: 2, from_status: 'pending', to_status: 'processing', notes: 'Order is being prepared', changed_by: 'admin', changed_at: '2024-01-15T11:00:00Z' },
-      ],
-      created_at: '2024-01-15T10:30:00Z',
-      updated_at: '2024-01-15T11:00:00Z',
-    } as any
-    breadcrumbStore.setPageInfo(`Order ${order.value!.order_number}`, [
-      { label: 'Orders', to: '/admin/orders' },
-      { label: order.value!.order_number },
-    ])
+    router.push('/admin/orders')
   } finally {
     isLoading.value = false
   }
 }
 
 // Update status
-async function updateStatus(newStatus: OrderStatus) {
-  if (!order.value) return
+async function updateStatus() {
+  if (!order.value || !newStatus.value || newStatus.value === order.value.status) return
 
   isUpdating.value = true
   try {
-    const statusUpdate: OrderStatusUpdate = { status: newStatus }
-    await orderService.updateStatus(order.value.id, statusUpdate)
+    const updated = await orderService.updateStatus(order.value.id, {
+      status: newStatus.value,
+      notes: statusNotes.value || undefined,
+    })
+    order.value = updated
+    newStatus.value = updated.status
+    statusNotes.value = ''
     toast.success('Order status updated')
-    order.value.status = newStatus
   } catch (error) {
     toast.error('Failed to update status')
   } finally {
@@ -151,12 +126,19 @@ async function cancelOrder() {
   })
 
   if (confirmed) {
+    isUpdating.value = true
     try {
-      await orderService.updateStatus(order.value.id, { status: 'cancelled' })
+      const updated = await orderService.updateStatus(order.value.id, {
+        status: 'cancelled',
+        notes: 'Cancelled by admin',
+      })
+      order.value = updated
+      newStatus.value = updated.status
       toast.success('Order cancelled')
-      order.value.status = 'cancelled'
     } catch (error) {
       toast.error('Failed to cancel order')
+    } finally {
+      isUpdating.value = false
     }
   }
 }
@@ -165,9 +147,11 @@ async function cancelOrder() {
 function getStatusVariant(status: string): 'success' | 'warning' | 'danger' | 'info' | 'primary' | 'secondary' {
   const variants: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'primary' | 'secondary'> = {
     pending: 'warning',
+    confirmed: 'info',
     processing: 'info',
     shipped: 'primary',
     delivered: 'success',
+    completed: 'success',
     cancelled: 'danger',
     refunded: 'secondary',
   }
@@ -179,9 +163,16 @@ function getPaymentVariant(status: string): 'success' | 'warning' | 'danger' {
     paid: 'success',
     pending: 'warning',
     failed: 'danger',
+    cancelled: 'danger',
   }
   return variants[status] || 'warning'
 }
+
+// Check if order can be cancelled
+const canCancel = computed(() => {
+  if (!order.value) return false
+  return ['pending', 'confirmed', 'processing'].includes(order.value.status)
+})
 </script>
 
 <template>
@@ -191,7 +182,7 @@ function getPaymentVariant(status: string): 'success' | 'warning' | 'danger' {
     <!-- Header -->
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div class="flex items-center gap-4">
-        <BaseButton variant="ghost" size="sm" to="/admin/orders">
+        <BaseButton variant="ghost" size="sm" @click="router.push('/admin/orders')">
           <ArrowLeftIcon class="h-5 w-5" />
         </BaseButton>
         <div>
@@ -200,14 +191,14 @@ function getPaymentVariant(status: string): 'success' | 'warning' | 'danger' {
               {{ order.order_number }}
             </h1>
             <BaseBadge :variant="getStatusVariant(order.status)" class="capitalize">
-              {{ order.status }}
+              {{ order.status_label || order.status }}
             </BaseBadge>
             <BaseBadge :variant="getPaymentVariant(order.payment_status)" class="capitalize">
               {{ order.payment_status }}
             </BaseBadge>
           </div>
           <p class="text-sm text-gray-500 dark:text-gray-400">
-            Placed on {{ date.format(order.created_at, 'MMMM D, YYYY [at] h:mm A') }}
+            Placed on {{ formatDate(order.created_at, 'MMMM D, YYYY [at] h:mm A') }}
           </p>
         </div>
       </div>
@@ -218,9 +209,10 @@ function getPaymentVariant(status: string): 'success' | 'warning' | 'danger' {
           Print
         </BaseButton>
         <BaseButton
-          v-if="order.status !== 'cancelled' && order.status !== 'delivered'"
+          v-if="canCancel"
           variant="danger"
           size="sm"
+          :loading="isUpdating"
           @click="cancelOrder"
         >
           Cancel Order
@@ -234,7 +226,7 @@ function getPaymentVariant(status: string): 'success' | 'warning' | 'danger' {
         <!-- Order items -->
         <BaseCard>
           <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
-            Order Items
+            Order Items ({{ order.items?.length || 0 }})
           </h3>
           <div class="divide-y divide-gray-200 dark:divide-gray-700">
             <div
@@ -244,26 +236,35 @@ function getPaymentVariant(status: string): 'success' | 'warning' | 'danger' {
             >
               <div class="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-700">
                 <img
-                  v-if="item.product_image"
-                  :src="item.product_image"
-                  :alt="item.product_name"
+                  v-if="item.product?.thumbnail"
+                  :src="item.product.thumbnail"
+                  :alt="item.product?.name"
                   class="h-full w-full object-cover"
                 />
+                <div v-else class="flex h-full w-full items-center justify-center text-gray-400">
+                  <CubeIcon class="h-8 w-8" />
+                </div>
               </div>
-              <div class="flex-1">
-                <p class="font-medium text-gray-900 dark:text-white">
-                  {{ item.product_name }}
+              <div class="flex-1 min-w-0">
+                <p class="font-medium text-gray-900 dark:text-white truncate">
+                  {{ item.product?.name || 'Deleted Product' }}
                 </p>
-                <p v-if="item.variant_name" class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ item.variant_name }}
+                <p v-if="item.variant?.name" class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ item.variant.name }}
+                  <span v-if="item.variant?.sku" class="ml-2 text-xs text-gray-400">
+                    SKU: {{ item.variant.sku }}
+                  </span>
                 </p>
                 <p class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ currency.formatCurrency(item.unit_price) }} × {{ item.quantity }}
+                  {{ formatCurrency(item.unit_price) }} × {{ item.quantity }}
                 </p>
               </div>
-              <div class="text-right">
+              <div class="text-right shrink-0">
                 <p class="font-medium text-gray-900 dark:text-white">
-                  {{ currency.formatCurrency(item.total_price) }}
+                  {{ formatCurrency(item.total) }}
+                </p>
+                <p v-if="item.commission_amount" class="text-xs text-gray-400">
+                  Commission: {{ formatCurrency(item.commission_amount) }}
                 </p>
               </div>
             </div>
@@ -273,23 +274,31 @@ function getPaymentVariant(status: string): 'success' | 'warning' | 'danger' {
           <div class="mt-6 space-y-2 border-t border-gray-200 pt-4 dark:border-gray-700">
             <div class="flex justify-between text-sm">
               <span class="text-gray-500 dark:text-gray-400">Subtotal</span>
-              <span class="text-gray-900 dark:text-white">{{ currency.formatCurrency(order.subtotal) }}</span>
+              <span class="text-gray-900 dark:text-white">{{ formatCurrency(order.subtotal) }}</span>
             </div>
-            <div class="flex justify-between text-sm">
+            <div v-if="order.tax_amount" class="flex justify-between text-sm">
               <span class="text-gray-500 dark:text-gray-400">Tax</span>
-              <span class="text-gray-900 dark:text-white">{{ currency.formatCurrency(order.tax_amount) }}</span>
+              <span class="text-gray-900 dark:text-white">{{ formatCurrency(order.tax_amount) }}</span>
             </div>
             <div class="flex justify-between text-sm">
               <span class="text-gray-500 dark:text-gray-400">Shipping</span>
-              <span class="text-gray-900 dark:text-white">{{ currency.formatCurrency(order.shipping_amount) }}</span>
+              <span class="text-gray-900 dark:text-white">{{ formatCurrency(order.shipping_amount) }}</span>
             </div>
             <div v-if="order.discount_amount" class="flex justify-between text-sm">
               <span class="text-gray-500 dark:text-gray-400">Discount</span>
-              <span class="text-success-600 dark:text-success-400">-{{ currency.formatCurrency(order.discount_amount) }}</span>
+              <span class="text-green-600 dark:text-green-400">-{{ formatCurrency(order.discount_amount) }}</span>
             </div>
             <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-gray-700">
               <span class="text-lg font-semibold text-gray-900 dark:text-white">Total</span>
-              <span class="text-lg font-bold text-gray-900 dark:text-white">{{ currency.formatCurrency(order.total_amount) }}</span>
+              <span class="text-lg font-bold text-gray-900 dark:text-white">{{ formatCurrency(order.total_amount) }}</span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span class="text-gray-500 dark:text-gray-400">Commission</span>
+              <span class="text-orange-600 dark:text-orange-400">{{ formatCurrency(totalCommission) }}</span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span class="text-gray-500 dark:text-gray-400">Vendor Earning</span>
+              <span class="text-green-600 dark:text-green-400">{{ formatCurrency(vendorEarning) }}</span>
             </div>
           </div>
         </BaseCard>
@@ -302,24 +311,47 @@ function getPaymentVariant(status: string): 'success' | 'warning' | 'danger' {
           <div class="space-y-4">
             <div
               v-for="(event, index) in order.status_history"
-              :key="event.id"
+              :key="index"
               class="flex gap-4"
             >
               <div class="flex flex-col items-center">
-                <div class="h-3 w-3 rounded-full bg-primary-600"></div>
-                <div v-if="index < order.status_history.length - 1" class="h-full w-0.5 bg-gray-200 dark:bg-gray-700"></div>
+                <div class="h-3 w-3 rounded-full" :class="index === 0 ? 'bg-primary-600' : 'bg-gray-300 dark:bg-gray-600'"></div>
+                <div v-if="index < order.status_history!.length - 1" class="h-full w-0.5 bg-gray-200 dark:bg-gray-700"></div>
               </div>
               <div class="flex-1 pb-4">
-                <p class="font-medium text-gray-900 dark:text-white capitalize">
-                  {{ event.to_status }}
-                </p>
+                <div class="flex items-center gap-2">
+                  <p class="font-medium text-gray-900 dark:text-white capitalize">
+                    {{ event.new_status }}
+                  </p>
+                  <span v-if="event.old_status" class="text-xs text-gray-400">
+                    from {{ event.old_status }}
+                  </span>
+                </div>
                 <p v-if="event.notes" class="text-sm text-gray-500 dark:text-gray-400">
                   {{ event.notes }}
                 </p>
                 <p class="text-xs text-gray-400 dark:text-gray-500">
-                  {{ date.format(event.changed_at, 'MMM D, YYYY [at] h:mm A') }}
+                  {{ formatDate(event.created_at, 'MMM D, YYYY [at] h:mm A') }}
+                  <span v-if="event.changed_by"> · by {{ event.changed_by }}</span>
                 </p>
               </div>
+            </div>
+          </div>
+        </BaseCard>
+
+        <!-- Order Notes -->
+        <BaseCard v-if="order.order_notes?.length">
+          <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+            Order Notes
+          </h3>
+          <div class="space-y-3">
+            <div
+              v-for="(note, index) in order.order_notes"
+              :key="index"
+              class="rounded-lg bg-gray-50 p-3 dark:bg-gray-800"
+            >
+              <p class="text-sm text-gray-700 dark:text-gray-300">{{ note.note }}</p>
+              <p class="mt-1 text-xs text-gray-400">{{ formatDate(note.created_at, 'MMM D, YYYY h:mm A') }}</p>
             </div>
           </div>
         </BaseCard>
@@ -332,13 +364,29 @@ function getPaymentVariant(status: string): 'success' | 'warning' | 'danger' {
           <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
             Update Status
           </h3>
-          <FormSelect
-            name="orderStatus"
-            :model-value="order.status"
-            :options="statusOptions"
-            :disabled="order.status === 'cancelled' || order.status === 'delivered'"
-            @update:modelValue="updateStatus($event as OrderStatus)"
-          />
+          <div class="space-y-3">
+            <FormSelect
+              v-model="newStatus"
+              name="orderStatus"
+              :options="statusOptions"
+              :disabled="order.status === 'cancelled' || order.status === 'refunded'"
+            />
+            <FormTextarea
+              v-model="statusNotes"
+              name="statusNotes"
+              placeholder="Add a note (optional)"
+              :rows="2"
+            />
+            <BaseButton
+              variant="primary"
+              block
+              :disabled="!newStatus || newStatus === order.status"
+              :loading="isUpdating"
+              @click="updateStatus"
+            >
+              Update Status
+            </BaseButton>
+          </div>
         </BaseCard>
 
         <!-- Customer info -->
@@ -346,28 +394,53 @@ function getPaymentVariant(status: string): 'success' | 'warning' | 'danger' {
           <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
             Customer
           </h3>
-          <div class="space-y-3">
+          <div class="space-y-2">
             <p class="font-medium text-gray-900 dark:text-white">
-              {{ order.customer?.name }}
+              {{ order.customer?.name || 'Guest' }}
             </p>
             <p class="text-sm text-gray-500 dark:text-gray-400">
               {{ order.customer?.email }}
             </p>
-            <p v-if="(order.customer as any)?.phone" class="text-sm text-gray-500 dark:text-gray-400">
-              {{ (order.customer as any).phone }}
-            </p>
           </div>
         </BaseCard>
 
+        <!-- Vendor info -->
+        <BaseCard v-if="order.vendor">
+          <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+            Vendor
+          </h3>
+          <p class="font-medium text-gray-900 dark:text-white">
+            {{ order.vendor.store_name }}
+          </p>
+        </BaseCard>
+
         <!-- Shipping address -->
-        <BaseCard>
+        <BaseCard v-if="order.shipping_address">
           <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
             Shipping Address
           </h3>
           <address class="not-italic text-sm text-gray-600 dark:text-gray-400">
-            {{ order.shipping_address.address_line_1 }}<br>
-            {{ order.shipping_address.city }}, {{ order.shipping_address.district }} {{ order.shipping_address.postal_code }}<br>
-            {{ order.shipping_address.country }}
+            <p class="font-medium text-gray-900 dark:text-white">{{ order.shipping_address.full_name }}</p>
+            <p v-if="order.shipping_address.phone">{{ order.shipping_address.phone }}</p>
+            <p>{{ order.shipping_address.address_line1 }}</p>
+            <p v-if="order.shipping_address.address_line2">{{ order.shipping_address.address_line2 }}</p>
+            <p>{{ order.shipping_address.city }}, {{ order.shipping_address.state }} {{ order.shipping_address.postal_code }}</p>
+            <p>{{ order.shipping_address.country }}</p>
+          </address>
+        </BaseCard>
+
+        <!-- Billing address -->
+        <BaseCard v-if="order.billing_address">
+          <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+            Billing Address
+          </h3>
+          <address class="not-italic text-sm text-gray-600 dark:text-gray-400">
+            <p class="font-medium text-gray-900 dark:text-white">{{ order.billing_address.full_name }}</p>
+            <p v-if="order.billing_address.phone">{{ order.billing_address.phone }}</p>
+            <p>{{ order.billing_address.address_line1 }}</p>
+            <p v-if="order.billing_address.address_line2">{{ order.billing_address.address_line2 }}</p>
+            <p>{{ order.billing_address.city }}, {{ order.billing_address.state }} {{ order.billing_address.postal_code }}</p>
+            <p>{{ order.billing_address.country }}</p>
           </address>
         </BaseCard>
 
@@ -380,7 +453,7 @@ function getPaymentVariant(status: string): 'success' | 'warning' | 'danger' {
             <div class="flex justify-between">
               <span class="text-sm text-gray-500 dark:text-gray-400">Method</span>
               <span class="text-sm font-medium capitalize text-gray-900 dark:text-white">
-                {{ order.payment_method }}
+                {{ order.payment_method || '—' }}
               </span>
             </div>
             <div class="flex justify-between">
@@ -389,13 +462,25 @@ function getPaymentVariant(status: string): 'success' | 'warning' | 'danger' {
                 {{ order.payment_status }}
               </BaseBadge>
             </div>
+            <div v-if="order.paid_at" class="flex justify-between">
+              <span class="text-sm text-gray-500 dark:text-gray-400">Paid at</span>
+              <span class="text-sm text-gray-900 dark:text-white">
+                {{ formatDate(order.paid_at, 'MMM D, YYYY h:mm A') }}
+              </span>
+            </div>
+            <div v-if="order.coupon_code" class="flex justify-between">
+              <span class="text-sm text-gray-500 dark:text-gray-400">Coupon</span>
+              <span class="text-sm font-medium text-gray-900 dark:text-white">
+                {{ order.coupon_code }}
+              </span>
+            </div>
           </div>
         </BaseCard>
 
-        <!-- Notes -->
+        <!-- Customer notes -->
         <BaseCard v-if="order.notes">
           <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
-            Order Notes
+            Customer Notes
           </h3>
           <p class="text-sm text-gray-600 dark:text-gray-400">
             {{ order.notes }}

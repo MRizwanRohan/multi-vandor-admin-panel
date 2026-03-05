@@ -69,11 +69,11 @@ const statusConfig: Record<OrderStatus, {
     color: 'text-danger-500',
     bgColor: 'bg-danger-100 dark:bg-danger-900/50'
   },
-  returned: {
-    label: 'ফেরত',
-    icon: ArrowPathIcon,
-    color: 'text-orange-500',
-    bgColor: 'bg-orange-100 dark:bg-orange-900/50'
+  completed: {
+    label: 'সম্পন্ন',
+    icon: CheckCircleIcon,
+    color: 'text-green-500',
+    bgColor: 'bg-green-100 dark:bg-green-900/50'
   },
   refunded: {
     label: 'রিফান্ড',
@@ -94,9 +94,9 @@ const standardFlow: OrderStatus[] = [
 
 // Get expected statuses based on current status
 const expectedStatuses = computed(() => {
-  // For cancelled/returned/refunded, show only what happened
-  if (['cancelled', 'returned', 'refunded'].includes(props.currentStatus)) {
-    const statusesInHistory = props.history.map(h => h.to_status)
+  // For cancelled/completed/refunded, show only what happened
+  if (['cancelled', 'completed', 'refunded'].includes(props.currentStatus)) {
+    const statusesInHistory = props.history.map(h => h.new_status)
     return [...new Set(statusesInHistory)]
   }
   
@@ -111,7 +111,7 @@ const timelineItems = computed(() => {
   const historyMap = new Map<OrderStatus, OrderStatusHistory>()
   
   props.history.forEach(h => {
-    historyMap.set(h.to_status, h)
+    historyMap.set(h.new_status, h)
   })
   
   return expectedStatuses.value.map((status, index) => {
@@ -127,7 +127,7 @@ const timelineItems = computed(() => {
       isCompleted,
       isCurrent,
       isLast,
-      changedAt: historyItem?.changed_at,
+      changedAt: historyItem?.created_at,
       changedBy: historyItem?.changed_by,
       notes: historyItem?.notes
     }
@@ -231,7 +231,7 @@ const timelineItems = computed(() => {
 
     <!-- Legend for non-standard statuses -->
     <div
-      v-if="['cancelled', 'returned', 'refunded'].includes(currentStatus)"
+      v-if="['cancelled', 'completed', 'refunded'].includes(currentStatus)"
       class="rounded-lg border border-danger-200 bg-danger-50 p-3 dark:border-danger-800 dark:bg-danger-900/20"
     >
       <div class="flex items-center gap-2 text-sm text-danger-800 dark:text-danger-300">

@@ -4,7 +4,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { OrderDetail, Order } from '@/types'
+import type { Order } from '@/types'
 import { useCurrency } from '@/composables'
 import { BaseBadge } from '@/components/ui'
 import {
@@ -17,7 +17,7 @@ import {
 } from '@heroicons/vue/24/outline'
 
 interface Props {
-  order: Order | OrderDetail
+  order: Order
   showVendorEarnings?: boolean
   showPaymentInfo?: boolean
 }
@@ -27,10 +27,20 @@ const props = withDefaults(defineProps<Props>(), {
   showPaymentInfo: true
 })
 
-const { formatPrice } = useCurrency()
+const { formatCurrency: formatPrice } = useCurrency()
 
-// Check if we have full details
-const hasDetails = computed(() => 'commission_amount' in props.order)
+// Computed commission & vendor earning from items
+const totalCommission = computed(() => {
+  if (!props.order.items) return 0
+  return props.order.items.reduce((sum, item) => sum + Number(item.commission_amount || 0), 0)
+})
+
+const vendorEarning = computed(() => {
+  return Number(props.order.total_amount) - totalCommission.value
+})
+
+// Check if we have full details (items loaded)
+const hasDetails = computed(() => !!props.order.items?.length)
 
 // Payment status config
 const paymentStatusConfig: Record<string, { variant: string; label: string }> = {
@@ -54,10 +64,10 @@ const paymentMethodLabels: Record<string, string> = {
 
 // Order items count
 const itemCount = computed(() => {
-  if ('items' in props.order) {
+  if (props.order.items?.length) {
     return props.order.items.reduce((sum, item) => sum + item.quantity, 0)
   }
-  return props.order.item_count
+  return props.order.items_count ?? 0
 })
 </script>
 
@@ -149,7 +159,7 @@ const itemCount = computed(() => {
             কমিশন
           </span>
           <span class="text-sm font-medium text-danger-600">
-            -{{ formatPrice((order as OrderDetail).commission_amount) }}
+            -{{ formatPrice(totalCommission) }}
           </span>
         </div>
         <div class="flex items-center justify-between">
@@ -158,7 +168,7 @@ const itemCount = computed(() => {
             ভেন্ডর আয়
           </span>
           <span class="text-lg font-bold text-success-600 dark:text-success-400">
-            {{ formatPrice((order as OrderDetail).vendor_earning) }}
+            {{ formatPrice(vendorEarning) }}
           </span>
         </div>
       </div>

@@ -1,5 +1,5 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<!-- Admin Order List — Order management list page -->
+<!-- Admin Order List — Order management list page                     -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
@@ -7,7 +7,7 @@ import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBreadcrumbStore } from '@/stores'
 import { orderService } from '@/services'
-import { useCurrency, usePagination, useDate } from '@/composables'
+import { useCurrency, usePagination, useDate, useToast } from '@/composables'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
@@ -23,8 +23,9 @@ import {
 
 const router = useRouter()
 const breadcrumbStore = useBreadcrumbStore()
-const currency = useCurrency()
-const date = useDate()
+const { formatCurrency } = useCurrency()
+const { formatDate } = useDate()
+const toast = useToast()
 const pagination = usePagination()
 
 // Set page info
@@ -46,9 +47,11 @@ const statusFilter = ref('')
 const statusOptions = [
   { value: '', label: 'All Status' },
   { value: 'pending', label: 'Pending' },
+  { value: 'confirmed', label: 'Confirmed' },
   { value: 'processing', label: 'Processing' },
   { value: 'shipped', label: 'Shipped' },
   { value: 'delivered', label: 'Delivered' },
+  { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' },
   { value: 'refunded', label: 'Refunded' },
 ]
@@ -57,9 +60,11 @@ const statusOptions = [
 const columns: TableColumn[] = [
   { key: 'orderNumber', label: 'Order', sortable: true },
   { key: 'customer', label: 'Customer', sortable: true },
+  { key: 'vendor', label: 'Vendor' },
   { key: 'items', label: 'Items', align: 'center' },
   { key: 'total', label: 'Total', sortable: true, align: 'right' },
   { key: 'status', label: 'Status', sortable: true, align: 'center' },
+  { key: 'payment', label: 'Payment', align: 'center' },
   { key: 'date', label: 'Date', sortable: true },
   { key: 'actions', label: '', align: 'right' },
 ]
@@ -71,74 +76,14 @@ async function fetchOrders() {
     const response = await orderService.getAll({
       page: pagination.currentPage.value,
       per_page: pagination.perPage.value,
-      search: searchQuery.value,
+      search: searchQuery.value || undefined,
       status: statusFilter.value || undefined,
     })
     orders.value = response.data
     pagination.total.value = response.meta.total
   } catch (error) {
-    // Mock data
-    orders.value = [
-      {
-        id: '1',
-        orderNumber: 'ORD-2024-001',
-        customer: { id: '1', name: 'John Doe', email: 'john@example.com' },
-        items: [
-          { id: '1', productId: '1', productName: 'T-Shirt', quantity: 2, price: 1500, total: 3000 },
-        ],
-        subtotal: 3000,
-        tax: 150,
-        shipping: 100,
-        discount: 0,
-        total: 3250,
-        status: 'pending',
-        paymentStatus: 'paid',
-        paymentMethod: 'card',
-        shippingAddress: { street: '123 Main St', city: 'Dhaka', state: 'Dhaka', postalCode: '1205', country: 'Bangladesh' },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: '2',
-        orderNumber: 'ORD-2024-002',
-        customer: { id: '2', name: 'Jane Smith', email: 'jane@example.com' },
-        items: [
-          { id: '1', productId: '2', productName: 'Jeans', quantity: 1, price: 3500, total: 3500 },
-          { id: '2', productId: '3', productName: 'Shoes', quantity: 1, price: 5500, total: 5500 },
-        ],
-        subtotal: 9000,
-        tax: 450,
-        shipping: 150,
-        discount: 500,
-        total: 9100,
-        status: 'processing',
-        paymentStatus: 'paid',
-        paymentMethod: 'bkash',
-        shippingAddress: { street: '456 Fashion Ave', city: 'Chittagong', state: 'Chittagong', postalCode: '4000', country: 'Bangladesh' },
-        createdAt: new Date(Date.now() - 86400000).toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: '3',
-        orderNumber: 'ORD-2024-003',
-        customer: { id: '3', name: 'Mike Johnson', email: 'mike@example.com' },
-        items: [
-          { id: '1', productId: '4', productName: 'Watch', quantity: 1, price: 15000, total: 15000 },
-        ],
-        subtotal: 15000,
-        tax: 750,
-        shipping: 0,
-        discount: 1000,
-        total: 14750,
-        status: 'delivered',
-        paymentStatus: 'paid',
-        paymentMethod: 'cod',
-        shippingAddress: { street: '789 Tech Park', city: 'Sylhet', state: 'Sylhet', postalCode: '3100', country: 'Bangladesh' },
-        createdAt: new Date(Date.now() - 172800000).toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    ] as any[]
-    pagination.total.value = 3
+    toast.error('Failed to load orders')
+    orders.value = []
   } finally {
     isLoading.value = false
   }
@@ -163,13 +108,25 @@ function viewOrder(order: Order) {
 function getStatusVariant(status: string): 'success' | 'warning' | 'danger' | 'info' | 'primary' | 'secondary' {
   const variants: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'primary' | 'secondary'> = {
     pending: 'warning',
+    confirmed: 'info',
     processing: 'info',
     shipped: 'primary',
     delivered: 'success',
+    completed: 'success',
     cancelled: 'danger',
     refunded: 'secondary',
   }
   return variants[status] || 'secondary'
+}
+
+function getPaymentVariant(status: string): 'success' | 'warning' | 'danger' {
+  const variants: Record<string, 'success' | 'warning' | 'danger'> = {
+    paid: 'success',
+    pending: 'warning',
+    failed: 'danger',
+    cancelled: 'danger',
+  }
+  return variants[status] || 'warning'
 }
 </script>
 
@@ -232,27 +189,39 @@ function getStatusVariant(status: string): 'success' | 'warning' | 'danger' | 'i
           </div>
         </template>
 
+        <template #cell-vendor="{ item }">
+          <span class="text-gray-900 dark:text-white">
+            {{ item.vendor?.store_name || '—' }}
+          </span>
+        </template>
+
         <template #cell-items="{ item }">
           <span class="text-gray-900 dark:text-white">
-            {{ item.item_count || 0 }} items
+            {{ item.items_count ?? 0 }}
           </span>
         </template>
 
         <template #cell-total="{ item }">
           <span class="font-medium text-gray-900 dark:text-white">
-            {{ currency.format(item.total_amount) }}
+            {{ formatCurrency(item.total_amount) }}
           </span>
         </template>
 
         <template #cell-status="{ item }">
           <BaseBadge :variant="getStatusVariant(item.status)" class="capitalize">
-            {{ item.status }}
+            {{ item.status_label || item.status }}
+          </BaseBadge>
+        </template>
+
+        <template #cell-payment="{ item }">
+          <BaseBadge :variant="getPaymentVariant(item.payment_status)" size="sm" class="capitalize">
+            {{ item.payment_status }}
           </BaseBadge>
         </template>
 
         <template #cell-date="{ item }">
           <span class="text-gray-500 dark:text-gray-400">
-            {{ date.format(item.created_at, 'MMM D, YYYY') }}
+            {{ formatDate(item.created_at, 'MMM D, YYYY') }}
           </span>
         </template>
 
@@ -264,6 +233,13 @@ function getStatusVariant(status: string): 'success' | 'warning' | 'danger' | 'i
           >
             <EyeIcon class="h-5 w-5" />
           </button>
+        </template>
+
+        <template #empty>
+          <EmptyState
+            title="No orders found"
+            description="No orders match your current filters."
+          />
         </template>
       </DataTable>
     </BaseCard>

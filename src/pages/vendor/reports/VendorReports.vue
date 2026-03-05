@@ -7,7 +7,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useBreadcrumbStore } from '@/stores'
 import { useCurrency } from '@/composables/useCurrency'
 import { analyticsService } from '@/services'
-import type { VendorDashboardStats, AnalyticsTopProduct, SalesChartResponse } from '@/types'
+import type { SalesChartResponse } from '@/types'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import AppSpinner from '@/components/ui/AppSpinner.vue'
 import StatCard from '@/components/ui/StatCard.vue'
@@ -18,10 +18,24 @@ import BarChart from '@/components/charts/BarChart.vue'
 import {
   CurrencyDollarIcon,
   ShoppingCartIcon,
-  EyeIcon,
-  ArrowTrendingUpIcon,
+  CubeIcon,
+  BanknotesIcon,
   ArrowDownTrayIcon,
 } from '@heroicons/vue/24/outline'
+
+// Match actual backend response
+interface DashboardResponse {
+  overview: {
+    total_revenue: { value: number; previous: number; change_percentage: number; trend: 'up' | 'down' }
+    total_orders: { value: number; previous: number; change_percentage: number; trend: 'up' | 'down' }
+    total_earnings: { value: number; previous: number; change_percentage: number; trend: 'up' | 'down' }
+    pending_payouts: number
+    available_balance: number
+  }
+  orders: { total: number; pending_action: number }
+  products: { total: number; total_active: number }
+  top_products: { product_id: number; product_name: string; revenue: number; quantity_sold: number }[]
+}
 
 const breadcrumbStore = useBreadcrumbStore()
 const { formatCurrency } = useCurrency()
@@ -32,9 +46,8 @@ const error = ref<string | null>(null)
 const isExporting = ref(false)
 const dateRange = ref<'week' | 'month' | 'quarter' | 'year'>('month')
 
-const dashboard = ref<VendorDashboardStats | null>(null)
+const dashboard = ref<DashboardResponse | null>(null)
 const chartData = ref<SalesChartResponse | null>(null)
-const topProducts = ref<AnalyticsTopProduct[]>([])
 
 const dateRangeOptions = [
   { label: 'Last 7 Days', value: 'week' },
@@ -43,16 +56,16 @@ const dateRangeOptions = [
   { label: 'This Year', value: 'year' },
 ]
 
-// Computed stats
+// Computed stats - map from actual backend structure
 const stats = computed(() => {
-  if (!dashboard.value) return []
-  const d = dashboard.value
-  const mapTrend = (ct: string) => ct === 'increase' ? 'up' as const : ct === 'decrease' ? 'down' as const : 'neutral' as const
+  if (!dashboard.value?.overview) return []
+  const ov = dashboard.value.overview
+  const prod = dashboard.value.products
   return [
-    { title: 'Total Revenue', value: d.revenue?.formatted || '৳0', icon: CurrencyDollarIcon, change: Math.abs(d.revenue?.change || 0), trend: mapTrend(d.revenue?.change_type || 'neutral'), changeLabel: 'vs last period', color: 'primary' as const },
-    { title: 'Total Orders', value: d.orders?.formatted || '0', icon: ShoppingCartIcon, change: Math.abs(d.orders?.change || 0), trend: mapTrend(d.orders?.change_type || 'neutral'), changeLabel: 'vs last period', color: 'success' as const },
-    { title: 'Total Products', value: d.products?.formatted || '0', icon: EyeIcon, change: Math.abs(d.products?.change || 0), trend: mapTrend(d.products?.change_type || 'neutral'), changeLabel: 'vs last period', color: 'info' as const },
-    { title: 'Average Rating', value: d.rating?.formatted || '0', icon: ArrowTrendingUpIcon, change: Math.abs(d.rating?.change || 0), trend: mapTrend(d.rating?.change_type || 'neutral'), changeLabel: 'vs last period', color: 'warning' as const },
+    { title: 'Total Revenue', value: formatCurrency(ov.total_revenue?.value || 0), icon: CurrencyDollarIcon, change: Math.abs(ov.total_revenue?.change_percentage || 0), trend: ov.total_revenue?.trend === 'up' ? 'up' as const : 'down' as const, changeLabel: 'vs last period', color: 'primary' as const },
+    { title: 'Total Orders', value: String(ov.total_orders?.value || 0), icon: ShoppingCartIcon, change: Math.abs(ov.total_orders?.change_percentage || 0), trend: ov.total_orders?.trend === 'up' ? 'up' as const : 'down' as const, changeLabel: 'vs last period', color: 'success' as const },
+    { title: 'Total Products', value: String(prod?.total || prod?.total_active || 0), icon: CubeIcon, change: 0, trend: 'neutral' as const, changeLabel: '', color: 'info' as const },
+    { title: 'Total Earnings', value: formatCurrency(ov.total_earnings?.value || 0), icon: BanknotesIcon, change: Math.abs(ov.total_earnings?.change_percentage || 0), trend: ov.total_earnings?.trend === 'up' ? 'up' as const : 'down' as const, changeLabel: 'vs last period', color: 'warning' as const },
   ]
 })
 
@@ -67,17 +80,17 @@ const revenueDatasets = computed(() => {
   ]
 })
 
-// Top products for bar chart
-const topProductLabels = computed(() => topProducts.value.slice(0, 5).map(p => p.name.substring(0, 15)))
-const topProductData = computed(() => topProducts.value.slice(0, 5).map(p => p.total_revenue))
+// Top products from dashboard response
+const topProducts = computed(() => dashboard.value?.top_products || [])
+const topProductLabels = computed(() => topProducts.value.slice(0, 5).map(p => (p.product_name || '').substring(0, 15)))
+const topProductData = computed(() => topProducts.value.slice(0, 5).map(p => p.revenue || 0))
 
 // Best sellers table
 const sellerColumns = [
   { key: 'rank', label: '#', align: 'center' as const },
-  { key: 'name', label: 'Product', sortable: true },
-  { key: 'total_sold', label: 'Units Sold', align: 'right' as const, sortable: true },
-  { key: 'total_revenue', label: 'Revenue', align: 'right' as const, sortable: true },
-  { key: 'average_rating', label: 'Rating', align: 'right' as const },
+  { key: 'product_name', label: 'Product', sortable: true },
+  { key: 'quantity_sold', label: 'Units Sold', align: 'right' as const, sortable: true },
+  { key: 'revenue', label: 'Revenue', align: 'right' as const, sortable: true },
 ]
 
 // Fetch data
@@ -86,14 +99,12 @@ async function fetchData() {
   error.value = null
   try {
     const params = { period: dateRange.value }
-    const [dashboardRes, chartRes, productsRes] = await Promise.all([
+    const [dashboardRes, chartRes] = await Promise.all([
       analyticsService.getVendorDashboardStats(params),
       analyticsService.getSalesChart(params),
-      analyticsService.getTopProducts({ ...params, limit: 10 }),
     ])
-    dashboard.value = dashboardRes
+    dashboard.value = dashboardRes as any
     chartData.value = chartRes
-    topProducts.value = Array.isArray(productsRes) ? productsRes : []
   } catch (e: any) {
     error.value = e.response?.data?.message || 'Failed to load reports'
   } finally {
@@ -218,22 +229,16 @@ onMounted(() => {
             </span>
           </template>
 
-          <template #cell-name="{ row }">
-            <span class="font-medium text-gray-900 dark:text-white">{{ row.name }}</span>
+          <template #cell-product_name="{ row }">
+            <span class="font-medium text-gray-900 dark:text-white">{{ row.product_name }}</span>
           </template>
 
-          <template #cell-total_sold="{ row }">
-            <span class="text-sm text-gray-600 dark:text-gray-400">{{ row.total_sold || 0 }}</span>
+          <template #cell-quantity_sold="{ row }">
+            <span class="text-sm text-gray-600 dark:text-gray-400">{{ row.quantity_sold || 0 }}</span>
           </template>
 
-          <template #cell-total_revenue="{ row }">
-            <span class="font-medium text-gray-900 dark:text-white">{{ formatCurrency(row.total_revenue) }}</span>
-          </template>
-
-          <template #cell-average_rating="{ row }">
-            <span class="text-sm font-medium text-warning-600 dark:text-warning-400">
-              {{ Number(row.average_rating || 0).toFixed(1) }} ⭐
-            </span>
+          <template #cell-revenue="{ row }">
+            <span class="font-medium text-gray-900 dark:text-white">{{ formatCurrency(row.revenue || 0) }}</span>
           </template>
         </DataTable>
       </BaseCard>

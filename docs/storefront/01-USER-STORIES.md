@@ -109,8 +109,22 @@
 **Acceptance Criteria:**
 - Vendor name and logo visible on product cards
 - Vendor badge (verified / new) shown
-- Clicking vendor name → vendor store page (future)
+- Clicking vendor name → vendor store page (`/vendors/{slug}`)
 - Products sorted by vendor rating optionally
+
+### US-1.6 — Vendor Store Page *(P2 — Sprint 6+)*
+**As a** shopper,
+**I want to** visit a vendor's dedicated store page,
+**so that** I can see all products, ratings, and info for a specific seller.
+
+**Acceptance Criteria:**
+- Vendor store page at `/vendors/{slug}`
+- Vendor info from `GET /api/v1/customer/vendors/{slug}`
+- Vendor header: logo, store name, description, rating, total products
+- Products grid filtered to this vendor
+- "About" tab with vendor policies and contact
+- SEO: JSON-LD Organization schema
+- Fallback: if vendor endpoint not available, show error with "Browse all products" CTA
 
 ---
 
@@ -248,13 +262,14 @@
 
 **Acceptance Criteria:**
 - Step 1: Shipping Address (name, phone, address line 1 & 2, city, district, postal code, country)
-- Step 2: Shipping Method (options from available methods per vendor)
+- Step 2: Shipping Method — options loaded from `GET /api/v1/shipping/methods` (per vendor)
 - Step 3: Payment Method (Stripe, PayPal, SSLCommerz, COD)
 - Step 4: Order Review (items, shipping, payment, total breakdown)
 - Mobile: vertical accordion steps | Desktop: horizontal stepper
 - Form validation at each step before proceeding
-- Order placed via `POST /api/v1/customer/orders`
-- Saved addresses auto-populated for authenticated users (future: addresses endpoint)
+- Shipping cost calculated via `POST /api/v1/shipping/calculate` with cart items + address
+- Order placed via `POST /api/v1/customer/orders` (includes `shipping_method_id` per vendor)
+- Saved addresses auto-populated for authenticated users (activation: Sprint 3 — see US-4.6)
 
 ### US-3.6 — Multi-Vendor Cart Split
 **As a** shopper buying from multiple vendors,
@@ -316,10 +331,28 @@
 
 **Acceptance Criteria:**
 - View: name, email, phone, avatar
-- Edit: first name, last name, phone
-- Change password with current password verification
+- Edit: first name, last name, phone — `PUT /api/v1/auth/profile`
+- Change password with current password verification — `PUT /api/v1/auth/change-password`
 - Profile accessible from header dropdown
-- Note: Profile and Addresses endpoints are defined but commented out — will be activated
+- API: `GET /api/v1/auth/me` returns current user profile
+
+> **Backend Note:** Profile update and address endpoints are defined in the backend but currently commented out in routes. **Activation target: Sprint 3.** Frontend should implement the UI and show a graceful fallback ("Profile update coming soon") until backend routes are uncommented.
+
+### US-4.6 — Address Book *(P2 — Sprint 6+)*
+**As a** logged-in customer,
+**I want to** save and manage multiple shipping addresses,
+**so that** I can quickly select a saved address at checkout.
+
+**Acceptance Criteria:**
+- Address list from `GET /api/v1/customer/addresses` (when activated)
+- Add new address: `POST /api/v1/customer/addresses`
+- Edit address: `PUT /api/v1/customer/addresses/{id}`
+- Delete address: `DELETE /api/v1/customer/addresses/{id}`
+- Set default address
+- Auto-populate default address in checkout Step 1
+- Graceful fallback if endpoint returns 404 (backend not yet activated)
+
+> **Backend Dependency:** Address endpoints are defined but commented out. Will be activated in Sprint 3 (backend) → Sprint 6+ for full storefront integration.
 
 ### US-4.5 — Session Management
 **As a** logged-in customer,
@@ -371,7 +404,9 @@
 - Items list with product image, name, quantity, price
 - Shipping address and billing address
 - Payment method and transaction status
-- Shipment tracking information (when shipped)
+- Shipment tracking: `GET /api/v1/customer/orders/{orderNumber}/tracking`
+  - Returns: carrier name, tracking number, tracking URL, status updates
+  - If no tracking available: show "Tracking will be available once shipped"
 - "Cancel Order" button (if `canBeCancelled`)
 - "Write Review" button for delivered items
 
@@ -585,8 +620,11 @@
   - `POST /api/v1/payments/paypal` → approval URL
   - `POST /api/v1/payments/paypal/capture` → capture after return
 - **SSLCommerz:** Redirect flow (Bangladesh gateway)
-  - `POST /api/v1/payments/sslcommerz` → redirect URL
-  - Callbacks: success/fail/cancel
+  - `POST /api/v1/payments/sslcommerz` → redirect URL from gateway
+  - `GET /api/v1/payments/sslcommerz/success` — success callback (redirects customer to order confirmation)
+  - `GET /api/v1/payments/sslcommerz/fail` — failure callback (redirects customer to retry payment page)
+  - `GET /api/v1/payments/sslcommerz/cancel` — cancel callback (redirects customer back to checkout)
+  - `POST /api/v1/payments/sslcommerz/ipn` — IPN webhook (server-to-server, updates order status)
 - **COD (Cash on Delivery):** No payment processing needed
 - Available methods from `GET /api/v1/payments/methods`
 - Payment status polling: `GET /api/v1/payments/{orderId}/status`
@@ -621,17 +659,17 @@
 
 | Category | Total Stories | Priority |
 |----------|-------------|----------|
-| Browsing & Discovery | 5 | P0 (Must Have) |
+| Browsing & Discovery | 6 | P0 (5) + P2 (1: US-1.6) |
 | Product Experience | 5 | P0 (Must Have) |
 | Cart & Checkout | 6 | P0 (Must Have) |
-| Authentication | 5 | P0 (Must Have) |
+| Authentication | 6 | P0 (5) + P2 (1: US-4.6) |
 | Orders & Tracking | 4 | P0 (Must Have) |
 | Reviews & Social Proof | 3 | P1 (Should Have) |
 | Promotions & Deals | 3 | P1 (Should Have) |
 | Content & Information | 5 | P1 (Should Have) |
 | Search & Filtering | 3 | P0 (Must Have) |
 | Payments & Refunds | 3 | P0 (Must Have) |
-| **Total** | **42** | |
+| **Total** | **44** | |
 
 ### Priority Matrix
 
@@ -639,7 +677,17 @@
 |----------|-------|---------|---------------|
 | P0 | Must Have (MVP) | 28 | Sprint 1–3 |
 | P1 | Should Have | 11 | Sprint 4–5 |
-| P2 | Nice to Have | 3 | Sprint 6+ |
+| P2 | Nice to Have | 5 | Sprint 6+ |
+
+### P2 (Nice to Have) Stories — Explicitly Listed
+
+| Story | Title | Dependency |
+|-------|-------|------------|
+| US-1.6 | Vendor Store Page | Vendor public API endpoint |
+| US-4.6 | Address Book | Backend route activation |
+| US-6.3 | Vote on Reviews | Review voting API |
+| US-7.2 | Available Coupons Page | Coupons available API |
+| US-8.5 | Newsletter Subscription | Newsletter API |
 
 ---
 

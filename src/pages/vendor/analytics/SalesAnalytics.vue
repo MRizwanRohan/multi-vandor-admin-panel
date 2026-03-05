@@ -50,37 +50,38 @@ const groupByOptions = [
 const stats = computed(() => {
   if (!salesData.value?.overview) return []
   const o = salesData.value.overview
+  const c = o.comparison || {}
   return [
     {
       title: 'Total Revenue',
-      value: formatCurrency(o.total_revenue),
+      value: formatCurrency(o.total_revenue || 0),
       icon: CurrencyDollarIcon,
-      change: Math.abs(o.revenue_change || 0),
-      trend: (o.revenue_change || 0) >= 0 ? 'up' as const : 'down' as const,
+      change: Math.abs(c.revenue_change || 0),
+      trend: (c.revenue_change || 0) >= 0 ? 'up' as const : 'down' as const,
       color: 'primary' as const,
     },
     {
       title: 'Total Orders',
-      value: String(o.total_orders),
+      value: String(o.total_orders || 0),
       icon: ShoppingCartIcon,
-      change: Math.abs(o.orders_change || 0),
-      trend: (o.orders_change || 0) >= 0 ? 'up' as const : 'down' as const,
+      change: Math.abs(c.orders_change || 0),
+      trend: (c.orders_change || 0) >= 0 ? 'up' as const : 'down' as const,
       color: 'success' as const,
     },
     {
       title: 'Average Order Value',
-      value: formatCurrency(o.average_order_value),
+      value: formatCurrency(o.average_order_value || 0),
       icon: ReceiptPercentIcon,
-      change: Math.abs(o.aov_change || 0),
-      trend: (o.aov_change || 0) >= 0 ? 'up' as const : 'down' as const,
+      change: Math.abs(c.aov_change || 0),
+      trend: (c.aov_change || 0) >= 0 ? 'up' as const : 'down' as const,
       color: 'info' as const,
     },
     {
-      title: 'Conversion Rate',
-      value: `${(o.conversion_rate || 0).toFixed(2)}%`,
+      title: 'Items Sold',
+      value: String(o.total_items_sold || 0),
       icon: ArrowTrendingUpIcon,
-      change: Math.abs(o.conversion_change || 0),
-      trend: (o.conversion_change || 0) >= 0 ? 'up' as const : 'down' as const,
+      change: 0,
+      trend: 'neutral' as const,
       color: 'warning' as const,
     },
   ]

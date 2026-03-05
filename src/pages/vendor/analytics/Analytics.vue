@@ -7,7 +7,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useBreadcrumbStore } from '@/stores'
 import { useCurrency } from '@/composables'
 import { analyticsService } from '@/services'
-import type { VendorDashboardStats, AnalyticsTopProduct, SalesChartResponse, LowStockAlert } from '@/types'
+import type { SalesChartResponse, LowStockAlert } from '@/types'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import AppSpinner from '@/components/ui/AppSpinner.vue'
 import StatCard from '@/components/ui/StatCard.vue'
@@ -17,9 +17,28 @@ import {
   CurrencyDollarIcon,
   ShoppingCartIcon,
   CubeIcon,
-  StarIcon,
+  BanknotesIcon,
   ExclamationTriangleIcon,
 } from '@heroicons/vue/24/outline'
+
+// Backend response interface (matches VendorDashboardService output)
+interface DashboardResponse {
+  overview: {
+    total_revenue: { value: number; previous: number; change_percentage: number; trend: 'up' | 'down' }
+    total_orders: { value: number; previous: number; change_percentage: number; trend: 'up' | 'down' }
+    total_earnings: { value: number; previous: number; change_percentage: number; trend: 'up' | 'down' }
+    pending_payouts: number
+    available_balance: number
+  }
+  orders: { total: number; by_status: Record<string, number>; pending_action: number; average_order_value: number }
+  revenue: { daily: { date: string; revenue: number }[]; total: number }
+  products: { total: number; total_active: number; total_inactive: number; total_out_of_stock: number }
+  earnings: { total: number; pending: number; paid: number }
+  recent_orders: any[]
+  top_products: { product_id: number; product_name: string; revenue: number; quantity_sold: number }[]
+  period: string
+  date_range: { start: string; end: string }
+}
 
 const breadcrumbStore = useBreadcrumbStore()
 const { formatCurrency } = useCurrency()
@@ -29,9 +48,8 @@ const isLoading = ref(true)
 const error = ref<string | null>(null)
 const dateRange = ref<'week' | 'month' | 'quarter' | 'year'>('month')
 
-const dashboard = ref<VendorDashboardStats | null>(null)
+const dashboard = ref<DashboardResponse | null>(null)
 const salesChart = ref<SalesChartResponse | null>(null)
-const topProducts = ref<AnalyticsTopProduct[]>([])
 const lowStockAlerts = ref<LowStockAlert[]>([])
 
 const dateRangeOptions = [
@@ -41,42 +59,43 @@ const dateRangeOptions = [
   { value: 'year', label: 'This Year' },
 ]
 
-// Computed stats from API response
+// Computed stats from API response - properly map backend structure
 const stats = computed(() => {
-  if (!dashboard.value) return []
-  const d = dashboard.value
-  const mapTrend = (ct: string) => ct === 'increase' ? 'up' as const : ct === 'decrease' ? 'down' as const : 'neutral' as const
+  if (!dashboard.value?.overview) return []
+  const ov = dashboard.value.overview
+  const ord = dashboard.value.orders
+  const prod = dashboard.value.products
   return [
     {
       title: 'Total Revenue',
-      value: d.revenue?.formatted || '৳0',
+      value: formatCurrency(ov.total_revenue?.value || 0),
       icon: CurrencyDollarIcon,
-      change: Math.abs(d.revenue?.change || 0),
-      trend: mapTrend(d.revenue?.change_type || 'neutral'),
+      change: Math.abs(ov.total_revenue?.change_percentage || 0),
+      trend: ov.total_revenue?.trend === 'up' ? 'up' as const : 'down' as const,
       color: 'primary' as const,
     },
     {
       title: 'Total Orders',
-      value: d.orders?.formatted || '0',
+      value: String(ov.total_orders?.value || ord?.total || 0),
       icon: ShoppingCartIcon,
-      change: Math.abs(d.orders?.change || 0),
-      trend: mapTrend(d.orders?.change_type || 'neutral'),
+      change: Math.abs(ov.total_orders?.change_percentage || 0),
+      trend: ov.total_orders?.trend === 'up' ? 'up' as const : 'down' as const,
       color: 'success' as const,
     },
     {
       title: 'Total Products',
-      value: d.products?.formatted || '0',
+      value: String(prod?.total || prod?.total_active || 0),
       icon: CubeIcon,
-      change: Math.abs(d.products?.change || 0),
-      trend: mapTrend(d.products?.change_type || 'neutral'),
+      change: 0,
+      trend: 'neutral' as const,
       color: 'info' as const,
     },
     {
-      title: 'Average Rating',
-      value: d.rating?.formatted || '0',
-      icon: StarIcon,
-      change: Math.abs(d.rating?.change || 0),
-      trend: mapTrend(d.rating?.change_type || 'neutral'),
+      title: 'Total Earnings',
+      value: formatCurrency(ov.total_earnings?.value || 0),
+      icon: BanknotesIcon,
+      change: Math.abs(ov.total_earnings?.change_percentage || 0),
+      trend: ov.total_earnings?.trend === 'up' ? 'up' as const : 'down' as const,
       color: 'warning' as const,
     },
   ]
@@ -98,15 +117,14 @@ async function fetchData() {
   isLoading.value = true
   error.value = null
   try {
-    const [dashboardRes, chartRes, productsRes, alertsRes] = await Promise.all([
+    const [dashboardRes, chartRes, alertsRes] = await Promise.all([
       analyticsService.getVendorDashboardStats({ period: dateRange.value }),
       analyticsService.getSalesChart({ period: dateRange.value }),
-      analyticsService.getTopProducts({ period: dateRange.value, limit: 5 }),
       analyticsService.getLowStockAlerts(5),
     ])
-    dashboard.value = dashboardRes
+    // Cast to any first since backend structure differs from frontend type
+    dashboard.value = dashboardRes as any
     salesChart.value = chartRes
-    topProducts.value = Array.isArray(productsRes) ? productsRes : []
     lowStockAlerts.value = Array.isArray(alertsRes) ? alertsRes : []
   } catch (e: any) {
     error.value = e.response?.data?.message || 'Failed to load analytics'
@@ -166,19 +184,19 @@ onMounted(() => {
         <BaseCard>
           <div class="text-center">
             <p class="text-sm text-gray-500 dark:text-gray-400">Pending Orders</p>
-            <p class="mt-1 text-2xl font-bold text-orange-600">{{ dashboard.pending_orders }}</p>
+            <p class="mt-1 text-2xl font-bold text-orange-600">{{ dashboard.orders?.pending_action || 0 }}</p>
           </div>
         </BaseCard>
         <BaseCard>
           <div class="text-center">
             <p class="text-sm text-gray-500 dark:text-gray-400">Available Balance</p>
-            <p class="mt-1 text-2xl font-bold text-green-600">{{ formatCurrency(dashboard.available_balance) }}</p>
+            <p class="mt-1 text-2xl font-bold text-green-600">{{ formatCurrency(dashboard.overview?.available_balance || 0) }}</p>
           </div>
         </BaseCard>
         <BaseCard>
           <div class="text-center">
-            <p class="text-sm text-gray-500 dark:text-gray-400">Pending Balance</p>
-            <p class="mt-1 text-2xl font-bold text-yellow-600">{{ formatCurrency(dashboard.pending_balance) }}</p>
+            <p class="text-sm text-gray-500 dark:text-gray-400">Pending Payouts</p>
+            <p class="mt-1 text-2xl font-bold text-yellow-600">{{ formatCurrency(dashboard.overview?.pending_payouts || 0) }}</p>
           </div>
         </BaseCard>
       </div>
@@ -194,12 +212,12 @@ onMounted(() => {
           />
         </BaseCard>
 
-        <!-- Top products -->
+        <!-- Top products - use dashboard.top_products from backend -->
         <BaseCard title="Top Products">
-          <div v-if="topProducts.length" class="space-y-4">
+          <div v-if="dashboard.top_products?.length" class="space-y-4">
             <div
-              v-for="(product, index) in topProducts"
-              :key="product.id"
+              v-for="(product, index) in dashboard.top_products"
+              :key="product.product_id"
               class="flex items-center gap-3"
             >
               <div
@@ -214,11 +232,11 @@ onMounted(() => {
                 {{ index + 1 }}
               </div>
               <div class="flex-1">
-                <p class="font-medium text-gray-900 dark:text-white">{{ product.name }}</p>
-                <p class="text-sm text-gray-500 dark:text-gray-400">{{ product.total_sold || 0 }} sold</p>
+                <p class="font-medium text-gray-900 dark:text-white">{{ product.product_name }}</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400">{{ product.quantity_sold || 0 }} sold</p>
               </div>
               <span class="font-semibold text-gray-900 dark:text-white">
-                {{ formatCurrency(product.total_revenue) }}
+                {{ formatCurrency(product.revenue || 0) }}
               </span>
             </div>
           </div>

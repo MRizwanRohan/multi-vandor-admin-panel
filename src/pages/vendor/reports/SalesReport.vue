@@ -21,6 +21,31 @@ import {
   ArrowDownTrayIcon,
 } from '@heroicons/vue/24/outline'
 
+// Match actual backend response structure
+interface DailySale {
+  date: string
+  revenue: number
+  orders: number
+  items_sold: number
+}
+
+interface CategoryBreakdown {
+  category_id: number
+  category_name: string
+  revenue: number
+  orders: number
+  items_sold: number
+  percentage: number
+}
+
+interface TopProduct {
+  product_id: number
+  product_name: string
+  revenue: number
+  quantity_sold: number
+  orders_count: number
+}
+
 interface SalesReportData {
   summary: {
     total_revenue: number
@@ -28,11 +53,14 @@ interface SalesReportData {
     average_order_value: number
     total_commission: number
     net_revenue: number
+    items_sold: number
+    revenue_change?: number
   }
-  chart: { labels: string[]; datasets: { label: string; data: number[] }[] }
-  by_category: { category: string; revenue: number; orders: number }[]
-  by_payment_method: { method: string; revenue: number; count: number }[]
-  daily_breakdown: { date: string; revenue: number; orders: number; aov: number }[]
+  daily_sales: DailySale[]
+  category_breakdown: CategoryBreakdown[]
+  top_products: TopProduct[]
+  period: string
+  date_range: { start: string; end: string }
 }
 
 const breadcrumbStore = useBreadcrumbStore()
@@ -59,20 +87,49 @@ const stats = computed(() => {
   if (!reportData.value?.summary) return []
   const s = reportData.value.summary
   return [
-    { title: 'Total Revenue', value: formatCurrency(s.total_revenue), icon: CurrencyDollarIcon, color: 'primary' as const },
-    { title: 'Total Orders', value: String(s.total_orders), icon: ShoppingCartIcon, color: 'success' as const },
-    { title: 'Avg Order Value', value: formatCurrency(s.average_order_value), icon: ReceiptPercentIcon, color: 'info' as const },
-    { title: 'Net Revenue', value: formatCurrency(s.net_revenue), icon: CurrencyDollarIcon, color: 'warning' as const },
+    { title: 'Total Revenue', value: formatCurrency(s.total_revenue || 0), icon: CurrencyDollarIcon, color: 'primary' as const },
+    { title: 'Total Orders', value: String(s.total_orders || 0), icon: ShoppingCartIcon, color: 'success' as const },
+    { title: 'Avg Order Value', value: formatCurrency(s.average_order_value || 0), icon: ReceiptPercentIcon, color: 'info' as const },
+    { title: 'Net Revenue', value: formatCurrency(s.net_revenue || 0), icon: CurrencyDollarIcon, color: 'warning' as const },
   ]
 })
 
-// Chart data
-const chartLabels = computed(() => reportData.value?.chart?.labels || [])
-const chartDatasets = computed(() => reportData.value?.chart?.datasets || [])
+// Chart data - transform daily_sales to chart format
+const chartLabels = computed(() => {
+  const sales = reportData.value?.daily_sales || []
+  return sales.map(d => d.date)
+})
+const chartDatasets = computed(() => {
+  const sales = reportData.value?.daily_sales || []
+  if (!sales.length) return []
+  return [
+    { label: 'Revenue', data: sales.map(d => d.revenue || 0), borderColor: '#6366f1', backgroundColor: 'rgba(99, 102, 241, 0.1)', fill: true },
+  ]
+})
 
-// Category chart
-const categoryLabels = computed(() => reportData.value?.by_category?.map(c => c.category) || [])
-const categoryData = computed(() => reportData.value?.by_category?.map(c => c.revenue) || [])
+// Category chart - use category_breakdown from backend
+const categoryLabels = computed(() => {
+  const cats = reportData.value?.category_breakdown || []
+  return cats.map(c => c.category_name || 'Unknown')
+})
+const categoryData = computed(() => {
+  const cats = reportData.value?.category_breakdown || []
+  return cats.map(c => c.revenue || 0)
+})
+
+// Daily breakdown table - use daily_sales
+const dailyBreakdown = computed(() => {
+  const sales = reportData.value?.daily_sales || []
+  return sales.map(d => ({
+    date: d.date,
+    revenue: d.revenue || 0,
+    orders: d.orders || 0,
+    aov: d.orders > 0 ? (d.revenue / d.orders) : 0,
+  }))
+})
+
+// Top products
+const topProducts = computed(() => reportData.value?.top_products || [])
 
 // Daily breakdown table
 const dailyColumns = [
@@ -195,22 +252,25 @@ onMounted(() => {
           <p v-else class="py-8 text-center text-gray-500">No category data</p>
         </BaseCard>
 
-        <!-- Payment Methods -->
-        <BaseCard title="Payment Methods">
-          <div v-if="reportData.by_payment_method?.length" class="space-y-3">
+        <!-- Payment Methods - Not available from backend -->
+        <BaseCard title="Top Products">
+          <div v-if="topProducts.length" class="space-y-3">
             <div
-              v-for="pm in reportData.by_payment_method"
-              :key="pm.method"
+              v-for="product in topProducts"
+              :key="product.product_id"
               class="flex items-center justify-between rounded-lg bg-gray-50 p-3 dark:bg-gray-800"
             >
-              <span class="font-medium text-gray-900 dark:text-white">{{ pm.method }}</span>
+              <div>
+                <span class="font-medium text-gray-900 dark:text-white">{{ product.product_name }}</span>
+                <p class="text-xs text-gray-500">{{ product.quantity_sold }} sold</p>
+              </div>
               <div class="text-right">
-                <p class="font-semibold text-gray-900 dark:text-white">{{ formatCurrency(pm.revenue) }}</p>
-                <p class="text-xs text-gray-500">{{ pm.count }} transactions</p>
+                <p class="font-semibold text-gray-900 dark:text-white">{{ formatCurrency(product.revenue) }}</p>
+                <p class="text-xs text-gray-500">{{ product.orders_count }} orders</p>
               </div>
             </div>
           </div>
-          <p v-else class="py-8 text-center text-gray-500">No payment data</p>
+          <p v-else class="py-8 text-center text-gray-500">No products data</p>
         </BaseCard>
       </div>
 
@@ -218,9 +278,9 @@ onMounted(() => {
       <BaseCard title="Daily Breakdown">
         <DataTable
           :columns="dailyColumns"
-          :data="reportData.daily_breakdown || []"
+          :data="dailyBreakdown"
           :loading="false"
-          :total="reportData.daily_breakdown?.length || 0"
+          :total="dailyBreakdown.length"
           :current-page="1"
           :per-page="31"
         >

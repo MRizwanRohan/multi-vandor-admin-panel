@@ -144,6 +144,9 @@ The storefront consumes the existing Laravel backend API (`/api/v1/`) that alrea
 | `cod-badge` | `#8B5CF6` | Cash on delivery indicator |
 
 #### Dark Mode Colors
+
+> **Scope:** Dark mode is a P1 feature (Sprint 4–5). Color tokens are defined below for reference. Implementation requires: (1) `next-themes` provider in root layout, (2) all Tailwind classes to use `dark:` variant, (3) dark mode toggle in header/account settings, (4) persisted preference via localStorage. A dedicated dark mode testing pass is included in the Pre-Launch Checklist.
+
 | Token | Light | Dark |
 |-------|-------|------|
 | Background | `#FFFFFF` | `#0F172A` (slate-900) |
@@ -386,10 +389,12 @@ JetBrains Mono: Google Fonts — async load, display: swap
 
 **Route:** `/checkout`
 **Rendering:** Client-side only
-**Auth:** Required (redirect to login with returnUrl) or Guest checkout
+**Auth:** Required (redirect to login with returnUrl) or Guest checkout (continue without account — see US-3.3)
 **API Calls:**
 - `POST /api/v1/customer/orders`
 - `GET /api/v1/payments/methods`
+- `GET /api/v1/shipping/methods` — available shipping methods
+- `POST /api/v1/shipping/calculate` — calculate shipping cost per vendor
 - Payment gateway specific calls
 
 **Steps:**
@@ -444,7 +449,7 @@ JetBrains Mono: Google Fonts — async load, display: swap
 | `/account/orders` | `/customer/orders` | Order history |
 | `/account/orders/[id]` | `/customer/orders/{id}` | Order detail |
 | `/account/reviews` | `/customer/reviews/my` | My reviews |
-| `/account/addresses` | (future) | Address book |
+| `/account/addresses` | `/customer/addresses` | Address book *(P2 — Sprint 6+; backend routes exist but commented out, activation target: Sprint 3 backend)* |
 | `/account/wishlist` | (future) | Saved items |
 
 ---
@@ -535,19 +540,24 @@ JetBrains Mono: Google Fonts — async load, display: swap
 | Categories | `GET /customer/categories` | ISR 3600s |
 | Category detail | `GET /customer/categories/{slug}` | ISR 300s |
 | Product list | `GET /customer/products` | React Query 5min |
-| Product search | `GET /customer/products/search` | React Query 1min |
+| Product search | `GET /customer/products/search?q={query}` | React Query 1min |
 | Featured products | `GET /customer/products/featured` | ISR 3600s |
 | Products by category | `GET /customer/products/category/{slug}` | ISR 300s |
 | Product detail | `GET /customer/products/{slug}` | ISR 60s |
 | Product reviews | `GET /customer/products/{id}/reviews` | React Query 5min |
+| Review eligibility | `GET /customer/products/{id}/can-review` | React Query 1min |
 | Flash sales | `GET /flash-sales` | ISR 60s |
 | Blog posts | `GET /blog` | ISR 300s |
 | Blog post detail | `GET /blog/{slug}` | ISR 60s |
 | FAQs | `GET /faqs` | ISR 3600s |
 | Static pages | `GET /pages/{slug}` | ISR 3600s |
 | Payment methods | `GET /payments/methods` | React Query 30min |
+| Shipping methods | `GET /shipping/methods` | React Query 30min |
+| Shipping cost calc | `POST /shipping/calculate` | No cache (dynamic) |
 
 ### 6.2 Guest Endpoints (Session-based)
+
+> **Session ID Generation:** The guest session ID is generated **client-side** using `crypto.randomUUID()` on first cart interaction and stored in `localStorage` under key `mve_guest_session`. It is sent to the backend via `X-Guest-Session` header on every guest cart request. The backend creates/retrieves the guest cart based on this session ID. On login, the session ID is sent to merge the guest cart into the authenticated cart.
 
 | Feature | Endpoint | State |
 |---------|----------|-------|
@@ -571,6 +581,7 @@ JetBrains Mono: Google Fonts — async load, display: swap
 | My orders | `GET /customer/orders` | React Query |
 | Order detail | `GET /customer/orders/{orderNumber}` | React Query |
 | Cancel order | `POST /customer/orders/{id}/cancel` | Mutation |
+| Order tracking | `GET /customer/orders/{orderNumber}/tracking` | React Query 1min |
 | My reviews | `GET /customer/reviews/my` | React Query |
 | Create review | `POST /customer/reviews` | Mutation |
 | Validate coupon | `POST /customer/coupons/validate` | Mutation |
@@ -579,6 +590,20 @@ JetBrains Mono: Google Fonts — async load, display: swap
 | Payment initiate | `POST /payments/{gateway}` | Mutation |
 | Payment status | `GET /payments/{orderId}/status` | Polling |
 | Refund request | `POST /payments/refund` | Mutation |
+| Review eligibility | `GET /customer/products/{id}/can-review` | React Query |
+| Shipping methods | `GET /shipping/methods` | React Query |
+| Shipping cost | `POST /shipping/calculate` | Mutation |
+
+### 6.4 SSLCommerz Payment Flow (Callback URLs)
+
+| Callback | Endpoint | Purpose |
+|----------|----------|--------|
+| Success | `GET /payments/sslcommerz/success` | Customer redirect on successful payment → order confirmation page |
+| Fail | `GET /payments/sslcommerz/fail` | Customer redirect on failed payment → retry payment page |
+| Cancel | `GET /payments/sslcommerz/cancel` | Customer redirect on cancelled payment → back to checkout |
+| IPN | `POST /payments/sslcommerz/ipn` | Server-to-server webhook — updates order/payment status |
+
+> **Note:** Success/Fail/Cancel are **frontend redirect URLs** where the customer lands after the SSLCommerz gateway page. The frontend reads the query params (e.g., `?tran_id=xxx&status=VALID`) and shows appropriate UI. The IPN webhook is server-side only and is handled by the Laravel backend directly.
 
 ---
 
@@ -670,9 +695,12 @@ QueryClient {
 | `['cart']` | Cart data | 0 (always fresh) |
 | `['orders', page]` | Order list | 2min |
 | `['order', id]` | Order detail | 1min |
+| `['order-tracking', orderNumber]` | Order tracking | 1min |
 | `['reviews', productId, page]` | Reviews | 5min |
+| `['search', query, filters]` | Search results | 1min |
 | `['flash-sales']` | Flash sales | 1min |
 | `['banners', position]` | Banners | 30min |
+| `['shipping-methods']` | Shipping methods | 30min |
 
 ---
 

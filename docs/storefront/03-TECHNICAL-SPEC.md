@@ -56,6 +56,9 @@
 | `tailwindcss` | 3.4.x | Utility-first CSS |
 | `@headlessui/react` | 2.x | Accessible dropdown, modal, tabs |
 | `framer-motion` | 11.0.x | Animations (page transitions, micro-interactions) |
+
+> **Framer Motion + Server Components:** Framer Motion 11 supports Server Components for static elements, but all animated components (`motion.div`, `AnimatePresence`, `useAnimation`) require `"use client"` directive. Define a clear boundary: layout wrappers and data-fetching components are Server Components; interactive/animated children are Client Components. Use a `MotionDiv` wrapper component with `"use client"` to keep the boundary clean.
+
 | `next-themes` | 0.3.x | Dark mode |
 | `@heroicons/react` | 2.x | Icon set (consistent with dashboard) |
 | `react-hot-toast` | 2.4.x | Toast notifications |
@@ -95,6 +98,7 @@
 | `vitest` | 1.x | Test runner |
 | `playwright` | 1.x | E2E testing |
 | `dompurify` | 3.x | Sanitize HTML (reviews, blog content) |
+| `isomorphic-dompurify` | 2.x | SSR-safe DOMPurify wrapper (works in Node.js + browser) |
 
 ---
 
@@ -133,6 +137,9 @@ mve-storefront/
 │   │   │   └── page.tsx          # FAQ page
 │   │   ├── contact/
 │   │   │   └── page.tsx          # Contact form
+│   │   ├── vendors/
+│   │   │   └── [slug]/
+│   │   │       └── page.tsx      # Vendor store page  (ISR, P2)
 │   │   └── pages/
 │   │       └── [slug]/
 │   │           └── page.tsx      # Static CMS pages
@@ -236,6 +243,7 @@ mve-storefront/
 │   ├── useReviews.ts
 │   ├── useCoupons.ts
 │   ├── useSearch.ts
+│   ├── useShipping.ts
 │   ├── useInfiniteProducts.ts
 │   ├── useMediaQuery.ts
 │   └── useDebounce.ts
@@ -249,10 +257,14 @@ mve-storefront/
 │   │   ├── auth.ts               # Auth API functions
 │   │   ├── reviews.ts            # Review API functions
 │   │   ├── payments.ts           # Payment API functions
+│   │   ├── shipping.ts           # Shipping methods & calculation
 │   │   ├── content.ts            # Blog, FAQ, Pages API
-│   │   └── marketing.ts          # Banners, Flash Sales, Coupons
+│   │   ├── marketing.ts          # Banners, Flash Sales, Coupons
+│   │   ├── server.ts             # Server-side fetch wrapper (SSR/RSC only)
+│   │   ├── auth-events.ts        # Auth event bus (avoids circular deps)
+│   │   └── auth-sync.ts          # BroadcastChannel cross-tab auth sync
 │   ├── stores/
-│   │   ├── cart.store.ts         # Zustand cart store
+│   │   ├── cart.store.ts         # Zustand cart store (skipHydration)
 │   │   ├── auth.store.ts         # Zustand auth store
 │   │   └── ui.store.ts           # Zustand UI store
 │   ├── utils/
@@ -312,6 +324,7 @@ mve-storefront/
 | `/faq` | ISR | 3600s | Rarely changes |
 | `/pages/[slug]` | ISR | 3600s | Static content |
 | `/flash-sales` | ISR | 60s | Time-sensitive |
+| `/vendors/[slug]` | ISR | 300s (5min) | Vendor info stable, P2 feature |
 | `/contact` | CSR | — | Form submission |
 
 ### 3.2 ISR Implementation Pattern
@@ -321,8 +334,14 @@ mve-storefront/
 
 export const revalidate = 60 // ISR: Revalidate every 60 seconds
 
+// Only pre-generate top 200 popular products at build time.
+// All other slugs will be generated on-demand (dynamicParams = true by default).
+export const dynamicParams = true // Allow on-demand ISR for unknown slugs
+
 export async function generateStaticParams() {
-  const products = await getPopularProductSlugs()
+  // Limit to top 200 to keep build time < 5 minutes
+  // Products not in this list will be SSR'd on first request, then cached via ISR
+  const products = await getPopularProductSlugs({ limit: 200 })
   return products.map(slug => ({ slug }))
 }
 
@@ -389,18 +408,11 @@ export const apiClient = axios.create({
 ### 4.2 Request Interceptor
 
 ```typescript
-// Attach auth token from cookie (for client-side requests)
+// CLIENT-SIDE ONLY — Attach guest session for cart
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // Token is in httpOnly cookie — browser sends automatically
-    // For SSR, attach from cookie header manually
-    if (typeof window === 'undefined') {
-      const { cookies } = require('next/headers')
-      const token = cookies().get('auth_token')?.value
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`
-      }
-    }
+    // Token is in httpOnly cookie — browser sends automatically via withCredentials
+    // No need to manually attach token on client side
 
     // Add guest session ID for guest cart
     const sessionId = getGuestSessionId()
@@ -412,6 +424,62 @@ apiClient.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 )
+
+// Guest session ID management
+function getGuestSessionId(): string | null {
+  if (typeof window === 'undefined') return null
+  let sessionId = localStorage.getItem('mve_guest_session')
+  if (!sessionId) {
+    sessionId = crypto.randomUUID()
+    localStorage.setItem('mve_guest_session', sessionId)
+  }
+  return sessionId
+}
+```
+
+### 4.2.1 Server-Side Fetch Wrapper (for SSR/RSC)
+
+> **IMPORTANT:** `next/headers` can only be used inside Server Components, Route Handlers, and Server Actions. It CANNOT be used inside Axios interceptors or any client-side code. For server-side data fetching, use this dedicated wrapper instead of the Axios client.
+
+```typescript
+// lib/api/server.ts
+// This file is ONLY imported in Server Components and Route Handlers
+
+import { cookies } from 'next/headers'
+
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000/api/v1'
+
+export async function serverFetch<T>(
+  endpoint: string,
+  options?: RequestInit
+): Promise<T> {
+  const cookieStore = await cookies()
+  const token = cookieStore.get('auth_token')?.value
+
+  const response = await fetch(`${BACKEND_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers,
+    },
+    // ISR: use next.revalidate for caching
+    next: { revalidate: (options as any)?.revalidate ?? 60 },
+  })
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`)
+  }
+
+  const data = await response.json()
+  return data.data as T
+}
+
+// Usage in Server Components:
+// const products = await serverFetch<Product[]>('/customer/products/featured')
+// const product = await serverFetch<Product>(`/customer/products/${slug}`)
+```
 ```
 
 ### 4.3 Response Interceptor
@@ -431,8 +499,8 @@ apiClient.interceptors.response.use(
         await refreshAuthToken()
         return apiClient(originalRequest) // Retry original request
       } catch {
-        // Refresh failed → logout
-        useAuthStore.getState().logout()
+        // Refresh failed → logout via event (avoids circular dependency with Zustand)
+        authEventBus.emit('force-logout')
         if (typeof window !== 'undefined') {
           window.location.href = '/login?session_expired=true'
         }
@@ -499,6 +567,37 @@ class ValidationError extends Error {
     this.name = 'ValidationError'
   }
 }
+```
+
+### 4.5 Auth Event Bus (Avoiding Circular Dependencies)
+
+> **Why:** Directly calling `useAuthStore.getState().logout()` inside Axios interceptors creates a circular dependency (client.ts → auth.store.ts → client.ts) and makes testing difficult. Instead, use a lightweight event bus.
+
+```typescript
+// lib/api/auth-events.ts
+
+type AuthEvent = 'force-logout'
+type Listener = () => void
+
+class AuthEventBus {
+  private listeners = new Map<AuthEvent, Set<Listener>>()
+
+  on(event: AuthEvent, listener: Listener) {
+    if (!this.listeners.has(event)) this.listeners.set(event, new Set())
+    this.listeners.get(event)!.add(listener)
+    return () => this.listeners.get(event)?.delete(listener)
+  }
+
+  emit(event: AuthEvent) {
+    this.listeners.get(event)?.forEach(fn => fn())
+  }
+}
+
+export const authEventBus = new AuthEventBus()
+
+// In auth.store.ts:
+// authEventBus.on('force-logout', () => useAuthStore.getState().logout())
+```
 ```
 
 ---
@@ -600,15 +699,19 @@ export const config = {
 ```typescript
 // lib/api/auth.ts
 
+import { broadcastAuthEvent } from './auth-sync'
+
 let refreshPromise: Promise<void> | null = null
 
 export async function refreshAuthToken(): Promise<void> {
-  // Deduplicate concurrent refresh calls
+  // Deduplicate concurrent refresh calls (same tab)
   if (refreshPromise) return refreshPromise
 
   refreshPromise = fetch('/api/auth/refresh', { method: 'POST' })
     .then(res => {
       if (!res.ok) throw new Error('Refresh failed')
+      // Notify other tabs about the token refresh
+      broadcastAuthEvent('token-refreshed')
     })
     .finally(() => {
       refreshPromise = null
@@ -616,6 +719,74 @@ export async function refreshAuthToken(): Promise<void> {
 
   return refreshPromise
 }
+```
+
+### 5.5 Cross-Tab Auth Sync (BroadcastChannel)
+
+> **Problem:** When a user has multiple tabs open and the token expires, only one tab should refresh the token. Other tabs should pick up the new token. Also, logging out in one tab should log out all tabs.
+
+```typescript
+// lib/api/auth-sync.ts
+
+type AuthMessageType = 'login' | 'logout' | 'token-refreshed'
+let authChannel: BroadcastChannel | null = null
+let useFallback = false
+
+export function initAuthSync() {
+  if (typeof window === 'undefined') return
+
+  // Primary: BroadcastChannel (Chrome, Firefox, Safari 15.4+)
+  if (typeof BroadcastChannel !== 'undefined') {
+    authChannel = new BroadcastChannel('mve-auth')
+    authChannel.onmessage = (event) => handleAuthMessage(event.data.type)
+  } else {
+    // Fallback: localStorage 'storage' event (Safari < 15.4, older iOS)
+    useFallback = true
+    window.addEventListener('storage', (event) => {
+      if (event.key === 'mve-auth-event' && event.newValue) {
+        try {
+          const { type } = JSON.parse(event.newValue)
+          handleAuthMessage(type)
+        } catch { /* ignore malformed */ }
+      }
+    })
+  }
+}
+
+function handleAuthMessage(type: AuthMessageType) {
+  switch (type) {
+    case 'logout':
+      // Another tab logged out → clear local state and redirect
+      useAuthStore.getState().clearUser()
+      window.location.href = '/login?session_expired=true'
+      break
+
+    case 'login':
+      // Another tab logged in → refresh current user
+      useAuthStore.getState().refreshUser()
+      break
+
+    case 'token-refreshed':
+      // Another tab refreshed the token → our next request will use the new cookie
+      // No action needed since token is in httpOnly cookie
+      break
+  }
+}
+
+export function broadcastAuthEvent(type: AuthMessageType) {
+  if (authChannel) {
+    authChannel.postMessage({ type })
+  } else if (useFallback && typeof window !== 'undefined') {
+    // localStorage fallback: write → triggers 'storage' event in OTHER tabs
+    localStorage.setItem('mve-auth-event', JSON.stringify({ type, ts: Date.now() }))
+    // Clean up immediately (the event fires on write, value not needed after)
+    localStorage.removeItem('mve-auth-event')
+  }
+}
+
+// Initialize in app/layout.tsx (client component wrapper):
+// useEffect(() => { initAuthSync() }, [])
+```
 ```
 
 ---
@@ -709,9 +880,20 @@ export const useCartStore = create<CartStore>()(
         return groups
       },
     }),
-    { name: 'mve-cart' }
+    {
+      name: 'mve-cart',
+      // Fix SSR hydration mismatch: skip hydration on server,
+      // rehydrate only on client after mount
+      skipHydration: true,
+    }
   )
 )
+
+// Usage: Rehydrate in a client component (e.g., CartProvider)
+// useEffect(() => { useCartStore.persist.rehydrate() }, [])
+```
+
+> **SSR Hydration Note:** Zustand's `persist` middleware uses `localStorage` which is not available during SSR. Without `skipHydration: true`, the server renders with the initial state (empty cart) while the client immediately reads localStorage and gets a different state — causing a React hydration mismatch error. The `skipHydration` pattern defers localStorage reading until after the component mounts on the client.
 ```
 
 ### 6.2 React Query Hooks
@@ -797,6 +979,10 @@ export function useUpdateCartItem() {
 | Apply coupon | `['cart']` |
 | Login | `['cart']` (merge guest), `['orders']` |
 | Logout | Clear all queries |
+| Cancel order | `['order', id]`, `['orders']` |
+| Search | `['search', query, filters]` |
+| Change shipping address | `['shipping-cost']` (recalculate per vendor) |
+| Select shipping method | `['cart']` (update total with shipping cost) |
 
 ---
 
@@ -994,7 +1180,9 @@ module.exports = withBundleAnalyzer(nextConfig)
 | Banners | React Query | 30min | Position-based key |
 | Reviews | React Query | 5min | Invalidate on write |
 | Orders | React Query | 2min | Invalidate on place/cancel |
+| Order tracking | React Query | 1min | Invalidate on status change |
 | Payment methods | React Query | 30min | Rarely changes |
+| Shipping methods | React Query | 30min | Region/vendor based |
 
 ---
 
@@ -1141,7 +1329,8 @@ const nextConfig = {
 
 ```typescript
 // For user-generated content (reviews, blog comments)
-import DOMPurify from 'dompurify'
+// Use isomorphic-dompurify instead of dompurify for SSR compatibility
+import DOMPurify from 'isomorphic-dompurify'
 
 function sanitizeHtml(dirty: string): string {
   return DOMPurify.sanitize(dirty, {
@@ -1149,6 +1338,9 @@ function sanitizeHtml(dirty: string): string {
     ALLOWED_ATTR: [],
   })
 }
+
+// NOTE: isomorphic-dompurify works in both Node.js (SSR/RSC) and browser.
+// Regular dompurify relies on window.document and crashes in Server Components.
 ```
 
 ### 12.4 Environment Variables

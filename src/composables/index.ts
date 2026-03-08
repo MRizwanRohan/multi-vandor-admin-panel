@@ -2,6 +2,9 @@
 // Composables Index — Re-exports all composables
 // ═══════════════════════════════════════════════════════════════════
 
+// Guided Tour
+export { useTour, type TourStep } from './useTour'
+
 // Authentication & Authorization
 export { useAuth } from './useAuth'
 export { usePermission, useCanDo, useHasRole, type UserRole } from './usePermission'

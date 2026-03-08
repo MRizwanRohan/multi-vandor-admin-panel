@@ -10,6 +10,7 @@ import AppSidebar from '@/components/layout/AppSidebar.vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppBreadcrumb from '@/components/layout/AppBreadcrumb.vue'
 import PageLoader from '@/components/ui/PageLoader.vue'
+import AppTour from '@/components/ui/AppTour.vue'
 
 const route = useRoute()
 const uiStore = useUIStore()
@@ -95,5 +96,8 @@ watch(
         <p>&copy; {{ new Date().getFullYear() }} MVE Dashboard. All rights reserved.</p>
       </footer>
     </div>
+
+    <!-- Guided Tour overlay (global, works on every admin page) -->
+    <AppTour />
   </div>
 </template>

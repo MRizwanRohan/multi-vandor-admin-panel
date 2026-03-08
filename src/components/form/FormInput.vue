@@ -3,9 +3,9 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useField } from 'vee-validate'
-import { ExclamationCircleIcon } from '@heroicons/vue/24/outline'
+import { ExclamationCircleIcon, EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline'
 
 interface Props {
   name?: string
@@ -54,6 +54,14 @@ const showError = computed(() => {
 })
 const handleBlur = field ? field.handleBlur : () => {}
 
+// Password show/hide
+const isPasswordType = computed(() => props.type === 'password')
+const showPassword = ref(false)
+const resolvedType = computed(() => {
+  if (isPasswordType.value) return showPassword.value ? 'text' : 'password'
+  return props.type
+})
+
 // Input classes based on state
 const inputClasses = computed(() => {
   const base = 'form-input w-full'
@@ -89,7 +97,7 @@ const inputClasses = computed(() => {
       <!-- Input -->
       <input
         :id="name"
-        :type="type"
+        :type="resolvedType"
         :name="name"
         :placeholder="placeholder"
         :disabled="disabled"
@@ -97,21 +105,34 @@ const inputClasses = computed(() => {
         :class="[
           inputClasses,
           prefix ? 'pl-10' : '',
-          suffix || errorMessage ? 'pr-10' : '',
+          (isPasswordType || suffix || showError) ? 'pr-10' : '',
         ]"
         v-model="value"
         @blur="handleBlur"
       />
 
-      <!-- Suffix or error icon -->
+      <!-- Right side: password toggle / error icon / suffix -->
       <div
-        v-if="suffix || showError"
+        v-if="isPasswordType || suffix || showError"
         class="absolute inset-y-0 right-0 flex items-center pr-3"
       >
+        <!-- Password eye toggle -->
+        <button
+          v-if="isPasswordType"
+          type="button"
+          tabindex="-1"
+          class="text-gray-400 hover:text-gray-600 focus:outline-none dark:text-gray-500 dark:hover:text-gray-300"
+          @click="showPassword = !showPassword"
+        >
+          <EyeSlashIcon v-if="showPassword" class="h-5 w-5" />
+          <EyeIcon v-else class="h-5 w-5" />
+        </button>
+        <!-- Error icon (non-password fields) -->
         <ExclamationCircleIcon
-          v-if="showError"
+          v-else-if="showError"
           class="h-5 w-5 text-danger-500"
         />
+        <!-- Suffix text -->
         <span
           v-else-if="suffix"
           class="text-gray-500 dark:text-gray-400 sm:text-sm"

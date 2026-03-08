@@ -189,7 +189,7 @@ onMounted(() => {
 <template>
   <div class="space-y-6">
     <!-- Stats -->
-    <div v-if="stats" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div v-if="stats" class="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <StatCard
         title="Total Pending"
         :value="formatCurrency(stats.total_pending)"

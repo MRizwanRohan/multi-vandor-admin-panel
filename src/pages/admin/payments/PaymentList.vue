@@ -212,30 +212,30 @@ const totalRefunded = computed(() => statistics.value?.overview?.total_refunded 
 <template>
   <div class="space-y-6">
     <!-- Statistics Cards -->
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <StatCard
         title="Total Revenue"
         :value="currency.format(totalRevenue)"
-        icon="currency-dollar"
-        color="green"
+        :icon="BanknotesIcon"
+        color="success"
       />
       <StatCard
         title="Transactions"
         :value="totalTransactions.toLocaleString()"
-        icon="credit-card"
-        color="blue"
+        :icon="CreditCardIcon"
+        color="info"
       />
       <StatCard
         title="Success Rate"
         :value="`${successRate.toFixed(1)}%`"
-        icon="check-circle"
-        color="indigo"
+        :icon="CheckCircleIcon"
+        color="primary"
       />
       <StatCard
         title="Total Refunded"
         :value="currency.format(totalRefunded)"
-        icon="arrow-path"
-        color="amber"
+        :icon="ArrowPathIcon"
+        color="warning"
       />
     </div>
 

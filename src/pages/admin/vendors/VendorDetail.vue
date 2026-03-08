@@ -299,7 +299,7 @@ const vendorDetail = computed(() => vendor.value as any)
     </div>
 
     <!-- Stats -->
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <StatCard
         title="Total Products"
         :value="vendor.product_count?.toLocaleString() || '0'"

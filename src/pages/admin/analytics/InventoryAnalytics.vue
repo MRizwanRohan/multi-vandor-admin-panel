@@ -77,7 +77,7 @@ const stockChartData = computed(() => data.value ? [data.value.in_stock, data.va
     </div>
 
     <!-- Stats -->
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+    <div class="grid items-stretch gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
       <StatCard
         v-for="s in stats"
         :key="s.title"

@@ -195,8 +195,8 @@ function getStatusClass(color: string): string {
       </div>
     </div>
 
-    <!-- Stats grid -->
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+    <!-- Stats grid — 1 col → 2 → 3 → 6 at xl so each card has enough room -->
+    <div class="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
       <StatCard
         v-for="card in statsCards"
         :key="card.key"

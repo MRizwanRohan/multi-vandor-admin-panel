@@ -131,7 +131,7 @@ const statusData = computed(() => salesData.value ? Object.values(salesData.valu
     </div>
 
     <!-- Stats -->
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <StatCard
         v-for="s in stats"
         :key="s.title"

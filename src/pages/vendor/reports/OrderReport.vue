@@ -177,7 +177,7 @@ onMounted(() => {
 
     <template v-else-if="reportData">
       <!-- Stats -->
-      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           v-for="stat in stats"
           :key="stat.title"
@@ -189,7 +189,7 @@ onMounted(() => {
       </div>
 
       <!-- Performance Cards -->
-      <div class="grid gap-4 sm:grid-cols-2">
+      <div class="grid items-stretch gap-4 sm:grid-cols-2">
         <BaseCard>
           <div class="text-center">
             <p class="text-sm text-gray-500 dark:text-gray-400">Fulfillment Rate</p>

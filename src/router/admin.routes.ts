@@ -564,6 +564,27 @@ const adminRoutes: RouteRecordRaw[] = [
           },
         ],
       },
+      // Brands
+      {
+        path: 'brands',
+        name: 'admin-brands',
+        component: () => import('@/pages/admin/brands/BrandList.vue'),
+        meta: { title: 'Brands' },
+      },
+      // Tax Rates
+      {
+        path: 'tax-rates',
+        name: 'admin-tax-rates',
+        component: () => import('@/pages/admin/tax-rates/TaxRateList.vue'),
+        meta: { title: 'Tax Rates' },
+      },
+      // Currencies
+      {
+        path: 'currencies',
+        name: 'admin-currencies',
+        component: () => import('@/pages/admin/currencies/CurrencyList.vue'),
+        meta: { title: 'Currencies' },
+      },
       // Profile
       {
         path: 'profile',

@@ -238,6 +238,16 @@ const adminNavItems: NavItem[] = [
     ],
   },
   {
+    name: 'Catalogue',
+    to: '/admin/brands',
+    icon: TagIcon,
+    children: [
+      { name: 'Brands', to: '/admin/brands' },
+      { name: 'Tax Rates', to: '/admin/tax-rates' },
+      { name: 'Currencies', to: '/admin/currencies' },
+    ],
+  },
+  {
     name: 'Settings',
     to: '/admin/settings',
     icon: Cog6ToothIcon,

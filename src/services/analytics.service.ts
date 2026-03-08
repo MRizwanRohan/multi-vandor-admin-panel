@@ -53,7 +53,8 @@ export const analyticsService = {
   /** GET /admin/dashboard?period=month */
   async getDashboard(period: DashboardPeriod = 'month', fresh = false): Promise<DashboardResponse> {
     const response = await api.get<{ data: DashboardResponse }>(`${getRolePrefix()}/dashboard`, {
-      params: { period, ...(fresh ? { fresh: true } : {}) },
+      // Laravel boolean validation accepts 1/0 but NOT the string "true"/"false"
+      params: { period, ...(fresh ? { fresh: 1 } : {}) },
     })
     return response.data.data
   },

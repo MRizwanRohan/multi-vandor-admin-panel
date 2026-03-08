@@ -215,7 +215,7 @@ const totalRefunded = computed(() => statistics.value?.overview?.total_refunded 
     <div class="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <StatCard
         title="Total Revenue"
-        :value="currency.format(totalRevenue)"
+        :value="currency.formatCurrency(totalRevenue)"
         :icon="BanknotesIcon"
         color="success"
       />
@@ -233,7 +233,7 @@ const totalRefunded = computed(() => statistics.value?.overview?.total_refunded 
       />
       <StatCard
         title="Total Refunded"
-        :value="currency.format(totalRefunded)"
+        :value="currency.formatCurrency(totalRefunded)"
         :icon="ArrowPathIcon"
         color="warning"
       />

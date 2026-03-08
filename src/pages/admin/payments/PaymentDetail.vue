@@ -112,7 +112,7 @@ async function submitRefund() {
     return
   }
   if (refundForm.value.amount > refundableAmount.value) {
-    toast.error(`Refund amount cannot exceed ${currency.format(refundableAmount.value)}`)
+    toast.error(`Refund amount cannot exceed ${currency.formatCurrency(refundableAmount.value)}`)
     return
   }
   if (!refundForm.value.reason.trim()) {

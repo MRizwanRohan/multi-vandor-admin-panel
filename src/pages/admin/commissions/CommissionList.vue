@@ -119,7 +119,8 @@ async function fetchData() {
 
     // Fetch vendors
     const vendorResponse = await vendorService.getAll()
-    vendors.value = vendorResponse.data
+    const vData = vendorResponse.data as any
+    vendors.value = Array.isArray(vData) ? vData : (vData?.vendors ?? [])
     
     // Mock override data for demo
     categoryOverrides.value = [

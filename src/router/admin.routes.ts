@@ -135,6 +135,12 @@ const adminRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/admin/orders/OrderDetail.vue'),
         meta: { title: 'Order Details' },
       },
+      {
+        path: 'orders/:id/invoice',
+        name: 'admin-order-invoice',
+        component: () => import('@/pages/admin/orders/InvoiceView.vue'),
+        meta: { title: 'Invoice' },
+      },
       // Customers
       {
         path: 'customers',
@@ -512,6 +518,12 @@ const adminRoutes: RouteRecordRaw[] = [
         name: 'admin-system-health',
         component: () => import('@/pages/admin/system/SystemHealth.vue'),
         meta: { title: 'System Health' },
+      },
+      {
+        path: 'system/backups',
+        name: 'admin-system-backups',
+        component: () => import('@/pages/admin/system/BackupManagement.vue'),
+        meta: { title: 'Backup Management' },
       },
       // Settings
       {

@@ -180,11 +180,13 @@ async function fetchData() {
     const [catRes, prodRes, vendorRes] = await Promise.all([
       categoryService.getAll({ per_page: 100 }),
       productService.adminList({ per_page: 100 }),
-      vendorService.getAll({ per_page: 100 }),
+      vendorService.getAll({ per_page: 100, status: 'active' }),
     ])
     categories.value = Array.isArray(catRes.data) ? catRes.data : []
     products.value = Array.isArray(prodRes.data) ? prodRes.data : []
-    vendors.value = Array.isArray(vendorRes.data) ? vendorRes.data : []
+    // Backend returns { vendors: [...], pagination: {...} } nested under .data
+    const vData = vendorRes.data as any
+    vendors.value = Array.isArray(vData) ? vData : (vData?.vendors ?? [])
   } catch (error: any) {
     console.error('Failed to fetch reference data:', error)
     toast.error(error.response?.data?.message || 'Failed to load reference data')

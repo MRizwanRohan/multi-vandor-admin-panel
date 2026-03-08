@@ -158,6 +158,102 @@ export interface OrderListParams {
   order?: 'asc' | 'desc'
 }
 
+// ── Invoice ──
+export interface InvoiceAddress {
+  name?: string | null
+  phone?: string | null
+  address_line_1?: string | null
+  address_line_2?: string | null
+  city?: string | null
+  state?: string | null
+  postal_code?: string | null
+  country?: string | null
+  full_address?: string | null
+}
+
+export interface InvoiceItem {
+  id: number
+  product_id: number
+  variant_id?: number | null
+  name: string
+  product_name: string
+  variant_name?: string | null
+  sku?: string | null
+  quantity: number
+  unit_price: number
+  unit_price_formatted: string
+  subtotal: number
+  subtotal_formatted: string
+  discount: number
+  discount_formatted: string
+  tax: number
+  tax_formatted: string
+  total: number
+  total_formatted: string
+}
+
+export interface InvoiceSummary {
+  subtotal: number
+  subtotal_formatted: string
+  tax_amount: number
+  tax_amount_formatted: string
+  shipping_amount: number
+  shipping_amount_formatted: string
+  discount_amount: number
+  discount_amount_formatted: string
+  total_amount: number
+  total_amount_formatted: string
+  items_count: number
+  total_quantity: number
+}
+
+export interface Invoice {
+  invoice_number: string
+  order_number: string
+  order_date: string
+  order_date_formatted: string
+  invoice_date: string
+  invoice_date_formatted: string
+  due_date: string
+  due_date_formatted: string
+  status: string
+  status_label: string
+  payment_status: string
+  payment_status_label: string
+  payment_method?: string | null
+  company: {
+    name: string
+    email?: string | null
+    phone?: string | null
+    address?: string | null
+    logo?: string | null
+    website?: string | null
+    tax_id?: string | null
+  }
+  customer: {
+    id?: number | null
+    name: string
+    email?: string | null
+    phone?: string | null
+  }
+  vendor?: {
+    id: number
+    store_name: string
+    business_name?: string | null
+    email?: string | null
+    phone?: string | null
+  } | null
+  shipping_address?: InvoiceAddress | null
+  billing_address?: InvoiceAddress | null
+  items: InvoiceItem[]
+  summary: InvoiceSummary
+  notes?: string | null
+  currency: {
+    code: string
+    symbol: string
+  }
+}
+
 // ── Vendor order stats ──
 export interface VendorOrderStats {
   total_orders: number

@@ -84,10 +84,20 @@ export const orderService = {
   },
 
   /**
-   * Download invoice PDF (if endpoint exists)
+   * Get invoice JSON data
+   * Admin: GET /admin/orders/{id}/invoice
    */
-  async downloadInvoice(id: number): Promise<Blob> {
-    const response = await api.get(`${prefix()}/${id}/invoice`, {
+  async getInvoice(id: number): Promise<import('@/types').Invoice> {
+    const response = await api.get<{ data: import('@/types').Invoice }>(`${prefix()}/${id}/invoice`)
+    return response.data.data
+  },
+
+  /**
+   * Download invoice as PDF
+   * Admin: GET /admin/orders/{id}/invoice/pdf
+   */
+  async downloadInvoicePdf(id: number): Promise<Blob> {
+    const response = await api.get(`${prefix()}/${id}/invoice/pdf`, {
       responseType: 'blob',
     })
     return response.data

@@ -22,7 +22,32 @@ import {
   PrinterIcon,
   CubeIcon,
   BanknotesIcon,
+  ArrowDownTrayIcon,
 } from '@heroicons/vue/24/outline'
+
+const isDownloadingPdf = ref(false)
+
+async function viewInvoice() {
+  if (orderId.value) router.push(`/admin/orders/${orderId.value}/invoice`)
+}
+
+async function downloadInvoicePdf() {
+  if (!orderId.value) return
+  isDownloadingPdf.value = true
+  try {
+    const blob = await orderService.downloadInvoicePdf(orderId.value)
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `invoice-order-${order.value?.order_number || orderId.value}.pdf`
+    a.click()
+    window.URL.revokeObjectURL(url)
+  } catch {
+    toast.error('Failed to download invoice PDF')
+  } finally {
+    isDownloadingPdf.value = false
+  }
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -228,9 +253,13 @@ function onRefundComplete() {
       </div>
 
       <div class="flex items-center gap-2">
-        <BaseButton variant="secondary" size="sm">
+        <BaseButton variant="secondary" size="sm" @click="viewInvoice">
           <PrinterIcon class="mr-2 h-4 w-4" />
-          Print
+          Invoice
+        </BaseButton>
+        <BaseButton variant="secondary" size="sm" :loading="isDownloadingPdf" @click="downloadInvoicePdf">
+          <ArrowDownTrayIcon class="mr-2 h-4 w-4" />
+          PDF
         </BaseButton>
         <BaseButton
           v-if="canRefund"

@@ -234,6 +234,7 @@ const adminNavItems: NavItem[] = [
     children: [
       { name: 'Activity Log', to: '/admin/system/activity' },
       { name: 'System Health', to: '/admin/system/health' },
+      { name: 'Backup Management', to: '/admin/system/backups' },
     ],
   },
   {

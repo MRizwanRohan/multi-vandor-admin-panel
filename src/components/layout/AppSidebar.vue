@@ -40,6 +40,7 @@ import {
   InboxIcon,
   ArrowDownTrayIcon,
   PresentationChartLineIcon,
+  BookOpenIcon,
 } from '@heroicons/vue/24/outline'
 
 interface NavItem {
@@ -91,6 +92,11 @@ const adminNavItems: NavItem[] = [
     name: 'Dashboard',
     to: '/admin/dashboard',
     icon: HomeIcon,
+  },
+  {
+    name: 'Admin Guide',
+    to: '/admin/guide',
+    icon: BookOpenIcon,
   },
   {
     name: 'Products',

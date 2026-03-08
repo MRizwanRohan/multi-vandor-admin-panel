@@ -585,6 +585,13 @@ const adminRoutes: RouteRecordRaw[] = [
         component: () => import('@/pages/admin/currencies/CurrencyList.vue'),
         meta: { title: 'Currencies' },
       },
+      // Guide
+      {
+        path: 'guide',
+        name: 'admin-guide',
+        component: () => import('@/pages/admin/AdminGuide.vue'),
+        meta: { title: 'Admin Guide' },
+      },
       // Profile
       {
         path: 'profile',

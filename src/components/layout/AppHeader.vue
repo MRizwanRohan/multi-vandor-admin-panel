@@ -15,6 +15,7 @@ import {
 } from '@heroicons/vue/24/outline'
 import { useRouter } from 'vue-router'
 import NotificationDropdown from './NotificationDropdown.vue'
+import SearchCommand from './SearchCommand.vue'
 
 interface Props {
   dashboardType: 'admin' | 'vendor'
@@ -70,20 +71,9 @@ function goToSettings() {
         <Bars3Icon class="h-6 w-6" />
       </button>
 
-      <!-- Search (optional) -->
-      <div class="ml-4 hidden sm:block">
-        <div class="relative">
-          <input
-            type="search"
-            placeholder="Search..."
-            class="w-64 rounded-lg border border-gray-300 bg-gray-50 px-4 py-2 pl-10 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
-          />
-          <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-            <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
-        </div>
+      <!-- Global Search -->
+      <div class="ml-4">
+        <SearchCommand :dashboard-type="props.dashboardType" />
       </div>
     </div>
 

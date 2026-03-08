@@ -31,3 +31,4 @@ export { backupService, type BackupFile, type BackupStats, type BackupHealth, ty
 export { brandService } from './brand.service'
 export { taxRateService } from './tax-rate.service'
 export { currencyService } from './currency.service'
+export { searchService } from './search.service'

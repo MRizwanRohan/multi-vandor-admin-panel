@@ -46,12 +46,8 @@ const isLoading = ref(false)
 const countries = ref<string[]>([])
 const newCountry = ref('')
 
-// Common country list for quick selection
-const commonCountries = [
-  'Bangladesh', 'India', 'Pakistan', 'United States', 'United Kingdom',
-  'Canada', 'Australia', 'Germany', 'France', 'Japan', 'China',
-  'Singapore', 'Malaysia', 'UAE', 'Saudi Arabia', 'Nepal', 'Sri Lanka',
-]
+// helper utilities for working with country codes
+import { getCountryCode, getCountryName, commonCountryList, normalizeCode } from '@/utils/countries'
 
 // ── Form validation ──────────────────────────────────────────────
 
@@ -106,15 +102,29 @@ async function fetchZone() {
 
 function addCountry() {
   const trimmed = newCountry.value.trim()
-  if (trimmed && !countries.value.includes(trimmed)) {
-    countries.value.push(trimmed)
-    newCountry.value = ''
+  if (!trimmed) return
+  const code = getCountryCode(trimmed)
+  if (!code) {
+    toast.error('Unknown country or invalid ISO code')
+    return
   }
+  if (!countries.value.includes(code)) {
+    countries.value.push(code)
+  }
+  newCountry.value = ''
 }
 
-function addCommonCountry(country: string) {
-  if (!countries.value.includes(country)) {
-    countries.value.push(country)
+function addCommonCountry(input: string) {
+  // input may already be a code (from quick buttons) or a full name
+  let code: string | null = null
+  if (input.length === 2) {
+    code = normalizeCode(input)
+  } else {
+    code = getCountryCode(input)
+  }
+  if (!code) return
+  if (!countries.value.includes(code)) {
+    countries.value.push(code)
   }
 }
 
@@ -262,16 +272,16 @@ onMounted(() => {
             </p>
             <div class="flex flex-wrap gap-2">
               <button
-                v-for="country in commonCountries"
-                :key="country"
+                v-for="item in commonCountryList"
+                :key="item.code"
                 type="button"
                 class="rounded-full px-3 py-1 text-xs font-medium transition-colors"
-                :class="countries.includes(country)
+                :class="countries.includes(item.code)
                   ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/20 dark:text-primary-400'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'"
-                @click="addCommonCountry(country)"
+                @click="addCommonCountry(item.code)"
               >
-                {{ country }}
+                {{ item.name }}
               </button>
             </div>
           </div>
@@ -283,16 +293,16 @@ onMounted(() => {
             </p>
             <div v-if="countries.length > 0" class="flex flex-wrap gap-2">
               <BaseBadge
-                v-for="country in countries"
-                :key="country"
+                v-for="code in countries"
+                :key="code"
                 variant="info"
                 class="flex items-center gap-1"
               >
-                {{ country }}
+                {{ getCountryName(code) }}
                 <button
                   type="button"
                   class="ml-1 rounded-full p-0.5 hover:bg-white/20"
-                  @click="removeCountry(country)"
+                  @click="removeCountry(code)"
                 >
                   <XMarkIcon class="h-3 w-3" />
                 </button>
